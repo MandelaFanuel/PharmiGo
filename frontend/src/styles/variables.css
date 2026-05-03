@@ -1,0 +1,106 @@
+:root {
+  --bg: #f7fbff;
+  --surface: rgba(255, 255, 255, 0.88);
+  --surface-strong: #ffffff;
+  --text: #183b63;
+  --muted: #68809a;
+  --line: rgba(28, 79, 139, 0.12);
+  --primary: #2d7f87;
+  --primary-strong: #256971;
+  --accent: #1d4f89;
+  --success: #459245;
+  --danger: #bc3f34;
+  --shadow: 0 26px 60px rgba(17, 65, 110, 0.08);
+  --radius-xl: 30px;
+  --radius-lg: 22px;
+  --radius-md: 16px;
+  --color-background: var(--bg);
+  --color-surface: var(--surface-strong);
+  --color-primary: var(--primary);
+  --color-primary-dark: var(--primary-strong);
+  --color-text: var(--text);
+  --color-text-muted: var(--muted);
+  --color-border: var(--line);
+  --color-surface-dark: #1c2028;
+  --color-background-dark: #061419;
+  --color-text-light: #f4f8fb;
+  --color-border-dark: rgba(201, 209, 218, 0.16);
+}
+
+:root[data-theme="dark"] {
+  --bg: #061419;
+  --surface: rgba(18, 24, 31, 0.9);
+  --surface-strong: #1c2028;
+  --text: #c9d1da;
+  --muted: #93a0ad;
+  --line: rgba(201, 209, 218, 0.12);
+  --primary: #3a8e96;
+  --primary-strong: #57aeb3;
+  --accent: #8bb7de;
+  --success: #78d07a;
+  --danger: #f07c73;
+  --shadow: 0 28px 70px rgba(0, 0, 0, 0.34);
+  --color-background: var(--bg);
+  --color-surface: var(--surface-strong);
+  --color-primary: var(--primary);
+  --color-primary-dark: var(--primary-strong);
+  --color-text: var(--text);
+  --color-text-muted: var(--muted);
+  --color-border: var(--line);
+  --color-surface-dark: var(--surface-strong);
+  --color-background-dark: var(--bg);
+  --color-text-light: var(--text);
+  --color-border-dark: var(--line);
+}
+
+
+
+/* =========================================
+   ORDONNANCE UI (NOUVEAU)
+========================================= */
+
+.prescription-card {
+  padding: 1.5rem;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--surface-strong);
+  display: grid;
+  gap: 0.6rem;
+}
+
+.rx-center {
+  font-size: 1.1rem;
+  font-weight: 800;
+  text-align: center;
+}
+
+.rx-phone {
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.rx-title {
+  text-align: center;
+  margin-top: 0.5rem;
+  font-weight: 700;
+}
+
+.rx-patient {
+  margin-top: 0.5rem;
+  font-weight: 600;
+}
+
+.rx-medication,
+.rx-dosage {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.6rem 0.8rem;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent 8%);
+}
+
+.rx-medication strong,
+.rx-dosage strong {
+  color: var(--muted);
+}

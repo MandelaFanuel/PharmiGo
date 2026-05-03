@@ -1,0 +1,28 @@
+{
+  "name": "pharmigo-frontend",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 3001",
+    "typecheck": "tsc --noEmit --pretty false",
+    "lint": "node ./scripts/lint.mjs",
+    "build": "npm run lint && npm run typecheck && vite build",
+    "preview": "vite preview --host 0.0.0.0 --port 3001"
+  },
+  "dependencies": {
+    "axios": "^1.7.2",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^4.2.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.26.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.4",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.2"
+  }
+}

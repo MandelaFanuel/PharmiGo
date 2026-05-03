@@ -1,0 +1,17 @@
+FROM node:20-alpine
+
+ARG VITE_API_BASE_URL=http://localhost:8000/api
+ARG VITE_WS_BASE_URL=ws://localhost:8000
+ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
+ENV VITE_WS_BASE_URL=${VITE_WS_BASE_URL}
+
+WORKDIR /app
+
+COPY package.json ./
+RUN npm install
+
+COPY . .
+
+EXPOSE 3001
+
+CMD ["npm", "run", "dev"]

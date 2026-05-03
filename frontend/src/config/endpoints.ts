@@ -1,0 +1,60 @@
+export const API_ENDPOINTS = {
+  authRegister: "/auth/register/",
+  authLogin: "/auth/login/",
+  authLogout: "/auth/logout/",
+  authPasswordReset: "/auth/password-reset/",
+  authPasswordResetConfirm: "/auth/password-reset/confirm/",
+  authRegisterFallback: "/register/",
+  authLoginFallback: "/login/",
+  authPasswordResetFallback: "/password-reset/",
+  authPasswordResetConfirmFallback: "/password-reset/confirm/",
+  profile: "/profile/",
+  health: "/health/",
+  appConfig: "/app-config/",
+  dashboard: "/dashboard/",
+  adminDashboard: "/admin/dashboard/",
+  endpoints: "/endpoints/",
+  users: "/users/",
+  pharmacies: "/pharmacies/",
+  prescriptions: "/prescriptions/",
+  uploadPrescription: "/upload-prescription/",
+  confirmPrescription: "/confirm-prescription/",
+  prescriptionAnalysis: "/prescription-analysis/",
+  prescriptionResponses: "/prescription-responses/",
+  messages: "/messages/",
+  notifications: "/notifications/",
+  presenceHeartbeat: "/presence/heartbeat/",
+  presenceOffline: "/presence/offline/",
+  chatbotWelcome: "/pharmigo/chatbot/welcome/",
+  chatbotMessage: "/pharmigo/chatbot/message/",
+  chatbotMessages: "/pharmigo/chatbot/messages/",
+} as const;
+
+export function getApiOrigin() {
+  const explicitBase = import.meta.env.VITE_API_BASE_URL;
+  if (explicitBase) {
+    try {
+      return new URL(explicitBase).origin;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+export function getChatWebSocketUrl(roomName: string) {
+  const explicitBase = import.meta.env.VITE_WS_BASE_URL;
+  if (explicitBase) {
+    return `${explicitBase.replace(/\/$/, "")}/ws/chat/${roomName}/`;
+  }
+
+  const apiOrigin = getApiOrigin();
+  if (apiOrigin) {
+    const protocol = apiOrigin.startsWith("https://") ? "wss" : "ws";
+    return `${apiOrigin.replace(/^https?/, protocol)}/ws/chat/${roomName}/`;
+  }
+
+  const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+  const hostname = window.location.hostname || "localhost";
+  return `${protocol}://${hostname}:8000/ws/chat/${roomName}/`;
+}

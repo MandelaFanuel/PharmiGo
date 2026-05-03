@@ -1,0 +1,2186 @@
+.patient-dashboard,
+.pharmacy-dashboard,
+.admin-dashboard {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+
+.dashboard-container {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.dashboard-frame {
+  display: grid;
+  grid-template-columns: 252px minmax(0, 1fr);
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: color-mix(in srgb, var(--surface-strong) 96%, transparent 4%);
+  box-shadow: 0 28px 70px rgba(5, 18, 34, 0.16);
+}
+
+.dashboard-sidebar {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 1.25rem;
+  min-height: 0;
+  padding: 1.5rem 1rem;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface) 92%, #020617 8%), color-mix(in srgb, var(--surface) 98%, #000000 2%));
+  border-right: 1px solid rgba(255, 255, 255, 0.05);
+  overflow-y: auto;
+}
+
+[data-theme="light"] .dashboard-sidebar {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-strong) 94%, #0f172a 6%), color-mix(in srgb, var(--surface) 90%, #0f172a 10%));
+}
+
+.dashboard-sidebar-brand {
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #f8fafc;
+}
+
+.dashboard-sidebar-sections {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.dashboard-sidebar-group {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.dashboard-sidebar-title {
+  margin: 0;
+  padding: 0 0.45rem;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: rgba(226, 232, 240, 0.52);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.dashboard-sidebar-links {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.dashboard-sidebar-link {
+  display: flex;
+  align-items: center;
+  gap: 0.72rem;
+  width: 100%;
+  padding: 0.8rem 0.85rem;
+  border: 1px solid transparent;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: rgba(226, 232, 240, 0.86);
+  font-size: 0.94rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: default;
+}
+
+.dashboard-sidebar-link.active {
+  background: color-mix(in srgb, var(--accent) 86%, #2563eb 14%);
+  color: white;
+  box-shadow: 0 12px 24px color-mix(in srgb, var(--accent) 36%, transparent 64%);
+}
+
+.dashboard-sidebar-link-dot {
+  width: 0.62rem;
+  height: 0.62rem;
+  border-radius: 0.5rem;
+  background: currentColor;
+  opacity: 0.85;
+}
+
+.dashboard-sidebar-footer {
+  margin-top: auto;
+}
+
+.dashboard-stage {
+  display: grid;
+  grid-template-rows: auto auto auto auto minmax(0, 1fr);
+  gap: 1rem;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  padding: 1rem;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--accent) 12%, transparent 88%), transparent 24%),
+    linear-gradient(180deg, color-mix(in srgb, var(--surface) 98%, transparent 2%), color-mix(in srgb, var(--surface-strong) 96%, transparent 4%));
+}
+
+.dashboard-topbar {
+  display: grid;
+  grid-template-columns: max-content minmax(18rem, 1fr) max-content;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.5rem 0.35rem 0.7rem;
+}
+
+.dashboard-topbar-title {
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.dashboard-topbar-search {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  min-width: 0;
+  max-width: 32rem;
+  width: 100%;
+  padding: 0.85rem 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: color-mix(in srgb, var(--surface) 90%, transparent 10%);
+}
+
+.dashboard-topbar-search input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+}
+
+.dashboard-topbar-search input:focus {
+  outline: none;
+}
+
+.dashboard-topbar-search-icon {
+  color: var(--muted);
+  font-size: 1rem;
+}
+
+.dashboard-topbar-profile {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.dashboard-topbar-profile strong,
+.dashboard-topbar-profile small {
+  display: block;
+}
+
+.dashboard-topbar-profile strong {
+  color: var(--text);
+  font-size: 0.92rem;
+}
+
+.dashboard-topbar-profile small {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.dashboard-topbar-avatar {
+  width: 2.6rem;
+  height: 2.6rem;
+  border-radius: 0.5rem;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--accent) 20%, transparent 80%);
+  color: var(--accent);
+  font-weight: 800;
+}
+
+.dashboard-hero-card,
+.dashboard-metric-card,
+.dashboard-highlight-card,
+.dashboard-panel {
+  border-radius: 0.5rem;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: color-mix(in srgb, var(--surface) 92%, transparent 8%);
+}
+
+.dashboard-hero-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 1.35rem;
+}
+
+.dashboard-hero-card h2,
+.dashboard-panel-head h3 {
+  margin: 0;
+  color: var(--text);
+}
+
+.dashboard-hero-card h2 {
+  font-size: clamp(1.7rem, 2vw, 2.3rem);
+  line-height: 1.05;
+}
+
+.dashboard-subtitle {
+  margin: 0.6rem 0 0;
+  max-width: 42rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.dashboard-eyebrow {
+  display: inline-flex;
+  margin-bottom: 0.85rem;
+  padding: 0.45rem 0.8rem;
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--accent) 12%, transparent 88%);
+  color: color-mix(in srgb, var(--accent) 82%, white 18%);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.dashboard-actions,
+.dashboard-footer-actions,
+.dashboard-action-stack {
+  display: flex;
+  gap: 0.8rem;
+}
+
+.dashboard-action-stack,
+.dashboard-footer-actions {
+  flex-direction: column;
+}
+
+.dashboard-footer-actions {
+  align-self: start;
+}
+
+.dashboard-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.dashboard-metric-card {
+  padding: 1.2rem;
+  min-height: 8.8rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 0.45rem;
+}
+
+.dashboard-metric-card span,
+.dashboard-panel-head p,
+.dashboard-record-head small,
+.dashboard-summary-row span,
+.dashboard-metric-card small {
+  color: var(--muted);
+}
+
+.dashboard-metric-card span {
+  font-size: 0.92rem;
+}
+
+.dashboard-metric-card strong {
+  font-size: clamp(2rem, 3vw, 3rem);
+  line-height: 1;
+  color: var(--text);
+}
+
+.dashboard-highlight-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.dashboard-highlight-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.9rem;
+  padding: 1.05rem 1.15rem;
+}
+
+.dashboard-highlight-badge {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.5rem;
+  margin-top: 0.15rem;
+  background:
+    radial-gradient(circle at 30% 30%, color-mix(in srgb, var(--accent) 78%, white 22%), color-mix(in srgb, var(--accent) 30%, transparent 70%));
+}
+
+.dashboard-highlight-card strong {
+  color: var(--text);
+}
+
+.dashboard-highlight-card p,
+.dashboard-highlight-card small {
+  margin: 0.18rem 0 0;
+  color: var(--muted);
+}
+
+.dashboard-content-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  align-content: start;
+}
+
+.dashboard-panel {
+  display: grid;
+  gap: 1rem;
+  padding: 1.2rem;
+}
+
+.dashboard-panel-span-2 {
+  grid-column: span 2;
+}
+
+.dashboard-panel-span-3 {
+  grid-column: 1 / -1;
+}
+
+.dashboard-panel-head {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.dashboard-panel-head p {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.dashboard-record-list,
+.stock-grid,
+.admin-table-grid {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.dashboard-record-card,
+.stock-item-card,
+.admin-data-card {
+  padding: 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: color-mix(in srgb, var(--surface-strong) 90%, transparent 10%);
+}
+
+.dashboard-record-head,
+.prescription-match-header,
+.stock-item-header,
+.subscription-status,
+.dashboard-summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.8rem;
+}
+
+.dashboard-record-head strong,
+.stock-item-header strong,
+.prescription-match-header strong,
+.admin-data-card strong {
+  display: block;
+  color: var(--text);
+}
+
+.dashboard-data-block {
+  padding: 0.85rem 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.dashboard-data-block span {
+  display: block;
+  margin-bottom: 0.45rem;
+  font-weight: 700;
+}
+
+.dashboard-data-block p,
+.dashboard-record-meta p {
+  margin: 0;
+  color: var(--text);
+  line-height: 1.55;
+}
+
+.dashboard-data-block small {
+  display: block;
+  margin-top: 0.45rem;
+  color: var(--muted);
+}
+
+.dashboard-data-block-info {
+  background: color-mix(in srgb, #3b82f6 10%, var(--surface) 90%);
+}
+
+.dashboard-data-block-success,
+.required-medications {
+  background: color-mix(in srgb, #22c55e 10%, var(--surface) 90%);
+}
+
+.dashboard-record-meta {
+  display: grid;
+  gap: 0.35rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.dashboard-summary-stack {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.dashboard-summary-row {
+  padding: 0.85rem 0.95rem;
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--surface-strong) 90%, transparent 10%);
+}
+
+.stock-item-card > small,
+.stock-item-card > span,
+.match-details,
+.days-remaining,
+.price-row span,
+.landing-notification-item small,
+.landing-notification-item p,
+.required-medications li,
+.stock-item-details span,
+.admin-data-card p,
+.admin-data-card small {
+  color: var(--muted);
+}
+
+.stock-item-details,
+.price-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-top: 0.65rem;
+  margin-top: 0.65rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.prescription-match-card {
+  margin-bottom: 0;
+}
+
+.match-indicator {
+  text-align: right;
+}
+
+.match-percentage {
+  display: block;
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.required-medications {
+  padding: 0.9rem 1rem;
+}
+
+.required-medications ul,
+.dashboard-data-block ul {
+  margin: 0;
+  padding-left: 1rem;
+}
+
+.required-medications li {
+  margin-bottom: 0.45rem;
+}
+
+.required-medications li.available {
+  color: #16a34a;
+}
+
+.required-medications li.missing {
+  color: #dc2626;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem 0.78rem;
+  border-radius: 0.5rem;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.badge.success {
+  background: color-mix(in srgb, #22c55e 16%, transparent 84%);
+  color: #15803d;
+}
+
+.badge.warning {
+  background: color-mix(in srgb, #f59e0b 16%, transparent 84%);
+  color: #b45309;
+}
+
+.badge.info {
+  background: color-mix(in srgb, #3b82f6 16%, transparent 84%);
+  color: #1d4ed8;
+}
+
+.badge.neutral {
+  background: color-mix(in srgb, var(--muted) 16%, transparent 84%);
+  color: var(--text);
+}
+
+.subscription-info,
+.subscription-pricing,
+.pharmacy-message-feed {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.subscription-status,
+.subscription-pricing,
+.subscription-upgrade-banner,
+.subscription-payment-box {
+  padding: 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: color-mix(in srgb, var(--surface-strong) 92%, transparent 8%);
+}
+
+.subscription-upgrade-banner p,
+.subscription-payment-box p,
+.admin-settings-form + .auth-helper-text {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+}
+
+.admin-settings-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.9rem;
+  align-items: end;
+}
+
+.admin-settings-form label {
+  display: grid;
+  gap: 0.45rem;
+  min-width: min(100%, 18rem);
+}
+
+.admin-settings-form input {
+  min-height: 3rem;
+  padding: 0.75rem 0.9rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: color-mix(in srgb, var(--surface) 90%, transparent 10%);
+  color: var(--text);
+}
+
+.empty-state {
+  padding: 1.25rem;
+  border-radius: 0.5rem;
+  border: 1px dashed rgba(0, 0, 0, 0.12);
+  color: var(--muted);
+  background: color-mix(in srgb, var(--surface-strong) 90%, transparent 10%);
+}
+
+.wide-modal {
+  width: min(96vw, 1500px);
+  height: min(92vh, 980px);
+  max-width: none;
+  max-height: 92vh;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.wide-modal > .patient-dashboard,
+.wide-modal > .pharmacy-dashboard,
+.wide-modal > .admin-dashboard,
+.wide-modal .dashboard-container {
+  flex: 1;
+  min-height: 0;
+}
+
+@media (max-width: 1180px) {
+  .dashboard-frame {
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+
+  .dashboard-metrics-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-content-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 860px) {
+  .wide-modal {
+    width: min(96vw, 100%);
+    height: min(92vh, 980px);
+  }
+
+  .dashboard-frame {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-sidebar {
+    border-right: none;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  }
+
+  .dashboard-topbar {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-hero-card {
+    flex-direction: column;
+  }
+
+  .dashboard-content-grid,
+  .dashboard-highlight-grid,
+  .dashboard-metrics-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-panel-span-2,
+  .dashboard-panel-span-3 {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 640px) {
+  .wide-modal,
+  .landing-modal-card {
+    padding: 0.8rem;
+    width: 100%;
+    height: 92vh;
+  }
+
+  .dashboard-stage {
+    padding: 0.8rem;
+  }
+
+  .dashboard-sidebar {
+    padding: 1rem 0.8rem;
+  }
+}
+
+/* =========================================================
+   DASHBOARD LAYOUT FIX
+   Ce bloc reste dans dashboards.css.
+   Il ne modifie que l'intérieur des dashboards.
+   ========================================================= */
+
+.patient-dashboard,
+.pharmacy-dashboard,
+.admin-dashboard {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  min-height: 0 !important;
+}
+
+.dashboard-container {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+}
+
+.dashboard-frame {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  display: grid !important;
+  grid-template-columns: 252px minmax(0, 1fr) !important;
+  overflow: hidden !important;
+}
+
+.wide-modal .dashboard-frame,
+.pharmigo-modal-dialog.wide-modal .dashboard-frame,
+.landing-modal-card.wide-modal .dashboard-frame {
+  border-radius: 0 !important;
+}
+
+.dashboard-sidebar {
+  height: 100% !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+}
+
+.dashboard-stage {
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+
+.dashboard-topbar {
+  grid-template-columns: max-content minmax(0, 1fr) max-content !important;
+}
+
+.dashboard-topbar-search {
+  max-width: 36rem !important;
+}
+
+.dashboard-metrics-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+}
+
+.dashboard-content-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+}
+
+@media (max-width: 1180px) {
+  .dashboard-frame {
+    grid-template-columns: 220px minmax(0, 1fr) !important;
+  }
+
+  .dashboard-metrics-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .dashboard-content-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 860px) {
+  .dashboard-frame {
+    grid-template-columns: 1fr !important;
+  }
+
+  .dashboard-metrics-grid,
+  .dashboard-content-grid,
+  .dashboard-highlight-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* =========================================================
+   DASHBOARD FINAL LAYOUT FIX
+   - 2 colonnes seulement dans les dashboards
+   - suppression de la 3e colonne "Actions rapides"
+   - défilement possible sans barre visible
+   ========================================================= */
+
+.patient-dashboard,
+.pharmacy-dashboard,
+.admin-dashboard,
+.dashboard-container {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.dashboard-frame {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  display: grid !important;
+  grid-template-columns: 252px minmax(0, 1fr) !important;
+  overflow: hidden !important;
+}
+
+.dashboard-sidebar {
+  height: 100% !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+.dashboard-sidebar::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  display: none !important;
+}
+
+.dashboard-stage {
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+.dashboard-stage::-webkit-scrollbar,
+.dashboard-frame::-webkit-scrollbar,
+.dashboard-container::-webkit-scrollbar,
+.patient-dashboard::-webkit-scrollbar,
+.pharmacy-dashboard::-webkit-scrollbar,
+.admin-dashboard::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  display: none !important;
+}
+
+/* Toutes les grilles de contenu passent en 2 colonnes maximum. */
+.dashboard-content-grid {
+  display: grid !important;
+  grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr) !important;
+  gap: 1rem !important;
+  align-content: start !important;
+}
+
+/* Les panneaux qui étaient prévus pour occuper 2 ou 3 colonnes restent compatibles avec la nouvelle grille. */
+.dashboard-panel-span-2 {
+  grid-column: span 1 !important;
+}
+
+.dashboard-panel-span-3 {
+  grid-column: 1 / -1 !important;
+}
+
+/* Supprime la 3e colonne visuelle "Actions rapides" : les actions existent déjà dans la barre latérale. */
+.dashboard-content-grid > .dashboard-panel:has(.dashboard-footer-actions),
+.dashboard-content-grid > .dashboard-panel:has(.dashboard-action-stack) {
+  display: none !important;
+}
+
+/* Si un panneau vide reste après suppression des actions, il ne prend plus d'espace. */
+.dashboard-content-grid > .dashboard-panel:empty {
+  display: none !important;
+}
+
+/* Les boutons d'action du dashboard ne doivent pas recréer une colonne à droite. */
+.dashboard-footer-actions,
+.dashboard-action-stack {
+  width: 100% !important;
+}
+
+.dashboard-footer-actions .primary-button,
+.dashboard-footer-actions .secondary-button,
+.dashboard-action-stack .primary-button,
+.dashboard-action-stack .secondary-button,
+.dashboard-footer-actions .pharmigo-primary-btn,
+.dashboard-footer-actions .pharmigo-secondary-btn,
+.dashboard-action-stack .pharmigo-primary-btn,
+.dashboard-action-stack .pharmigo-secondary-btn {
+  width: 100% !important;
+}
+
+@media (max-width: 1180px) {
+  .dashboard-frame {
+    grid-template-columns: 220px minmax(0, 1fr) !important;
+  }
+
+  .dashboard-content-grid {
+    grid-template-columns: minmax(0, 1.5fr) minmax(260px, 1fr) !important;
+  }
+}
+
+@media (max-width: 860px) {
+  .dashboard-frame {
+    grid-template-columns: 1fr !important;
+  }
+
+  .dashboard-content-grid,
+  .dashboard-highlight-grid,
+  .dashboard-metrics-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .dashboard-panel-span-2,
+  .dashboard-panel-span-3 {
+    grid-column: auto !important;
+  }
+}
+/* =========================================================
+   BOOK-HUB STYLE DASHBOARDS - FINAL OVERRIDE
+   Objectif : garder le thème PharmiGo, mais reprendre la
+   structure visuelle de la référence : sidebar + contenu,
+   cartes compactes, radius réduit, grilles propres, pas de
+   troisième colonne Actions rapides, scroll sans barre visible.
+   ========================================================= */
+
+.patient-dashboard,
+.pharmacy-dashboard,
+.admin-dashboard,
+.dashboard-container,
+.dashboard-frame {
+  min-width: 0 !important;
+  min-height: 0 !important;
+}
+
+.dashboard-frame {
+  grid-template-columns: 224px minmax(0, 1fr) !important;
+  border-radius: 10px !important;
+  border: 1px solid color-mix(in srgb, var(--line) 78%, transparent 22%) !important;
+  background: color-mix(in srgb, var(--surface-strong) 94%, #020617 6%) !important;
+  box-shadow: 0 24px 72px rgba(0, 0, 0, 0.22) !important;
+}
+
+.dashboard-sidebar {
+  padding: 22px 18px !important;
+  gap: 28px !important;
+  background: color-mix(in srgb, var(--surface-strong) 86%, #030712 14%) !important;
+  border-right: 1px solid color-mix(in srgb, var(--line) 72%, transparent 28%) !important;
+}
+
+.dashboard-sidebar-brand {
+  margin-bottom: 18px !important;
+  font-size: 0.96rem !important;
+  letter-spacing: 0.06em !important;
+}
+
+.dashboard-sidebar-sections {
+  gap: 34px !important;
+}
+
+.dashboard-sidebar-group {
+  gap: 10px !important;
+}
+
+.dashboard-sidebar-title {
+  padding: 0 0.2rem !important;
+  font-size: 0.72rem !important;
+  letter-spacing: 0.04em !important;
+  text-transform: none !important;
+  color: color-mix(in srgb, var(--muted) 84%, transparent 16%) !important;
+}
+
+.dashboard-sidebar-links {
+  gap: 8px !important;
+}
+
+.dashboard-sidebar-link {
+  min-height: 34px !important;
+  padding: 8px 10px !important;
+  border-radius: 7px !important;
+  font-size: 0.88rem !important;
+  font-weight: 650 !important;
+  color: color-mix(in srgb, var(--text) 78%, var(--muted) 22%) !important;
+}
+
+.dashboard-sidebar-link.active {
+  background: var(--accent) !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
+}
+
+.dashboard-sidebar-link-dot {
+  width: 0.5rem !important;
+  height: 0.5rem !important;
+  border-radius: 999px !important;
+}
+
+/* Les actions principales doivent vivre visuellement dans la sidebar. */
+.dashboard-sidebar-group:nth-of-type(2) .dashboard-sidebar-link,
+.dashboard-sidebar-footer .dashboard-sidebar-link {
+  border: 1px solid color-mix(in srgb, var(--line) 74%, transparent 26%) !important;
+  background: color-mix(in srgb, var(--surface) 75%, transparent 25%) !important;
+}
+
+.dashboard-stage {
+  display: grid !important;
+  grid-template-rows: auto auto auto minmax(0, 1fr) !important;
+  gap: 14px !important;
+  padding: 18px !important;
+  background: color-mix(in srgb, var(--surface-strong) 92%, #020617 8%) !important;
+}
+
+.dashboard-topbar {
+  grid-template-columns: minmax(120px, max-content) minmax(220px, 1fr) max-content !important;
+  gap: 16px !important;
+  padding: 0 0 4px !important;
+}
+
+.dashboard-topbar-title {
+  font-size: 0.96rem !important;
+  font-weight: 750 !important;
+}
+
+.dashboard-topbar-search {
+  justify-self: center !important;
+  max-width: 520px !important;
+  min-height: 38px !important;
+  padding: 8px 12px !important;
+  border-radius: 8px !important;
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent 30%) !important;
+  background: color-mix(in srgb, var(--surface-strong) 84%, transparent 16%) !important;
+}
+
+.dashboard-topbar-avatar {
+  width: 34px !important;
+  height: 34px !important;
+  border-radius: 50% !important;
+}
+
+.dashboard-hero-card,
+.dashboard-metric-card,
+.dashboard-highlight-card,
+.dashboard-panel,
+.dashboard-record-card,
+.stock-item-card,
+.admin-data-card,
+.dashboard-data-block,
+.subscription-status,
+.subscription-pricing,
+.subscription-upgrade-banner,
+.subscription-payment-box,
+.empty-state {
+  border-radius: 8px !important;
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent 30%) !important;
+  background: color-mix(in srgb, var(--surface-strong) 90%, transparent 10%) !important;
+  box-shadow: none !important;
+}
+
+.dashboard-hero-card {
+  min-height: 88px !important;
+  padding: 16px 18px !important;
+  align-items: center !important;
+}
+
+.dashboard-hero-card h2 {
+  font-size: clamp(1.35rem, 2vw, 2rem) !important;
+  letter-spacing: -0.03em !important;
+}
+
+.dashboard-subtitle {
+  margin-top: 6px !important;
+  font-size: 0.92rem !important;
+  line-height: 1.45 !important;
+}
+
+.dashboard-eyebrow {
+  margin-bottom: 8px !important;
+  padding: 5px 10px !important;
+  border-radius: 999px !important;
+  font-size: 0.7rem !important;
+}
+
+.dashboard-actions {
+  gap: 10px !important;
+  align-items: center !important;
+}
+
+.dashboard-actions .primary-button,
+.dashboard-actions .secondary-button,
+.dashboard-actions .pharmigo-primary-btn,
+.dashboard-actions .pharmigo-secondary-btn {
+  min-height: 42px !important;
+  padding: 9px 18px !important;
+  border-radius: 8px !important;
+}
+
+/* Cartes KPI comme la référence : compactes, alignées, sans colonne latérale. */
+.dashboard-metrics-grid {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)) !important;
+  gap: 12px !important;
+}
+
+.dashboard-metric-card {
+  min-height: 96px !important;
+  padding: 14px 16px !important;
+  justify-content: space-between !important;
+}
+
+.dashboard-metric-card span,
+.dashboard-metric-card small {
+  font-size: 0.82rem !important;
+}
+
+.dashboard-metric-card strong {
+  font-size: clamp(1.9rem, 3vw, 2.5rem) !important;
+  letter-spacing: -0.04em !important;
+}
+
+.dashboard-highlight-grid {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)) !important;
+  gap: 12px !important;
+}
+
+.dashboard-highlight-card {
+  min-height: 72px !important;
+  padding: 14px 16px !important;
+}
+
+.dashboard-highlight-badge {
+  width: 30px !important;
+  height: 30px !important;
+  border-radius: 50% !important;
+}
+
+/* Zone principale en 2 colonnes maximum, jamais 3. */
+.dashboard-content-grid {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+  gap: 12px !important;
+  align-content: start !important;
+}
+
+.dashboard-panel {
+  padding: 14px 16px !important;
+  gap: 12px !important;
+}
+
+.dashboard-panel-span-2,
+.dashboard-panel-span-3 {
+  grid-column: 1 / -1 !important;
+}
+
+.dashboard-panel-head h3 {
+  font-size: 0.98rem !important;
+  font-weight: 760 !important;
+}
+
+.dashboard-panel-head p {
+  font-size: 0.84rem !important;
+  line-height: 1.45 !important;
+}
+
+/* Cache les panneaux Actions rapides / colonnes de boutons à droite. */
+.dashboard-content-grid > .dashboard-panel:has(.dashboard-footer-actions),
+.dashboard-content-grid > .dashboard-panel:has(.dashboard-action-stack),
+.dashboard-content-grid > .dashboard-panel:has(.pharmigo-primary-btn):has(.pharmigo-secondary-btn),
+.dashboard-content-grid > .dashboard-panel:has(.primary-button):has(.secondary-button) {
+  display: none !important;
+}
+
+.dashboard-footer-actions,
+.dashboard-action-stack {
+  display: none !important;
+}
+
+/* Listes et blocs de données plus proches de la référence. */
+.dashboard-record-list,
+.stock-grid,
+.admin-table-grid,
+.dashboard-summary-stack {
+  gap: 10px !important;
+}
+
+.dashboard-record-card,
+.stock-item-card,
+.admin-data-card {
+  padding: 12px 14px !important;
+}
+
+.dashboard-data-block {
+  padding: 11px 13px !important;
+}
+
+.dashboard-summary-row {
+  padding: 10px 12px !important;
+  border-radius: 7px !important;
+}
+
+.badge {
+  border-radius: 999px !important;
+  padding: 5px 10px !important;
+  font-size: 0.72rem !important;
+}
+
+/* Préparation visuelle pour graphiques type référence si des composants chart existent. */
+.dashboard-chart-card,
+.chart-card,
+.recharts-wrapper,
+.recharts-responsive-container,
+canvas {
+  max-width: 100% !important;
+}
+
+.dashboard-panel:has(.recharts-wrapper),
+.dashboard-panel:has(canvas),
+.dashboard-panel.chart-card,
+.dashboard-chart-card {
+  min-height: 260px !important;
+}
+
+.dashboard-panel-span-3:has(.recharts-wrapper),
+.dashboard-panel-span-3:has(canvas),
+.dashboard-panel-span-3.dashboard-chart-card {
+  min-height: 300px !important;
+}
+
+/* Défilement fonctionnel mais sans barre visible. */
+.dashboard-stage,
+.dashboard-sidebar,
+.dashboard-frame,
+.dashboard-container,
+.patient-dashboard,
+.pharmacy-dashboard,
+.admin-dashboard,
+.pharmigo-modal-dialog,
+.pharmigo-modal-content,
+.landing-modal-card,
+.wide-modal {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+.dashboard-stage::-webkit-scrollbar,
+.dashboard-sidebar::-webkit-scrollbar,
+.dashboard-frame::-webkit-scrollbar,
+.dashboard-container::-webkit-scrollbar,
+.patient-dashboard::-webkit-scrollbar,
+.pharmacy-dashboard::-webkit-scrollbar,
+.admin-dashboard::-webkit-scrollbar,
+.pharmigo-modal-dialog::-webkit-scrollbar,
+.pharmigo-modal-content::-webkit-scrollbar,
+.landing-modal-card::-webkit-scrollbar,
+.wide-modal::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  display: none !important;
+}
+
+@media (max-width: 1180px) {
+  .dashboard-frame {
+    grid-template-columns: 210px minmax(0, 1fr) !important;
+  }
+
+  .dashboard-content-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 860px) {
+  .dashboard-frame {
+    grid-template-columns: 1fr !important;
+  }
+
+  .dashboard-sidebar {
+    max-height: 280px !important;
+  }
+
+  .dashboard-topbar,
+  .dashboard-hero-card {
+    grid-template-columns: 1fr !important;
+  }
+
+  .dashboard-hero-card {
+    align-items: flex-start !important;
+  }
+
+  .dashboard-metrics-grid,
+  .dashboard-highlight-grid,
+  .dashboard-content-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* =========================================================
+   PHARMIGO DASHBOARDS - PRO TYPOGRAPHY + MEDICATION LAYOUT
+   Ajout final : titres lisibles, texte propre, médicaments rangés.
+   ========================================================= */
+
+.dashboard-frame,
+.dashboard-stage,
+.dashboard-panel,
+.dashboard-record-card,
+.dashboard-data-block,
+.dashboard-record-head,
+.dashboard-panel-head,
+.dashboard-hero-card,
+.dashboard-metric-card,
+.dashboard-highlight-card {
+  min-width: 0 !important;
+  overflow-wrap: anywhere !important;
+  word-break: normal !important;
+}
+
+.dashboard-stage {
+  align-content: start !important;
+  grid-auto-rows: max-content !important;
+  gap: 16px !important;
+  padding: 18px !important;
+}
+
+.dashboard-highlight-grid,
+.dashboard-metrics-grid,
+.dashboard-content-grid {
+  position: relative !important;
+  z-index: 1 !important;
+  margin: 0 !important;
+}
+
+.dashboard-hero-card {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  align-items: start !important;
+  gap: 18px !important;
+  padding: 20px 22px !important;
+  min-height: auto !important;
+}
+
+.dashboard-hero-card > div:first-child,
+.dashboard-panel-head,
+.dashboard-record-head > div:first-child {
+  min-width: 0 !important;
+}
+
+.dashboard-hero-card h2 {
+  margin: 0 !important;
+  max-width: 100% !important;
+  font-size: clamp(1.7rem, 2.15vw, 2.45rem) !important;
+  line-height: 1.18 !important;
+  letter-spacing: -0.035em !important;
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  overflow-wrap: break-word !important;
+}
+
+.dashboard-subtitle {
+  margin-top: 8px !important;
+  max-width: 72ch !important;
+  font-size: 0.95rem !important;
+  line-height: 1.62 !important;
+  white-space: normal !important;
+  overflow-wrap: break-word !important;
+}
+
+.dashboard-eyebrow {
+  width: max-content !important;
+  max-width: 100% !important;
+  white-space: normal !important;
+  line-height: 1.25 !important;
+}
+
+.dashboard-panel {
+  position: relative !important;
+  z-index: 2 !important;
+  align-content: start !important;
+  padding: 18px 20px !important;
+  gap: 16px !important;
+}
+
+.dashboard-panel-head {
+  display: grid !important;
+  gap: 6px !important;
+  margin: 0 !important;
+}
+
+.dashboard-panel-head h3 {
+  margin: 0 !important;
+  max-width: 100% !important;
+  font-size: clamp(1rem, 1.1vw, 1.18rem) !important;
+  line-height: 1.35 !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.01em !important;
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+}
+
+.dashboard-panel-head p {
+  margin: 0 !important;
+  max-width: 82ch !important;
+  font-size: 0.9rem !important;
+  line-height: 1.6 !important;
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+}
+
+.dashboard-record-card {
+  display: grid !important;
+  gap: 14px !important;
+  padding: 16px 18px !important;
+  border-radius: 12px !important;
+}
+
+.dashboard-record-head {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  align-items: start !important;
+  gap: 14px !important;
+}
+
+.dashboard-record-head strong,
+.stock-item-header strong,
+.prescription-match-header strong,
+.admin-data-card strong {
+  max-width: 100% !important;
+  font-size: 1rem !important;
+  line-height: 1.35 !important;
+  font-weight: 800 !important;
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+}
+
+.dashboard-record-head small {
+  display: block !important;
+  margin-top: 3px !important;
+  font-size: 0.82rem !important;
+  line-height: 1.25 !important;
+  white-space: normal !important;
+}
+
+.badge,
+.match-percentage,
+.match-indicator {
+  flex: 0 0 auto !important;
+  white-space: nowrap !important;
+  align-self: start !important;
+}
+
+.dashboard-data-block {
+  display: grid !important;
+  gap: 7px !important;
+  padding: 14px 16px !important;
+  border-radius: 10px !important;
+}
+
+.dashboard-data-block span {
+  margin: 0 !important;
+  font-size: 0.78rem !important;
+  line-height: 1.25 !important;
+  font-weight: 850 !important;
+  letter-spacing: 0.045em !important;
+  text-transform: uppercase !important;
+  opacity: 0.86 !important;
+}
+
+.dashboard-data-block p,
+.dashboard-record-meta p,
+.dashboard-record-card p,
+.stock-item-card p,
+.admin-data-card p {
+  margin: 0 !important;
+  max-width: 100% !important;
+  font-size: 0.94rem !important;
+  line-height: 1.68 !important;
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  overflow-wrap: break-word !important;
+  hyphens: auto !important;
+}
+
+.dashboard-data-block small {
+  margin-top: 2px !important;
+  font-size: 0.8rem !important;
+  line-height: 1.35 !important;
+}
+
+.dashboard-record-meta {
+  gap: 8px !important;
+  padding-top: 12px !important;
+}
+
+.required-medications,
+.dashboard-data-block-success {
+  padding: 14px 16px !important;
+  border-radius: 12px !important;
+}
+
+.required-medications ul,
+.dashboard-data-block-success ul,
+.dashboard-data-block ul {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)) !important;
+  gap: 10px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  list-style: none !important;
+}
+
+.required-medications li,
+.dashboard-data-block-success li,
+.dashboard-data-block li {
+  position: relative !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  gap: 10px !important;
+  min-height: 48px !important;
+  margin: 0 !important;
+  padding: 10px 12px 10px 34px !important;
+  border-radius: 10px !important;
+  border: 1px solid color-mix(in srgb, var(--line) 78%, transparent 22%) !important;
+  background: color-mix(in srgb, var(--surface-strong) 78%, transparent 22%) !important;
+  color: var(--text) !important;
+  font-size: 0.9rem !important;
+  line-height: 1.38 !important;
+  font-weight: 650 !important;
+  white-space: normal !important;
+  overflow-wrap: break-word !important;
+}
+
+.required-medications li::before,
+.dashboard-data-block-success li::before,
+.dashboard-data-block li::before {
+  content: "" !important;
+  position: absolute !important;
+  left: 12px !important;
+  top: 50% !important;
+  width: 10px !important;
+  height: 10px !important;
+  border-radius: 999px !important;
+  transform: translateY(-50%) !important;
+  background: color-mix(in srgb, var(--success) 85%, white 15%) !important;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--success) 14%, transparent 86%) !important;
+}
+
+.required-medications li.available,
+.dashboard-data-block-success li.available {
+  border-color: color-mix(in srgb, var(--success) 24%, var(--line) 76%) !important;
+}
+
+.required-medications li.missing,
+.dashboard-data-block-success li.missing {
+  border-color: color-mix(in srgb, var(--danger) 28%, var(--line) 72%) !important;
+}
+
+.required-medications li.missing::before,
+.dashboard-data-block-success li.missing::before {
+  background: color-mix(in srgb, var(--danger) 85%, white 15%) !important;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--danger) 14%, transparent 86%) !important;
+}
+
+.required-medications li span,
+.dashboard-data-block-success li span,
+.med-percentage,
+.med-confidence,
+.match-details {
+  min-width: 0 !important;
+}
+
+.med-percentage,
+.med-confidence,
+.required-medications li strong:last-child,
+.dashboard-data-block-success li strong:last-child {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: max-content !important;
+  min-width: 48px !important;
+  padding: 4px 8px !important;
+  border-radius: 999px !important;
+  background: color-mix(in srgb, var(--success) 15%, transparent 85%) !important;
+  color: color-mix(in srgb, var(--success) 80%, white 20%) !important;
+  font-size: 0.78rem !important;
+  font-weight: 850 !important;
+  white-space: nowrap !important;
+}
+
+.required-medications li br,
+.dashboard-data-block-success li br {
+  display: none !important;
+}
+
+.dashboard-metric-card {
+  min-width: 0 !important;
+  padding: 16px 18px !important;
+}
+
+.dashboard-metric-card span,
+.dashboard-metric-card small {
+  max-width: 100% !important;
+  font-size: 0.86rem !important;
+  line-height: 1.35 !important;
+  white-space: normal !important;
+}
+
+.dashboard-metric-card strong {
+  font-size: clamp(2rem, 2.6vw, 2.75rem) !important;
+  line-height: 1 !important;
+  letter-spacing: -0.045em !important;
+  white-space: nowrap !important;
+}
+
+.dashboard-content-grid {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+  gap: 16px !important;
+}
+
+.dashboard-panel-span-2,
+.dashboard-panel-span-3,
+.dashboard-panel:has(.dashboard-record-list),
+.dashboard-panel:has(.required-medications) {
+  grid-column: 1 / -1 !important;
+}
+
+.dashboard-record-list {
+  gap: 14px !important;
+}
+
+@media (max-width: 1180px) {
+  .dashboard-content-grid,
+  .dashboard-metrics-grid,
+  .dashboard-highlight-grid,
+  .required-medications ul,
+  .dashboard-data-block-success ul,
+  .dashboard-data-block ul {
+    grid-template-columns: 1fr !important;
+  }
+
+  .dashboard-hero-card,
+  .dashboard-record-head {
+    grid-template-columns: 1fr !important;
+  }
+
+  .badge,
+  .dashboard-actions {
+    justify-self: start !important;
+  }
+}
+/* =========================================================
+   FINAL OCR + PRESCRIPTION READABILITY FIX
+   - évite les textes OCR sur une seule ligne
+   - rend les ordonnances lisibles comme des blocs médicaux
+   - garde les médicaments bien rangés en cartes modernes
+   ========================================================= */
+
+.dashboard-panel:has(.dashboard-record-list),
+.dashboard-panel:has(.dashboard-record-card) {
+  grid-column: 1 / -1 !important;
+  min-width: 0 !important;
+}
+
+.dashboard-panel-head {
+  display: grid !important;
+  gap: 6px !important;
+  padding-bottom: 2px !important;
+}
+
+.dashboard-panel-head h3,
+.dashboard-record-head strong,
+.prescription-match-header strong,
+.stock-item-header strong,
+.admin-data-card strong {
+  max-width: 100% !important;
+  color: var(--text) !important;
+  font-size: clamp(1rem, 1.15vw, 1.18rem) !important;
+  line-height: 1.35 !important;
+  font-weight: 850 !important;
+  letter-spacing: -0.01em !important;
+  white-space: normal !important;
+  overflow-wrap: break-word !important;
+  text-wrap: pretty !important;
+}
+
+.dashboard-panel-head p,
+.dashboard-subtitle,
+.dashboard-record-head small {
+  max-width: 82ch !important;
+  color: var(--muted) !important;
+  font-size: 0.9rem !important;
+  line-height: 1.55 !important;
+  white-space: normal !important;
+  overflow-wrap: break-word !important;
+  text-wrap: pretty !important;
+}
+
+.dashboard-record-list {
+  display: grid !important;
+  gap: 14px !important;
+  min-width: 0 !important;
+}
+
+.dashboard-record-card {
+  display: grid !important;
+  gap: 14px !important;
+  min-width: 0 !important;
+  padding: 16px !important;
+  border-radius: 12px !important;
+  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent 18%) !important;
+  background: color-mix(in srgb, var(--surface-strong) 84%, transparent 16%) !important;
+}
+
+.dashboard-record-head {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  align-items: start !important;
+  gap: 12px !important;
+  min-width: 0 !important;
+}
+
+.dashboard-data-block,
+.dashboard-data-block-info,
+.dashboard-data-block-success,
+.required-medications {
+  min-width: 0 !important;
+  display: grid !important;
+  gap: 10px !important;
+  padding: 14px 16px !important;
+  border-radius: 12px !important;
+  border: 1px solid color-mix(in srgb, var(--line) 80%, transparent 20%) !important;
+  background:
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--surface-strong) 82%, transparent 18%),
+      color-mix(in srgb, var(--surface) 76%, transparent 24%)
+    ) !important;
+}
+
+.dashboard-data-block span,
+.dashboard-data-block-info span,
+.dashboard-data-block-success span,
+.required-medications > span,
+.required-medications > strong {
+  display: block !important;
+  margin: 0 !important;
+  color: color-mix(in srgb, var(--muted) 86%, var(--text) 14%) !important;
+  font-size: 0.74rem !important;
+  line-height: 1.25 !important;
+  font-weight: 850 !important;
+  letter-spacing: 0.08em !important;
+  text-transform: uppercase !important;
+}
+
+/* Texte OCR : on force une largeur de lecture professionnelle.
+   Même si le texte OCR arrive brut, il ne s'étale plus sur une seule longue ligne. */
+.dashboard-data-block p,
+.dashboard-data-block-info p,
+.dashboard-record-meta p,
+.dashboard-record-card p {
+  display: block !important;
+  width: 100% !important;
+  max-width: 88ch !important;
+  margin: 0 !important;
+  color: color-mix(in srgb, var(--text) 94%, white 6%) !important;
+  font-size: 0.94rem !important;
+  line-height: 1.75 !important;
+  letter-spacing: -0.005em !important;
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  overflow-wrap: break-word !important;
+  word-break: normal !important;
+  hyphens: auto !important;
+  text-wrap: pretty !important;
+}
+
+/* Les textes OCR très longs sont présentés comme un document compact. */
+.dashboard-data-block-info p,
+.dashboard-data-block p:first-of-type {
+  padding: 2px 0 !important;
+}
+
+.dashboard-data-block small,
+.dashboard-data-block-info small {
+  display: block !important;
+  margin-top: 2px !important;
+  color: var(--muted) !important;
+  font-size: 0.8rem !important;
+  line-height: 1.4 !important;
+}
+
+.dashboard-record-meta {
+  display: grid !important;
+  gap: 8px !important;
+  padding-top: 12px !important;
+  border-top: 1px solid color-mix(in srgb, var(--line) 80%, transparent 20%) !important;
+}
+
+/* Médicaments : cartes modernes, alignées, jamais en liste brute verticale cassée. */
+.required-medications ul,
+.dashboard-data-block-success ul,
+.dashboard-data-block ul {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)) !important;
+  gap: 10px !important;
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  list-style: none !important;
+}
+
+.required-medications li,
+.dashboard-data-block-success li,
+.dashboard-data-block li {
+  position: relative !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  grid-template-areas:
+    "name dose"
+    "score score" !important;
+  align-items: center !important;
+  gap: 6px 10px !important;
+  min-width: 0 !important;
+  min-height: 58px !important;
+  margin: 0 !important;
+  padding: 11px 12px 11px 34px !important;
+  border-radius: 12px !important;
+  border: 1px solid color-mix(in srgb, var(--line) 78%, transparent 22%) !important;
+  background: color-mix(in srgb, var(--surface-strong) 76%, transparent 24%) !important;
+  color: var(--text) !important;
+  font-size: 0.9rem !important;
+  line-height: 1.35 !important;
+  font-weight: 750 !important;
+  white-space: normal !important;
+  overflow-wrap: break-word !important;
+}
+
+.required-medications li::before,
+.dashboard-data-block-success li::before,
+.dashboard-data-block li::before {
+  content: "" !important;
+  position: absolute !important;
+  left: 13px !important;
+  top: 50% !important;
+  width: 10px !important;
+  height: 10px !important;
+  border-radius: 999px !important;
+  transform: translateY(-50%) !important;
+  background: color-mix(in srgb, var(--success) 86%, white 14%) !important;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--success) 14%, transparent 86%) !important;
+}
+
+.required-medications li.available,
+.dashboard-data-block-success li.available {
+  border-color: color-mix(in srgb, var(--success) 26%, var(--line) 74%) !important;
+}
+
+.required-medications li.missing,
+.dashboard-data-block-success li.missing {
+  border-color: color-mix(in srgb, var(--danger) 30%, var(--line) 70%) !important;
+}
+
+.required-medications li.missing::before,
+.dashboard-data-block-success li.missing::before {
+  background: color-mix(in srgb, var(--danger) 86%, white 14%) !important;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--danger) 14%, transparent 86%) !important;
+}
+
+.required-medications li strong,
+.dashboard-data-block-success li strong,
+.required-medications li span:first-child,
+.dashboard-data-block-success li span:first-child {
+  grid-area: name !important;
+  min-width: 0 !important;
+  color: var(--text) !important;
+  font-size: 0.92rem !important;
+  line-height: 1.28 !important;
+  font-weight: 850 !important;
+  white-space: normal !important;
+  overflow-wrap: break-word !important;
+}
+
+.required-medications li small,
+.dashboard-data-block-success li small,
+.required-medications li span:nth-child(2),
+.dashboard-data-block-success li span:nth-child(2) {
+  grid-area: dose !important;
+  color: var(--muted) !important;
+  font-size: 0.78rem !important;
+  line-height: 1.2 !important;
+  font-weight: 800 !important;
+  white-space: nowrap !important;
+  justify-self: end !important;
+}
+
+.med-percentage,
+.med-confidence,
+.required-medications li strong:last-child,
+.dashboard-data-block-success li strong:last-child {
+  grid-area: score !important;
+  justify-self: start !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: max-content !important;
+  min-width: 52px !important;
+  margin-top: 2px !important;
+  padding: 4px 8px !important;
+  border-radius: 999px !important;
+  background: color-mix(in srgb, var(--success) 15%, transparent 85%) !important;
+  color: color-mix(in srgb, var(--success) 82%, white 18%) !important;
+  font-size: 0.78rem !important;
+  line-height: 1.15 !important;
+  font-weight: 900 !important;
+  white-space: nowrap !important;
+}
+
+.required-medications li br,
+.dashboard-data-block-success li br {
+  display: none !important;
+}
+
+.badge,
+.match-percentage,
+.match-indicator {
+  flex: 0 0 auto !important;
+  white-space: nowrap !important;
+  align-self: start !important;
+}
+
+@media (min-width: 1181px) {
+  .dashboard-data-block p,
+  .dashboard-data-block-info p,
+  .dashboard-record-card p {
+    max-width: 92ch !important;
+  }
+}
+
+@media (max-width: 1180px) {
+  .dashboard-record-head {
+    grid-template-columns: 1fr !important;
+  }
+
+  .badge,
+  .dashboard-actions {
+    justify-self: start !important;
+  }
+
+  .required-medications ul,
+  .dashboard-data-block-success ul,
+  .dashboard-data-block ul {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)) !important;
+  }
+}
+
+@media (max-width: 700px) {
+  .dashboard-data-block p,
+  .dashboard-data-block-info p,
+  .dashboard-record-card p {
+    max-width: 100% !important;
+    font-size: 0.9rem !important;
+    line-height: 1.65 !important;
+  }
+
+  .required-medications ul,
+  .dashboard-data-block-success ul,
+  .dashboard-data-block ul {
+    grid-template-columns: 1fr !important;
+  }
+}
+/* =========================================================
+   ORDONNANCE OCR - AFFICHAGE MEDICAL STRUCTURE FINAL
+   Objectif : afficher le texte OCR de l'ordonnance en blocs lisibles :
+   centre, téléphone, titre, patient, médicament, posologie.
+   ========================================================= */
+
+.dashboard-data-block,
+.dashboard-data-block-info {
+  min-width: 0 !important;
+  overflow: hidden !important;
+}
+
+.dashboard-data-block p,
+.dashboard-data-block-info p,
+.ocr-prescription-text,
+.prescription-ocr-text {
+  white-space: pre-line !important;
+  overflow-wrap: anywhere !important;
+  word-break: normal !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  color: var(--text) !important;
+  font-size: 0.94rem !important;
+  line-height: 1.78 !important;
+  letter-spacing: 0.005em !important;
+}
+
+.dashboard-data-block span,
+.dashboard-data-block-info span {
+  display: block !important;
+  margin-bottom: 0.75rem !important;
+  color: var(--muted) !important;
+  font-size: 0.72rem !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.09em !important;
+  text-transform: uppercase !important;
+}
+
+.ocr-prescription-card,
+.prescription-ocr-card {
+  display: grid !important;
+  gap: 0.85rem !important;
+  padding: 1rem !important;
+  border-radius: 0.75rem !important;
+  border: 1px solid color-mix(in srgb, var(--line) 84%, transparent 16%) !important;
+  background: color-mix(in srgb, var(--surface-strong) 90%, transparent 10%) !important;
+}
+
+.ocr-prescription-header,
+.prescription-ocr-header {
+  display: grid !important;
+  gap: 0.45rem !important;
+  padding: 0.9rem 1rem !important;
+  border-radius: 0.7rem !important;
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent 30%) !important;
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface-strong) 93%) !important;
+}
+
+.ocr-prescription-center,
+.prescription-ocr-center {
+  margin: 0 !important;
+  color: var(--text) !important;
+  font-size: clamp(1rem, 1.25vw, 1.18rem) !important;
+  font-weight: 800 !important;
+  line-height: 1.35 !important;
+  letter-spacing: 0.01em !important;
+  text-transform: uppercase !important;
+}
+
+.ocr-prescription-phone,
+.prescription-ocr-phone {
+  margin: 0 !important;
+  color: var(--muted) !important;
+  font-size: 0.88rem !important;
+  line-height: 1.45 !important;
+}
+
+.ocr-prescription-title,
+.prescription-ocr-title {
+  display: inline-flex !important;
+  width: max-content !important;
+  max-width: 100% !important;
+  margin: 0.15rem 0 0 !important;
+  padding: 0.35rem 0.65rem !important;
+  border-radius: 999px !important;
+  background: color-mix(in srgb, var(--accent) 14%, transparent 86%) !important;
+  color: color-mix(in srgb, var(--accent) 86%, white 14%) !important;
+  font-size: 0.76rem !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.08em !important;
+  text-transform: uppercase !important;
+}
+
+.ocr-prescription-patient,
+.prescription-ocr-patient {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 0.45rem 0.65rem !important;
+  align-items: baseline !important;
+  padding: 0.8rem 1rem !important;
+  border-radius: 0.7rem !important;
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent 30%) !important;
+  background: color-mix(in srgb, var(--surface) 84%, transparent 16%) !important;
+}
+
+.ocr-prescription-label,
+.prescription-ocr-label {
+  color: var(--muted) !important;
+  font-size: 0.76rem !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.08em !important;
+  text-transform: uppercase !important;
+}
+
+.ocr-prescription-value,
+.prescription-ocr-value {
+  color: var(--text) !important;
+  font-size: 0.98rem !important;
+  font-weight: 800 !important;
+  line-height: 1.35 !important;
+}
+
+.ocr-medication-list,
+.prescription-medication-list,
+.required-medications ul {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)) !important;
+  gap: 0.7rem !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  list-style: none !important;
+}
+
+.ocr-medication-card,
+.prescription-medication-card,
+.required-medications li {
+  position: relative !important;
+  display: grid !important;
+  grid-template-columns: 1fr auto !important;
+  gap: 0.55rem 0.75rem !important;
+  align-items: center !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  padding: 0.85rem 0.95rem 0.85rem 1.05rem !important;
+  border-radius: 0.7rem !important;
+  border: 1px solid color-mix(in srgb, var(--line) 80%, transparent 20%) !important;
+  background: color-mix(in srgb, var(--surface-strong) 92%, transparent 8%) !important;
+  color: var(--text) !important;
+}
+
+.ocr-medication-card::before,
+.prescription-medication-card::before,
+.required-medications li::before {
+  content: "" !important;
+  position: absolute !important;
+  left: 0.55rem !important;
+  top: 50% !important;
+  width: 0.48rem !important;
+  height: 0.48rem !important;
+  border-radius: 999px !important;
+  transform: translateY(-50%) !important;
+  background: #22c55e !important;
+  box-shadow: 0 0 0 4px color-mix(in srgb, #22c55e 18%, transparent 82%) !important;
+}
+
+.ocr-medication-name,
+.prescription-medication-name,
+.required-medications li strong,
+.required-medications li span:first-child {
+  display: block !important;
+  min-width: 0 !important;
+  padding-left: 0.75rem !important;
+  color: var(--text) !important;
+  font-weight: 800 !important;
+  line-height: 1.3 !important;
+  overflow-wrap: anywhere !important;
+}
+
+.ocr-medication-dose,
+.prescription-medication-dose,
+.required-medications li small,
+.required-medications li span:last-child {
+  justify-self: end !important;
+  color: var(--muted) !important;
+  font-size: 0.82rem !important;
+  font-weight: 800 !important;
+  line-height: 1.25 !important;
+  text-align: right !important;
+  white-space: normal !important;
+}
+
+.ocr-medication-schedule,
+.prescription-medication-schedule {
+  grid-column: 1 / -1 !important;
+  padding-left: 0.75rem !important;
+  color: var(--muted) !important;
+  font-size: 0.86rem !important;
+  line-height: 1.45 !important;
+}
+
+.ocr-medication-confidence,
+.prescription-medication-confidence,
+.med-percentage {
+  display: inline-flex !important;
+  align-items: center !important;
+  width: max-content !important;
+  margin-top: 0.2rem !important;
+  padding: 0.2rem 0.48rem !important;
+  border-radius: 999px !important;
+  background: color-mix(in srgb, #22c55e 14%, transparent 86%) !important;
+  color: color-mix(in srgb, #22c55e 72%, white 28%) !important;
+  font-size: 0.76rem !important;
+  font-weight: 800 !important;
+}
+
+@media (max-width: 860px) {
+  .ocr-medication-list,
+  .prescription-medication-list,
+  .required-medications ul {
+    grid-template-columns: 1fr !important;
+  }
+}

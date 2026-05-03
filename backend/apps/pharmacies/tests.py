@@ -1,0 +1,167 @@
+from datetime import timedelta
+
+from django.contrib.auth import get_user_model
+from django.utils import timezone
+from rest_framework.test import APITestCase
+
+from apps.notifications.models import Notification
+from apps.pharmacies.models import Pharmacy, PharmacySubscription, SubscriptionSystemSettings
+from apps.prescriptions.models import Prescription, PrescriptionResponse
+from apps.users.models import UserProfile
+from apps.users.serializers import DEFAULT_ADMIN_EMAIL
+
+User = get_user_model()
+
+
+class PharmacySubscriptionApiTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="pharmacy-user", password="secret123")
+        self.pharmacy = Pharmacy.objects.create(
+            name="Pharmacie Centrale",
+            city="Bujumbura",
+            address="Rohero I",
+            phone_number="+25761000004",
+        )
+        UserProfile.objects.create(
+            user=self.user,
+            role="pharmacy",
+            phone_number="+25761000004",
+            whatsapp_number="+25761000004",
+            address="Rohero I",
+            pharmacy=self.pharmacy,
+        )
+        self.client.force_authenticate(user=self.user)
+
+    def test_subscription_endpoint_returns_trial_and_payment_details(self):
+        response = self.client.get("/api/pharmacies/subscription/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["subscription_status"], "trial")
+        self.assertIn("payment_details_burundi", response.data)
+        self.assertTrue(PharmacySubscription.objects.filter(pharmacy=self.pharmacy).exists())
+
+    def test_subscription_activity_check_respects_trial_end(self):
+        subscription = PharmacySubscription.objects.create(
+            pharmacy=self.pharmacy,
+            trial_end_date=timezone.now() + timedelta(days=30),
+        )
+
+        self.assertTrue(subscription.is_active())
+
+    def test_admin_can_update_global_trial_duration(self):
+        admin_user = User.objects.create_user(
+            username="admin",
+            email=DEFAULT_ADMIN_EMAIL,
+            password="secret123",
+            is_staff=True,
+            is_superuser=True,
+        )
+        subscription = PharmacySubscription.objects.create(
+            pharmacy=self.pharmacy,
+            trial_start_date=timezone.now(),
+            trial_end_date=timezone.now() + timedelta(days=180),
+            subscription_status="trial",
+            is_trial_active=True,
+        )
+
+        self.client.force_authenticate(user=admin_user)
+        response = self.client.patch(
+            "/api/admin/dashboard/",
+            {"trial_period_days": 90},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["settings"]["trial_period_days"], 90)
+
+        settings_obj = SubscriptionSystemSettings.get_solo()
+        subscription.refresh_from_db()
+        self.assertEqual(settings_obj.trial_period_days, 90)
+        self.assertEqual((subscription.trial_end_date - subscription.trial_start_date).days, 90)
+
+    def test_profile_exposes_registration_timestamps_and_filters_old_history(self):
+        now = timezone.now()
+        UserProfile.objects.filter(pk=self.user.profile.pk).update(created_at=now)
+        Pharmacy.objects.filter(pk=self.pharmacy.pk).update(created_at=now)
+
+        old_prescription = Prescription.objects.create(
+            patient_name="Patient Ancien",
+            patient_email="ancien@example.com",
+            medication_name="Paracetamol",
+            status="confirmed",
+        )
+        new_prescription = Prescription.objects.create(
+            patient_name="Patient Nouveau",
+            patient_email="nouveau@example.com",
+            medication_name="Amoxicilline",
+            status="confirmed",
+        )
+
+        Prescription.objects.filter(pk=old_prescription.pk).update(created_at=now - timedelta(days=2))
+        Prescription.objects.filter(pk=new_prescription.pk).update(created_at=now + timedelta(minutes=1))
+
+        old_response = PrescriptionResponse.objects.create(
+            prescription=old_prescription,
+            pharmacy=self.pharmacy,
+            responder_name=self.pharmacy.name,
+            availability_note="Ancienne reponse",
+            estimated_minutes=30,
+            total_price=1000,
+            status="quoted",
+        )
+        new_response = PrescriptionResponse.objects.create(
+            prescription=new_prescription,
+            pharmacy=self.pharmacy,
+            responder_name=self.pharmacy.name,
+            availability_note="Nouvelle reponse",
+            estimated_minutes=20,
+            total_price=1500,
+            status="quoted",
+        )
+
+        PrescriptionResponse.objects.filter(pk=old_response.pk).update(created_at=now - timedelta(days=2))
+        PrescriptionResponse.objects.filter(pk=new_response.pk).update(created_at=now + timedelta(minutes=1))
+
+        response = self.client.get("/api/profile/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("created_at", response.data["profile"])
+        self.assertIn("pharmacy_created_at", response.data["profile"])
+        self.assertEqual(len(response.data["history"]["responses"]), 1)
+        self.assertEqual(response.data["history"]["responses"][0]["prescription"], new_prescription.id)
+
+    def test_subscription_payment_submission_notifies_admin(self):
+        admin_user = User.objects.create_user(
+            username="admin-payment",
+            email="admin-payment@pharmigo.com",
+            password="secret123",
+            is_staff=True,
+            is_superuser=True,
+        )
+
+        response = self.client.post(
+            "/api/pharmacies/payments/",
+            {
+                "amount_usd": "5.00",
+                "amount_bif": "15000",
+                "currency": "BIF",
+                "payment_method": "lumicash",
+                "payer_name": "Pharmacie Centrale",
+                "payer_address": "Rohero I",
+                "sender_phone": "+25761000004",
+                "receiver_phone": "+25762000000",
+                "transaction_reference": "TX-ABO-001",
+                "payment_status": "pending",
+                "payment_month": "2026-05-01",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(
+            Notification.objects.filter(
+                recipient_user=admin_user,
+                channel="payments:admin",
+                title="Nouveau paiement d'abonnement",
+            ).exists()
+        )
