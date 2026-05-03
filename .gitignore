@@ -1,6 +1,8 @@
 pharma/
 backend/db.sqlite3
+*.sqlite3
 backend/media/
+backend/private_media/
 backend/staticfiles/
 frontend/node_modules/
 frontend/dist/
@@ -11,3 +13,11 @@ __pycache__/
 **/.env
 **/.env.example
 .env.exemple
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+credentials.json
+service-account*.json
+secrets*.json
