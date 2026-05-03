@@ -34,12 +34,12 @@ export function getApiOrigin() {
   const explicitBase = import.meta.env.VITE_API_BASE_URL;
   if (explicitBase) {
     try {
-      return new URL(explicitBase).origin;
+      return new URL(explicitBase, window.location.origin).origin;
     } catch {
-      return null;
+      return typeof window !== "undefined" ? window.location.origin : null;
     }
   }
-  return null;
+  return typeof window !== "undefined" ? window.location.origin : null;
 }
 
 export function getChatWebSocketUrl(roomName: string) {
@@ -55,6 +55,6 @@ export function getChatWebSocketUrl(roomName: string) {
   }
 
   const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-  const hostname = window.location.hostname || "localhost";
-  return `${protocol}://${hostname}:8000/ws/chat/${roomName}/`;
+  const host = window.location.host || "localhost:3001";
+  return `${protocol}://${host}/ws/chat/${roomName}/`;
 }

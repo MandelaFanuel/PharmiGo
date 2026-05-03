@@ -162,7 +162,7 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-
 GOOGLE_VISION_ENABLED = _read_bool_env("GOOGLE_VISION_ENABLED", default=False)
 GOOGLE_APPLICATION_CREDENTIALS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
 
-FRONTEND_APP_URL = os.getenv("FRONTEND_APP_URL", "http://localhost:5173").strip() or "http://localhost:5173"
+FRONTEND_APP_URL = os.getenv("FRONTEND_APP_URL", "http://localhost:3001").strip() or "http://localhost:3001"
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "no-reply@pharmigo.local").strip() or "no-reply@pharmigo.local"
 EMAIL_BACKEND = os.getenv(
     "EMAIL_BACKEND",

@@ -641,7 +641,7 @@ def health_check(request):
         {
             "name": "PharmiGo",
             "status": "ok",
-            "frontend": "http://localhost:3001",
+            "frontend": settings.FRONTEND_APP_URL,
             "api": "/api/",
         }
     )

@@ -215,9 +215,7 @@ function resolveMediaUrl(path?: string | null) {
     return `${explicitOrigin.replace(/\/$/, "")}${path.startsWith("/") ? path : `/${path}`}`;
   }
 
-  const protocol = window.location.protocol;
-  const hostname = window.location.hostname || "localhost";
-  return `${protocol}//${hostname}:8000${path.startsWith("/") ? path : `/${path}`}`;
+  return path.startsWith("/") ? path : `/${path}`;
 }
 
 function getPharmacyOperationalStatus(pharmacy: Pharmacy, language: Language) {
