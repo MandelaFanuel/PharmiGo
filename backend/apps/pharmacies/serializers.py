@@ -72,9 +72,7 @@ class PharmacySerializer(serializers.ModelSerializer):
         except Exception:
             return None
 
-        request = self.context.get("request")
-        url = obj.profile_image.url
-        return request.build_absolute_uri(url) if request else url
+        return obj.profile_image.url
 
     def get_is_online(self, obj):
         linked_profile = getattr(obj, "user_profile", None)

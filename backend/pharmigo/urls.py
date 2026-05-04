@@ -4,7 +4,16 @@ from django.contrib import admin
 from django.urls import include, path
 
 from apps.prescriptions.views import ConfirmPrescriptionView, PrescriptionAnalysisTaskStatusView, PrescriptionUploadView
-from apps.users.views import LoginView, LogoutView, PasswordResetConfirmView, PasswordResetRequestView, RegisterView
+from apps.users.views import (
+    GoogleLoginView,
+    LoginView,
+    LogoutView,
+    PasswordResetConfirmView,
+    PasswordResetRequestView,
+    RegisterView,
+    ResendVerificationEmailView,
+    VerifyEmailView,
+)
 from pharmigo.api import (
     admin_dashboard,
     app_config,
@@ -21,11 +30,17 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/auth/register/", RegisterView.as_view(), name="auth-register"),
     path("api/auth/login/", LoginView.as_view(), name="auth-login"),
+    path("api/auth/google/", GoogleLoginView.as_view(), name="auth-google-login"),
     path("api/auth/logout/", LogoutView.as_view(), name="auth-logout"),
+    path("api/auth/verify-email/", VerifyEmailView.as_view(), name="auth-verify-email"),
+    path("api/auth/resend-verification-email/", ResendVerificationEmailView.as_view(), name="auth-resend-verification-email"),
     path("api/auth/password-reset/", PasswordResetRequestView.as_view(), name="auth-password-reset"),
     path("api/auth/password-reset/confirm/", PasswordResetConfirmView.as_view(), name="auth-password-reset-confirm"),
     path("api/register/", RegisterView.as_view(), name="register-fallback"),
     path("api/login/", LoginView.as_view(), name="login-fallback"),
+    path("api/google/", GoogleLoginView.as_view(), name="google-fallback"),
+    path("api/verify-email/", VerifyEmailView.as_view(), name="verify-email-fallback"),
+    path("api/resend-verification-email/", ResendVerificationEmailView.as_view(), name="resend-verification-email-fallback"),
     path("api/password-reset/", PasswordResetRequestView.as_view(), name="password-reset-fallback"),
     path("api/password-reset/confirm/", PasswordResetConfirmView.as_view(), name="password-reset-confirm-fallback"),
     path("api/health/", health_check, name="health-check"),

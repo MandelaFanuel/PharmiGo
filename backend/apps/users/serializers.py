@@ -10,7 +10,8 @@ from rest_framework import serializers
 
 from apps.pharmacies.models import Pharmacy, PharmacySubscription, SubscriptionSystemSettings
 from apps.users.models import UserProfile
-from apps.users.phone_numbers import UNSUPPORTED_PHONE_MESSAGE, normalize_phone_number
+from apps.users.phone_numbers import normalize_phone_number
+from apps.users.services import build_unique_username, verify_google_credential
 
 User = get_user_model()
 
@@ -56,8 +57,14 @@ def ensure_default_admin_user():
             "phone_number": "",
             "whatsapp_number": "",
             "address": "",
+            "email_verified": True,
         },
     )
+
+    profile = user.profile
+    if not profile.email_verified:
+        profile.email_verified = True
+        profile.save(update_fields=["email_verified"])
 
     return user
 
@@ -82,6 +89,19 @@ def email_already_used(email: str, *, exclude_user_id: int | None = None, exclud
     return pharmacy_queryset.filter(email__iexact=normalized).exists()
 
 
+def phone_number_already_used(phone_number: str, *, exclude_profile_id: int | None = None, exclude_pharmacy_id: int | None = None) -> bool:
+    normalized = normalize_phone_number(phone_number)
+    if not normalized:
+        return False
+
+    profile_queryset = UserProfile.objects.exclude(pk=exclude_profile_id) if exclude_profile_id else UserProfile.objects.all()
+    if profile_queryset.filter(phone_number=normalized).exists():
+        return True
+
+    pharmacy_queryset = Pharmacy.objects.exclude(pk=exclude_pharmacy_id) if exclude_pharmacy_id else Pharmacy.objects.all()
+    return pharmacy_queryset.filter(phone_number=normalized).exists()
+
+
 class UserProfileSerializer(serializers.ModelSerializer):
     profile_image = serializers.ImageField(read_only=True)
     pharmacy_name = serializers.CharField(source="pharmacy.name", read_only=True)
@@ -94,6 +114,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
     pharmacy_opening_hours = serializers.CharField(source="pharmacy.opening_hours", read_only=True)
     pharmacy_delivery_supported = serializers.BooleanField(source="pharmacy.delivery_supported", read_only=True)
     pharmacy_phone_number = serializers.CharField(source="pharmacy.phone_number", read_only=True)
+    google_connected = serializers.SerializerMethodField()
 
     def get_is_online(self, obj):
         return obj.is_considered_online()
@@ -104,12 +125,17 @@ class UserProfileSerializer(serializers.ModelSerializer):
             return False
         return pharmacy_profile.is_considered_online()
 
+    def get_google_connected(self, obj):
+        return bool(obj.google_sub)
+
     class Meta:
         model = UserProfile
         fields = [
             "role",
             "phone_number",
             "whatsapp_number",
+            "birth_date",
+            "gender",
             "address",
             "latitude",
             "longitude",
@@ -129,6 +155,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "pharmacy_opening_hours",
             "pharmacy_delivery_supported",
             "pharmacy_phone_number",
+            "email_verified",
+            "google_connected",
         ]
 
 
@@ -144,7 +172,9 @@ class RegisterSerializer(serializers.Serializer):
     account_type = serializers.ChoiceField(choices=["patient", "pharmacy"])
     username = serializers.CharField(required=False, allow_blank=True, max_length=150)
     phone_number = serializers.CharField(required=False, allow_blank=True, max_length=30)
-    email = serializers.EmailField(required=False, allow_blank=True)
+    birth_date = serializers.DateField(required=False, allow_null=True)
+    gender = serializers.ChoiceField(choices=["male", "female", "other"], required=False, allow_blank=True)
+    email = serializers.EmailField(required=True, allow_blank=False)
     password = serializers.CharField(write_only=True, min_length=6, max_length=128)
     pharmacy_name = serializers.CharField(required=False, allow_blank=True, max_length=255)
     address = serializers.CharField(required=False, allow_blank=True, max_length=255)
@@ -154,25 +184,34 @@ class RegisterSerializer(serializers.Serializer):
         account_type = attrs["account_type"]
         phone_number = normalize_phone_number(attrs.get("phone_number", ""))
         email = str(attrs.get("email", "")).strip().lower()
+        gender = str(attrs.get("gender", "") or "").strip().lower()
         attrs["phone_number"] = phone_number
         attrs["email"] = email
+        attrs["gender"] = gender
 
-        if email and email_already_used(email):
+        if not email:
+            raise serializers.ValidationError({"email": "L'adresse email est obligatoire."})
+
+        if email_already_used(email):
             raise serializers.ValidationError({"email": "Cette adresse email est deja utilisee."})
 
         if account_type == "patient":
             if not attrs.get("username", "").strip():
                 raise serializers.ValidationError({"username": "Le nom d'utilisateur est obligatoire."})
+            if not phone_number:
+                raise serializers.ValidationError({"phone_number": "Le numero de telephone est obligatoire."})
             if User.objects.filter(username=attrs["username"].strip()).exists():
                 raise serializers.ValidationError({"username": "Ce nom d'utilisateur est deja utilise."})
-            if UserProfile.objects.filter(phone_number=phone_number).exists():
+            if phone_number_already_used(phone_number):
                 raise serializers.ValidationError({"phone_number": "Ce numero de telephone est deja utilise."})
         else:
             if not attrs.get("pharmacy_name", "").strip():
                 raise serializers.ValidationError({"pharmacy_name": "Le nom de la pharmacie est obligatoire."})
             if not attrs.get("address", "").strip():
                 raise serializers.ValidationError({"address": "L'adresse exacte est obligatoire."})
-            if UserProfile.objects.filter(phone_number=phone_number).exists():
+            if not phone_number:
+                raise serializers.ValidationError({"phone_number": "Le numero de telephone est obligatoire."})
+            if phone_number_already_used(phone_number):
                 raise serializers.ValidationError({"phone_number": "Ce numero de telephone est deja utilise."})
 
         return attrs
@@ -189,6 +228,9 @@ class RegisterSerializer(serializers.Serializer):
                 user=user,
                 role="patient",
                 phone_number=validated_data["phone_number"],
+                birth_date=validated_data.get("birth_date"),
+                gender=validated_data.get("gender", ""),
+                email_verified=False,
             )
             return user
 
@@ -220,6 +262,7 @@ class RegisterSerializer(serializers.Serializer):
             whatsapp_number=phone_number,
             address=address,
             pharmacy=pharmacy,
+            email_verified=False,
         )
         subscription_settings = SubscriptionSystemSettings.get_solo()
         PharmacySubscription.objects.get_or_create(
@@ -236,71 +279,95 @@ class RegisterSerializer(serializers.Serializer):
 
 
 class LoginSerializer(serializers.Serializer):
-    phone_number = serializers.CharField(max_length=30)
+    email = serializers.EmailField()
     password = serializers.CharField(write_only=True, max_length=128)
-
-    def _resolve_profile(self, raw_phone_number: str):
-        try:
-            phone_number = normalize_phone_number(raw_phone_number)
-        except serializers.ValidationError:
-            raise serializers.ValidationError({"phone_number": UNSUPPORTED_PHONE_MESSAGE})
-
-        if phone_number:
-            profile = UserProfile.objects.filter(phone_number=phone_number).select_related("user").first()
-            if profile is None:
-                profile = UserProfile.objects.filter(whatsapp_number=phone_number).select_related("user").first()
-            if profile is not None:
-                return profile
-
-        raise serializers.ValidationError({"phone_number": "Numero ou mot de passe invalide."})
 
     def validate(self, attrs):
         password = attrs["password"]
-        identifier = str(attrs["phone_number"]).strip()
+        email = str(attrs["email"]).strip().lower()
 
-        if not identifier:
-            raise serializers.ValidationError({"phone_number": "Le numero de telephone est obligatoire."})
+        if not email:
+            raise serializers.ValidationError({"email": "L'adresse email est obligatoire."})
 
-        if "@" in identifier:
-            if identifier.lower() != DEFAULT_ADMIN_EMAIL:
-                raise serializers.ValidationError(
-                    {
-                        "phone_number": "Adresse email non autorisee. Seul l'administrateur peut se connecter par email."
-                    }
-                )
+        user = self._authenticate_with_email(email, password)
+        attrs["user"] = user
+        return attrs
 
+    def _authenticate_with_email(self, email: str, password: str):
+        if email == DEFAULT_ADMIN_EMAIL:
             admin_user = ensure_default_admin_user()
             if admin_user is None:
-                raise serializers.ValidationError({"phone_number": "Connexion administrateur indisponible."})
+                raise serializers.ValidationError({"email": "Connexion administrateur indisponible."})
             user = authenticate(username=admin_user.username, password=password)
             if user is None:
-                raise serializers.ValidationError({"phone_number": "Email administrateur ou mot de passe invalide."})
-            attrs["user"] = user
-            return attrs
+                raise serializers.ValidationError({"email": "Email administrateur ou mot de passe invalide."})
+            return user
 
-        if identifier.lower() == DEFAULT_ADMIN_USERNAME:
+        user = User.objects.filter(email__iexact=email).select_related("profile").first()
+        if user is None:
+            raise serializers.ValidationError({"email": "Email ou mot de passe invalide."})
+
+        authenticated_user = authenticate(username=user.username, password=password)
+        if authenticated_user is None:
+            raise serializers.ValidationError({"email": "Email ou mot de passe invalide."})
+
+        self._ensure_email_verified(authenticated_user)
+        return authenticated_user
+
+    def _ensure_email_verified(self, user):
+        profile = getattr(user, "profile", None)
+        if profile is not None and not profile.email_verified:
             raise serializers.ValidationError(
-                {"phone_number": "L'administrateur doit se connecter avec son adresse email officielle."}
+                {
+                    "email": "Votre adresse email n'est pas encore verifiee. Verifiez votre boite mail ou demandez un nouveau lien."
+                }
             )
 
-        if identifier.lower() == DEFAULT_ADMIN_EMAIL:
-            admin_user = ensure_default_admin_user()
-            if admin_user is None:
-                raise serializers.ValidationError({"phone_number": "Connexion administrateur indisponible."})
-            user = authenticate(username=admin_user.username, password=password)
-            if user is None:
-                raise serializers.ValidationError({"phone_number": "Email administrateur ou mot de passe invalide."})
-            attrs["user"] = user
-            return attrs
 
-        profile = self._resolve_profile(identifier)
+class VerifyEmailSerializer(serializers.Serializer):
+    token = serializers.CharField()
 
-        user = None
-        if profile is not None:
-            user = authenticate(username=profile.user.username, password=password)
 
+class ResendVerificationEmailSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+
+class GoogleAuthSerializer(serializers.Serializer):
+    credential = serializers.CharField()
+
+    def validate(self, attrs):
+        token_info = verify_google_credential(attrs["credential"])
+        email = str(token_info.get("email", "")).strip().lower()
+        sub = str(token_info.get("sub", "")).strip()
+
+        user = User.objects.filter(email__iexact=email).select_related("profile").first()
         if user is None:
-            raise serializers.ValidationError({"phone_number": "Numero de telephone ou mot de passe invalide."})
+            username_seed = token_info.get("name") or email.split("@", 1)[0]
+            username = build_unique_username(str(username_seed))
+            user = User.objects.create_user(
+                username=username,
+                email=email,
+                password=User.objects.make_random_password(),
+            )
+            UserProfile.objects.create(
+                user=user,
+                role="patient",
+                email_verified=True,
+                google_sub=sub,
+            )
+        else:
+            profile, _ = UserProfile.objects.get_or_create(user=user, defaults={"role": "patient"})
+            updated_fields = []
+            if not profile.email_verified:
+                profile.email_verified = True
+                updated_fields.append("email_verified")
+            if not profile.google_sub:
+                profile.google_sub = sub
+                updated_fields.append("google_sub")
+            elif profile.google_sub != sub:
+                raise serializers.ValidationError({"credential": "Ce compte est deja lie a un autre profil Google."})
+            if updated_fields:
+                profile.save(update_fields=updated_fields)
 
         attrs["user"] = user
         return attrs

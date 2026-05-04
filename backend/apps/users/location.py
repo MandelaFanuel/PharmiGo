@@ -104,6 +104,37 @@ def refresh_profile_location_from_request(profile, request) -> None:
     if updates:
         profile.save(update_fields=list(dict.fromkeys(updates)))
 
+    _sync_pharmacy_location_from_profile(profile)
+
+
+def sync_profile_coordinates(
+    profile,
+    *,
+    latitude: float | None,
+    longitude: float | None,
+    city: str = "",
+    country: str = "",
+) -> None:
+    updates: list[str] = []
+
+    if latitude is not None and profile.latitude != latitude:
+        profile.latitude = latitude
+        updates.append("latitude")
+    if longitude is not None and profile.longitude != longitude:
+        profile.longitude = longitude
+        updates.append("longitude")
+    if city and profile.location_city != city:
+        profile.location_city = city
+        updates.append("location_city")
+    if country and profile.location_country != country:
+        profile.location_country = country
+        updates.append("location_country")
+
+    if updates:
+        profile.save(update_fields=list(dict.fromkeys(updates)))
+
+    _sync_pharmacy_location_from_profile(profile)
+
 
 def _coerce_float(value: Any) -> float | None:
     if isinstance(value, (int, float)):
@@ -114,3 +145,26 @@ def _coerce_float(value: Any) -> float | None:
         except ValueError:
             return None
     return None
+
+
+def _sync_pharmacy_location_from_profile(profile) -> None:
+    if getattr(profile, "role", None) != "pharmacy":
+        return
+
+    pharmacy = getattr(profile, "pharmacy", None)
+    if pharmacy is None:
+        return
+
+    updates: list[str] = []
+    if profile.latitude is not None and pharmacy.latitude != profile.latitude:
+        pharmacy.latitude = profile.latitude
+        updates.append("latitude")
+    if profile.longitude is not None and pharmacy.longitude != profile.longitude:
+        pharmacy.longitude = profile.longitude
+        updates.append("longitude")
+    if profile.location_city and pharmacy.city != profile.location_city:
+        pharmacy.city = profile.location_city[:120]
+        updates.append("city")
+
+    if updates:
+        pharmacy.save(update_fields=list(dict.fromkeys(updates)))

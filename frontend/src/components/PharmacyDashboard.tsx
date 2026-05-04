@@ -1,6 +1,6 @@
 import { startTransition, useDeferredValue, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
-import DashboardScaffold, { DashboardPanel } from "./DashboardScaffold";
+import DashboardScaffold, { DashboardPanel, EyeGlyph, RefreshGlyph } from "./DashboardScaffold";
 import InAppDocumentViewer from "./InAppDocumentViewer";
 import PublicPrescriptionSheet from "./PublicPrescriptionSheet";
 import PharmacyStockManager from "./PharmacyStockManager";
@@ -10,12 +10,14 @@ import { formatExactDateTime } from "../lib/datetime";
 import { logClientError } from "../lib/logger";
 import {
   createSubscriptionPayment,
+  deletePharmacyStockItem,
   fetchDashboard,
   fetchProtectedDocument,
   fetchPharmacyStock,
   fetchPharmacySubscription,
   fetchProfile,
   fetchSubscriptionPayments,
+  patchPharmacyStockItem,
 } from "../services/api";
 import type { PrescriptionRecord } from "../types";
 
@@ -212,6 +214,7 @@ export default function PharmacyDashboard() {
   const [prescriptionPage, setPrescriptionPage] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [stockActionBusyId, setStockActionBusyId] = useState<number | null>(null);
   const [documentViewer, setDocumentViewer] = useState<{ src: string; title: string } | null>(null);
   const [showActivationForm, setShowActivationForm] = useState(false);
   const [activationBusy, setActivationBusy] = useState(false);
@@ -428,6 +431,8 @@ export default function PharmacyDashboard() {
       const prescriptionData = (dashboard.prescriptions ?? []).filter((item) => {
         const canDisplayForPharmacy =
           item.pharmacy === currentPharmacyId ||
+          item.status === "uploaded" ||
+          item.status === "analyzing" ||
           item.status === "confirmed" ||
           item.status === "searching" ||
           item.status === "confirmation_pending";
@@ -500,6 +505,90 @@ export default function PharmacyDashboard() {
       void documentError;
       logClientError("L'ouverture du document ordonnance pharmacie a echoue.");
     }
+  }
+
+  function updateStockMetrics(nextStock: StockItem[]) {
+    setKpis((current) => ({
+      ...current,
+      total_stock: nextStock.length,
+      available_medications: nextStock.filter((item) => item.is_available).length,
+    }));
+  }
+
+  async function handleStockQuantityAdjust(item: StockItem, delta: number) {
+    const nextQuantity = Math.max(0, item.quantity + delta);
+    if (nextQuantity === item.quantity) {
+      return;
+    }
+
+    setStockActionBusyId(item.id);
+    try {
+      const payload = {
+        quantity: nextQuantity,
+        is_available: nextQuantity > 0,
+      };
+      await patchPharmacyStockItem(item.id, payload);
+      setStock((current) => {
+        const nextStock = current.map((entry) =>
+          entry.id === item.id
+            ? {
+                ...entry,
+                quantity: nextQuantity,
+                is_available: nextQuantity > 0,
+              }
+            : entry
+        );
+        updateStockMetrics(nextStock);
+        return nextStock;
+      });
+    } catch (error) {
+      void error;
+      logClientError("La mise a jour rapide du stock pharmacie a echoue.");
+    } finally {
+      setStockActionBusyId(null);
+    }
+  }
+
+  async function handleStockDelete(item: StockItem) {
+    if (!window.confirm(`Supprimer ${item.medication_name} du stock ?`)) {
+      return;
+    }
+
+    setStockActionBusyId(item.id);
+    try {
+      await deletePharmacyStockItem(item.id);
+      setStock((current) => {
+        const nextStock = current.filter((entry) => entry.id !== item.id);
+        updateStockMetrics(nextStock);
+        return nextStock;
+      });
+    } catch (error) {
+      void error;
+      logClientError("La suppression rapide du stock pharmacie a echoue.");
+    } finally {
+      setStockActionBusyId(null);
+    }
+  }
+
+  function handleStockEdit(item: StockItem) {
+    setActiveSection("manage-stock");
+    window.setTimeout(() => {
+      window.dispatchEvent(
+        new CustomEvent("pharmacy-stock:edit", {
+          detail: {
+            id: item.id,
+            item,
+          },
+        })
+      );
+    }, 0);
+  }
+
+  function handleStockAdd() {
+    setActiveSection("add-medication");
+    window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent("pharmacy-stock:add"));
+    }, 0);
   }
 
   function checkMedicationAvailability(prescription: PrescriptionRecord) {
@@ -762,16 +851,25 @@ export default function PharmacyDashboard() {
       navSections={navSections}
       metrics={metrics}
       highlights={highlights}
-      actions={
+      topbarActions={
+        <button
+          className="dashboard-icon-button dashboard-refresh-button"
+          onClick={() => void loadDashboardData()}
+          aria-label={labels.refresh}
+          title={labels.refresh}
+          type="button"
+        >
+          <RefreshGlyph />
+        </button>
+      }
+      heroActions={
         <>
-          <button className="primary-button" onClick={() => void loadDashboardData()}>
-            {labels.refresh}
-          </button>
           <button
-            className="secondary-button"
+            className="secondary-button dashboard-wide-action"
             onClick={() => {
               setActiveSection(hasActiveSubscription ? "manage-stock" : "activate");
             }}
+            type="button"
           >
             {hasActiveSubscription ? labels.manageStock : labels.reactivate}
           </button>
@@ -784,10 +882,18 @@ export default function PharmacyDashboard() {
             title={labels.stock}
             description={language === "en" ? "Instant filtering with live stock updates." : "Filtrage instantane avec mise a jour en temps reel du stock."}
           >
+            <div className="dashboard-stock-summary-actions">
+              <button type="button" className="secondary-button" onClick={() => setActiveSection("manage-stock")}>
+                {labels.manageStock}
+              </button>
+              <button type="button" className="primary-button" onClick={handleStockAdd}>
+                {labels.addMedication}
+              </button>
+            </div>
             {pagedStock.length === 0 ? (
               <div className="empty-state">{labels.emptyStock}</div>
             ) : (
-              <div className="stock-grid">
+              <div className="stock-grid dashboard-stock-summary">
                 {pagedStock.map((item) => (
                   <div key={item.id} className="stock-item-card">
                     <div className="stock-item-header">
@@ -799,6 +905,51 @@ export default function PharmacyDashboard() {
                     <div className="stock-item-details">
                       <span>Quantite: {item.quantity} {item.unit}</span>
                       <span>Prix: {formatCurrencyValue(item.price)}</span>
+                    </div>
+                    <div className="dashboard-stock-inline-actions">
+                      <div className="stock-quantity-controls">
+                        <button
+                          type="button"
+                          className="icon-button compact"
+                          onClick={() => void handleStockQuantityAdjust(item, -1)}
+                          disabled={stockActionBusyId === item.id || item.quantity <= 0}
+                          aria-label={`Reduire la quantite de ${item.medication_name}`}
+                        >
+                          -
+                        </button>
+                        <strong>{item.quantity}</strong>
+                        <button
+                          type="button"
+                          className="icon-button compact"
+                          onClick={() => void handleStockQuantityAdjust(item, 1)}
+                          disabled={stockActionBusyId === item.id}
+                          aria-label={`Augmenter la quantite de ${item.medication_name}`}
+                        >
+                          +
+                        </button>
+                      </div>
+                      <div className="stock-row-actions">
+                        <button
+                          type="button"
+                          className="icon-button compact"
+                          onClick={() => handleStockEdit(item)}
+                          title="Modifier"
+                          aria-label={`Modifier ${item.medication_name}`}
+                          disabled={stockActionBusyId === item.id}
+                        >
+                          ✏️
+                        </button>
+                        <button
+                          type="button"
+                          className="icon-button compact delete"
+                          onClick={() => void handleStockDelete(item)}
+                          title="Supprimer"
+                          aria-label={`Supprimer ${item.medication_name}`}
+                          disabled={stockActionBusyId === item.id}
+                        >
+                          🗑️
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -1170,7 +1321,7 @@ function AvailablePrescriptionList({
   }
 
   return (
-    <div className="dashboard-record-list">
+    <div className="dashboard-record-list dashboard-mobile-single-stack">
       {prescriptions.map((prescription) => {
         const medications = prescription.extracted_medications ?? [];
         const documentUrl = getPrescriptionDocumentUrl(prescription);
@@ -1212,8 +1363,9 @@ function AvailablePrescriptionList({
               ) : (
                 <div className="prescription-document-panel dashboard-document-panel">
                   <p>Document original protege et disponible selon les autorisations de securite.</p>
-                  <button type="button" className="secondary-button" onClick={() => onOpenDocument(prescription)}>
-                    {viewOriginalLabel}
+                  <button type="button" className="secondary-button dashboard-document-action" onClick={() => onOpenDocument(prescription)} aria-label={viewOriginalLabel} title={viewOriginalLabel}>
+                    <EyeGlyph />
+                    <span>{viewOriginalLabel}</span>
                   </button>
                 </div>
               )
@@ -1243,7 +1395,7 @@ function PrescriptionOcrList({
   }
 
   return (
-    <div className="dashboard-record-list">
+    <div className="dashboard-record-list dashboard-mobile-single-stack">
       {prescriptions.map((prescription) => {
         const medications = prescription.extracted_medications ?? [];
         const available = medications.filter((med) =>
@@ -1261,7 +1413,7 @@ function PrescriptionOcrList({
             key={`ocr-${prescription.id}`}
             prescription={prescription}
             title={prescription.medication_name || "Ordonnance confirmee"}
-            className="compact"
+            className="compact dashboard-prescription-sheet"
             footer={
               <div className="admin-prescription-footer">
                 <span className="badge info">{prescription.status}</span>

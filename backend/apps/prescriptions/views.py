@@ -58,6 +58,11 @@ def _can_manage_patient_prescription(user, prescription):
     return _is_admin_user(user) or _is_prescription_owner(user, prescription)
 
 
+def _get_profile_created_at(user):
+    profile = getattr(user, "profile", None)
+    return getattr(profile, "created_at", None)
+
+
 def _derive_geo_zone(request):
     raw_zone = str(request.data.get("geo_zone") or "").strip()
     if raw_zone:
@@ -133,11 +138,18 @@ def _get_visible_prescription_queryset(request):
         return queryset.none()
 
     if profile.role == "patient":
-        return queryset.filter(patient_user=user)
+        patient_start_at = _get_profile_created_at(user)
+        patient_queryset = queryset.filter(patient_user=user)
+        if patient_start_at is not None:
+            patient_queryset = patient_queryset.filter(created_at__gte=patient_start_at)
+        return patient_queryset
 
     if profile.role == "pharmacy":
         return queryset.filter(
             status__in=[
+                "uploaded",
+                "analyzing",
+                "confirmation_pending",
                 "confirmed",
                 "searching",
                 "pharmacy_selected",
@@ -936,6 +948,8 @@ class PharmacyStockDetailView(generics.RetrieveUpdateDestroyAPIView):
     """Retrieve, update or delete a pharmacy stock item"""
     serializer_class = PharmacyStockSerializer
     permission_classes = []
+    lookup_field = "id"
+    lookup_url_kwarg = "id"
     
     def get_serializer_class(self):
         from .serializers import PharmacyStockSerializer

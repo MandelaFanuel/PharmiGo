@@ -1,22 +1,33 @@
+from datetime import timedelta
+from hashlib import sha256
+
 from django.contrib.auth import get_user_model
 from django.core import mail
 from django.test import override_settings
+from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from apps.pharmacies.models import PharmacySubscription
-from apps.users.models import UserProfile
+from apps.users.models import EmailVerificationToken, UserProfile
 from apps.users.serializers import DEFAULT_ADMIN_EMAIL, DEFAULT_ADMIN_PASSWORD
+from apps.users.services import send_email_verification_for_user
 
 User = get_user_model()
 
 
+def extract_token_from_email(body: str) -> str:
+    verification_link = next(line.strip() for line in body.splitlines() if "/verify-email?token=" in line)
+    return verification_link.split("token=", 1)[1]
+
+
 @override_settings(
     EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+    FRONTEND_URL="http://localhost:5173",
     FRONTEND_APP_URL="http://localhost:5173",
 )
 class AuthenticationFlowTests(APITestCase):
-    def test_patient_register_and_login(self):
-        register_response = self.client.post(
+    def test_patient_register_creates_unverified_user_and_hashed_token(self):
+        response = self.client.post(
             "/api/auth/register/",
             {
                 "account_type": "patient",
@@ -28,51 +39,136 @@ class AuthenticationFlowTests(APITestCase):
             format="json",
         )
 
-        self.assertEqual(register_response.status_code, 201)
-        self.assertTrue(User.objects.filter(username="patient-test").exists())
-        self.assertTrue(UserProfile.objects.filter(user__username="patient-test", role="patient").exists())
-        self.assertTrue(register_response.data["token"])
+        self.assertEqual(response.status_code, 201)
+        self.assertNotIn("token", response.data)
+        user = User.objects.get(username="patient-test")
+        self.assertFalse(user.profile.email_verified)
+        self.assertEqual(len(mail.outbox), 1)
 
-        login_response = self.client.post(
-            "/api/auth/login/",
-            {
-                "phone_number": "+25761000002",
-                "password": "secret123",
-            },
-            format="json",
-        )
+        raw_token = extract_token_from_email(mail.outbox[0].body)
+        token_record = EmailVerificationToken.objects.get(user=user)
+        self.assertEqual(token_record.token_hash, sha256(raw_token.encode("utf-8")).hexdigest())
+        self.assertNotEqual(token_record.token_hash, raw_token)
 
-        self.assertEqual(login_response.status_code, 200)
-        self.assertEqual(login_response.data["user"]["username"], "patient-test")
-        self.assertTrue(login_response.data["token"])
-
-    def test_patient_register_and_login_without_email(self):
-        register_response = self.client.post(
+    def test_email_verification_with_valid_token_marks_email_verified(self):
+        self.client.post(
             "/api/auth/register/",
             {
                 "account_type": "patient",
-                "username": "patient-no-email",
-                "phone_number": "+25761000012",
+                "username": "verify-me",
+                "phone_number": "+25761000004",
+                "email": "verify-me@example.com",
                 "password": "secret123",
             },
             format="json",
         )
 
-        self.assertEqual(register_response.status_code, 201)
-        self.assertEqual(register_response.data["user"]["email"], "")
-        self.assertTrue(register_response.data["token"])
+        raw_token = extract_token_from_email(mail.outbox[0].body)
+        verify_response = self.client.post("/api/auth/verify-email/", {"token": raw_token}, format="json")
+
+        self.assertEqual(verify_response.status_code, 200)
+        user = User.objects.get(username="verify-me")
+        user.refresh_from_db()
+        token_record = EmailVerificationToken.objects.get(user=user)
+        self.assertTrue(user.profile.email_verified)
+        self.assertIsNotNone(token_record.used_at)
 
         login_response = self.client.post(
             "/api/auth/login/",
+            {"email": "verify-me@example.com", "password": "secret123"},
+            format="json",
+        )
+        self.assertEqual(login_response.status_code, 200)
+        self.assertTrue(login_response.data["token"])
+
+    def test_login_is_blocked_until_email_is_verified(self):
+        self.client.post(
+            "/api/auth/register/",
             {
-                "phone_number": "+25761000012",
+                "account_type": "patient",
+                "username": "blocked-user",
+                "phone_number": "+25761000005",
+                "email": "blocked-user@example.com",
                 "password": "secret123",
             },
             format="json",
         )
 
-        self.assertEqual(login_response.status_code, 200)
-        self.assertTrue(login_response.data["token"])
+        response = self.client.post(
+            "/api/auth/login/",
+            {"email": "blocked-user@example.com", "password": "secret123"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("pas encore verifiee", response.data["email"][0])
+
+    def test_expired_verification_token_fails(self):
+        user = User.objects.create_user(username="expired-user", email="expired@example.com", password="secret123")
+        UserProfile.objects.create(user=user, role="patient", phone_number="+25761000006", email_verified=False)
+        send_email_verification_for_user(user)
+        raw_token = extract_token_from_email(mail.outbox[0].body)
+        token_record = EmailVerificationToken.objects.get(user=user)
+        token_record.expires_at = timezone.now() - timedelta(minutes=1)
+        token_record.save(update_fields=["expires_at"])
+
+        response = self.client.post("/api/auth/verify-email/", {"token": raw_token}, format="json")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("expire", response.data["token"][0])
+
+    def test_used_verification_token_fails(self):
+        user = User.objects.create_user(username="used-user", email="used@example.com", password="secret123")
+        UserProfile.objects.create(user=user, role="patient", phone_number="+25761000007", email_verified=False)
+        send_email_verification_for_user(user)
+        raw_token = extract_token_from_email(mail.outbox[0].body)
+
+        first_response = self.client.post("/api/auth/verify-email/", {"token": raw_token}, format="json")
+        second_response = self.client.post("/api/auth/verify-email/", {"token": raw_token}, format="json")
+
+        self.assertEqual(first_response.status_code, 200)
+        self.assertEqual(second_response.status_code, 400)
+        self.assertIn("deja ete utilise", second_response.data["token"][0])
+
+    def test_resend_verification_email_invalidates_previous_token(self):
+        self.client.post(
+            "/api/auth/register/",
+            {
+                "account_type": "patient",
+                "username": "resend-user",
+                "phone_number": "+25761000008",
+                "email": "resend-user@example.com",
+                "password": "secret123",
+            },
+            format="json",
+        )
+
+        user = User.objects.get(username="resend-user")
+        first_token = EmailVerificationToken.objects.get(user=user)
+
+        response = self.client.post(
+            "/api/auth/resend-verification-email/",
+            {"email": "resend-user@example.com"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        first_token.refresh_from_db()
+        latest_token = EmailVerificationToken.objects.filter(user=user).first()
+        self.assertIsNotNone(first_token.used_at)
+        self.assertIsNotNone(latest_token)
+        self.assertNotEqual(first_token.id, latest_token.id)
+        self.assertIsNone(latest_token.used_at)
+
+    def test_resend_verification_email_is_generic_for_unknown_email(self):
+        response = self.client.post(
+            "/api/auth/resend-verification-email/",
+            {"email": "missing@example.com"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["message"], "Si ce compte existe, un email de verification a ete envoye.")
 
     def test_default_admin_can_login_with_email_credentials(self):
         if not DEFAULT_ADMIN_PASSWORD:
@@ -80,7 +176,7 @@ class AuthenticationFlowTests(APITestCase):
         response = self.client.post(
             "/api/auth/login/",
             {
-                "phone_number": DEFAULT_ADMIN_EMAIL,
+                "email": DEFAULT_ADMIN_EMAIL,
                 "password": DEFAULT_ADMIN_PASSWORD,
             },
             format="json",
@@ -91,20 +187,29 @@ class AuthenticationFlowTests(APITestCase):
         self.assertTrue(response.data["user"]["is_staff"])
         self.assertTrue(response.data["token"])
 
-    def test_non_admin_email_is_rejected_for_login(self):
-        response = self.client.post(
-            "/api/auth/login/",
+    def test_login_with_phone_number_is_rejected(self):
+        self.client.post(
+            "/api/auth/register/",
             {
-                "phone_number": "wrong-admin@example.com",
+                "account_type": "patient",
+                "username": "phone-login-user",
+                "phone_number": "+25761000222",
+                "email": "phone-login-user@example.com",
                 "password": "secret123",
             },
             format="json",
         )
 
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("Seul l'administrateur peut se connecter par email", response.data["phone_number"][0])
+        response = self.client.post(
+            "/api/auth/login/",
+            {"email": "+25761000222", "password": "secret123"},
+            format="json",
+        )
 
-    def test_pharmacy_register_creates_trial_subscription(self):
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("email", response.data)
+
+    def test_pharmacy_register_requires_email_and_creates_trial_subscription(self):
         response = self.client.post(
             "/api/auth/register/",
             {
@@ -123,52 +228,137 @@ class AuthenticationFlowTests(APITestCase):
         subscription = PharmacySubscription.objects.get(pharmacy=profile.pharmacy)
         self.assertEqual(subscription.subscription_status, "trial")
         self.assertTrue(subscription.is_trial_active)
+        self.assertFalse(profile.email_verified)
 
-    def test_rejects_unsupported_phone_number_on_register(self):
+    def test_patient_register_without_email_is_rejected(self):
         response = self.client.post(
             "/api/auth/register/",
             {
                 "account_type": "patient",
-                "username": "patient-bad-phone",
-                "phone_number": "+250788123456",
-                "email": "patient-bad-phone@example.com",
+                "username": "patient-no-email",
+                "phone_number": "+25761000012",
                 "password": "secret123",
             },
             format="json",
         )
 
         self.assertEqual(response.status_code, 400)
-        self.assertIn("Ce numero n'est pas admis", str(response.data))
+        self.assertIn("email", response.data)
 
-    def test_accepts_tanzania_phone_number(self):
-        register_response = self.client.post(
+    def test_patient_register_with_duplicate_phone_number_is_rejected(self):
+        self.client.post(
             "/api/auth/register/",
             {
                 "account_type": "patient",
-                "username": "patient-tz",
-                "phone_number": "+255712345678",
-                "email": "patient-tz@example.com",
+                "username": "patient-first",
+                "phone_number": "+25761000333",
+                "email": "patient-first@example.com",
                 "password": "secret123",
             },
             format="json",
         )
 
-        self.assertEqual(register_response.status_code, 201)
-
-        login_response = self.client.post(
-            "/api/auth/login/",
+        response = self.client.post(
+            "/api/auth/register/",
             {
-                "phone_number": "+255712345678",
+                "account_type": "patient",
+                "username": "patient-second",
+                "phone_number": "+25761000333",
+                "email": "patient-second@example.com",
                 "password": "secret123",
             },
             format="json",
         )
 
-        self.assertEqual(login_response.status_code, 200)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("phone_number", response.data)
+
+    def test_patient_register_with_duplicate_email_is_rejected(self):
+        self.client.post(
+            "/api/auth/register/",
+            {
+                "account_type": "patient",
+                "username": "patient-mail-first",
+                "phone_number": "+25761000444",
+                "email": "duplicate@example.com",
+                "password": "secret123",
+            },
+            format="json",
+        )
+
+        response = self.client.post(
+            "/api/auth/register/",
+            {
+                "account_type": "patient",
+                "username": "patient-mail-second",
+                "phone_number": "+25761000555",
+                "email": "duplicate@example.com",
+                "password": "secret123",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("email", response.data)
+
+    def test_pharmacy_register_with_duplicate_phone_number_is_rejected(self):
+        self.client.post(
+            "/api/auth/register/",
+            {
+                "account_type": "patient",
+                "username": "patient-first-phone-lock",
+                "phone_number": "+25761000666",
+                "email": "patient-first-phone-lock@example.com",
+                "password": "secret123",
+            },
+            format="json",
+        )
+
+        response = self.client.post(
+            "/api/auth/register/",
+            {
+                "account_type": "pharmacy",
+                "pharmacy_name": "Pharmacie Phone Duplicate",
+                "phone_number": "+25761000666",
+                "email": "pharmacy-phone-duplicate@example.com",
+                "address": "Rohero, Bujumbura",
+                "password": "secret123",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("phone_number", response.data)
+
+    def test_password_reset_confirm_with_invalid_token_fails(self):
+        user = User.objects.create_user(username="patient-reset-invalid", email="patient-reset-invalid@example.com", password="oldsecret123")
+        UserProfile.objects.create(user=user, role="patient", phone_number="+25761000010", email_verified=True)
+
+        request_response = self.client.post(
+            "/api/auth/password-reset/",
+            {"email": "patient-reset-invalid@example.com"},
+            format="json",
+        )
+
+        self.assertEqual(request_response.status_code, 200)
+        self.assertEqual(len(mail.outbox), 1)
+
+        response = self.client.post(
+            "/api/auth/password-reset/confirm/",
+            {
+                "uid": "baduid",
+                "token": "badtoken",
+                "new_password": "newsecret123",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("token", response.data)
 
     def test_password_reset_request_and_confirm_for_patient_email(self):
         user = User.objects.create_user(username="patient-reset", email="patient-reset@example.com", password="oldsecret123")
-        UserProfile.objects.create(user=user, role="patient", phone_number="+25761000009")
+        UserProfile.objects.create(user=user, role="patient", phone_number="+25761000009", email_verified=True)
 
         request_response = self.client.post(
             "/api/auth/password-reset/",
@@ -198,7 +388,7 @@ class AuthenticationFlowTests(APITestCase):
         self.assertEqual(confirm_response.status_code, 200)
         login_response = self.client.post(
             "/api/auth/login/",
-            {"phone_number": "+25761000009", "password": "newsecret123"},
+            {"email": "patient-reset@example.com", "password": "newsecret123"},
             format="json",
         )
         self.assertEqual(login_response.status_code, 200)
@@ -212,20 +402,3 @@ class AuthenticationFlowTests(APITestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(mail.outbox), 0)
-
-    def test_pharmacy_register_without_email_still_creates_trial_subscription(self):
-        response = self.client.post(
-            "/api/auth/register/",
-            {
-                "account_type": "pharmacy",
-                "pharmacy_name": "Pharmacie Sans Email",
-                "phone_number": "+25761000013",
-                "address": "Rohero, Bujumbura",
-                "password": "secret123",
-            },
-            format="json",
-        )
-
-        self.assertEqual(response.status_code, 201)
-        profile = UserProfile.objects.select_related("pharmacy").get(user__username=response.data["user"]["username"])
-        self.assertEqual(profile.pharmacy.email, "")

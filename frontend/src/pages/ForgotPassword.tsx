@@ -26,6 +26,13 @@ export default function ForgotPassword() {
       return;
     }
 
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      setError("Veuillez saisir une adresse email valide.");
+      setFieldErrors({ email: "Adresse email invalide." });
+      setBusy(false);
+      return;
+    }
+
     try {
       const result = await requestPasswordReset({ email: normalizedEmail });
       setSuccess(result.message);
@@ -43,24 +50,24 @@ export default function ForgotPassword() {
       <div className="auth-panel auth-copy">
         <span className="landing-section-kicker">Securite</span>
         <h1>Reinitialisez votre mot de passe PharmiGo.</h1>
-        <p>La connexion normale reste basee sur le numero de telephone et le mot de passe. Ce formulaire sert seulement si vous aviez ajoute un email de recuperation a votre compte.</p>
+        <p>La connexion PharmiGo se fait avec votre adresse email et votre mot de passe. Saisissez votre email pour recevoir un lien de reinitialisation.</p>
       </div>
 
       <div className="auth-panel auth-form-panel">
         <form className="auth-form" onSubmit={handleSubmit}>
           <div className="section-heading compact">
             <h2>Mot de passe oublie</h2>
-            <p>Si vous n'avez pas renseigne d'email auparavant, la reinitialisation automatique ne pourra pas etre envoyee.</p>
+            <p>Si cette adresse existe dans PharmiGo, nous vous enverrons un lien de reinitialisation.</p>
           </div>
 
           <label>
-            <span>Email de recuperation</span>
+            <span>Adresse email</span>
             <input
               type="email"
               className={fieldErrors.email ? "field-input-error" : ""}
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              placeholder="Email optionnel enregistre auparavant"
+              placeholder="vous@exemple.com"
             />
             {fieldErrors.email ? <small className="field-error">{fieldErrors.email}</small> : null}
           </label>

@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { Children, useState, type ReactNode } from "react";
 
 type DashboardNavItem = {
   id: string;
@@ -46,6 +46,37 @@ export function DashboardPanel({
   );
 }
 
+export function RefreshGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="dashboard-refresh-icon">
+      <path
+        d="M20 11a8 8 0 1 1-2.34-5.66M20 4v5h-5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+export function EyeGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="dashboard-eye-icon">
+      <path
+        d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" strokeWidth="1.9" />
+    </svg>
+  );
+}
+
 export default function DashboardScaffold({
   brand,
   pageTitle,
@@ -61,7 +92,8 @@ export default function DashboardScaffold({
   navSections,
   metrics,
   highlights,
-  actions,
+  topbarActions,
+  heroActions,
   children,
 }: {
   brand: string;
@@ -78,10 +110,14 @@ export default function DashboardScaffold({
   navSections: DashboardNavSection[];
   metrics: DashboardMetric[];
   highlights?: DashboardHighlight[];
-  actions?: ReactNode;
+  topbarActions?: ReactNode;
+  heroActions?: ReactNode;
   children: ReactNode;
 }) {
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+  const topbarActionItems = topbarActions ? Children.toArray(topbarActions).filter(Boolean) : [];
+  const heroActionItems = heroActions ? Children.toArray(heroActions).filter(Boolean) : [];
+  const heroActionClassName = heroActionItems.length > 1 ? "dashboard-actions dashboard-actions-paired" : "dashboard-actions dashboard-actions-single";
 
   return (
     <div className="dashboard-frame">
@@ -124,18 +160,36 @@ export default function DashboardScaffold({
 
       <div className="dashboard-stage">
         <header className="dashboard-topbar">
-          <div className="dashboard-topbar-main">
-            <button
-              type="button"
-              className="dashboard-mobile-toggle"
-              onClick={() => setIsMobileNavOpen((current) => !current)}
-              aria-label="Ouvrir le menu"
-            >
-              <span />
-              <span />
-              <span />
-            </button>
-            <div className="dashboard-topbar-title">{pageTitle}</div>
+          <div className="dashboard-topbar-summary">
+            <div className="dashboard-topbar-main">
+              <button
+                type="button"
+                className="dashboard-mobile-toggle"
+                onClick={() => setIsMobileNavOpen((current) => !current)}
+                aria-label="Ouvrir le menu"
+              >
+                <span />
+                <span />
+                <span />
+              </button>
+              <div className="dashboard-topbar-profile">
+                <div className="dashboard-topbar-avatar-wrap">
+                  {profileImageUrl ? (
+                    <img src={profileImageUrl} alt={profileLabel} className="dashboard-topbar-avatar-image" />
+                  ) : (
+                    <div className="dashboard-topbar-avatar">{profileLabel.slice(0, 1).toUpperCase()}</div>
+                  )}
+                  <span className={profileIsOnline ? "dashboard-presence-dot online" : "dashboard-presence-dot"} aria-label={profileIsOnline ? "En ligne" : "Hors ligne"} />
+                </div>
+                <div>
+                  <strong>{profileLabel}</strong>
+                  <small>{profileMeta}</small>
+                </div>
+              </div>
+            </div>
+            <div className="dashboard-topbar-trailing">
+              {topbarActionItems.length ? <div className="dashboard-topbar-actions">{topbarActionItems}</div> : null}
+            </div>
           </div>
           <label className="dashboard-topbar-search" aria-label={searchPlaceholder}>
             <span className="dashboard-topbar-search-icon" aria-hidden="true">⌕</span>
@@ -161,30 +215,13 @@ export default function DashboardScaffold({
               </button>
             ) : null}
           </label>
-          <div className="dashboard-topbar-profile">
-            <div className="dashboard-topbar-avatar-wrap">
-              {profileImageUrl ? (
-                <img src={profileImageUrl} alt={profileLabel} className="dashboard-topbar-avatar-image" />
-              ) : (
-                <div className="dashboard-topbar-avatar">{profileLabel.slice(0, 1).toUpperCase()}</div>
-              )}
-              <span className={profileIsOnline ? "dashboard-presence-dot online" : "dashboard-presence-dot"} aria-label={profileIsOnline ? "En ligne" : "Hors ligne"} />
-            </div>
-            <div>
-              <strong>{profileLabel}</strong>
-              <small>{profileMeta}</small>
-            </div>
-          </div>
         </header>
 
-        <section className="dashboard-hero-card">
-          <div>
-            <span className="dashboard-eyebrow">{roleLabel}</span>
-            <h2>{pageTitle}</h2>
-            <p className="dashboard-subtitle">{pageSubtitle}</p>
-          </div>
-          {actions ? <div className="dashboard-actions">{actions}</div> : null}
-        </section>
+        {heroActionItems.length ? (
+          <section className="dashboard-hero-card dashboard-hero-card-actions-only">
+            <div className={heroActionClassName}>{heroActionItems}</div>
+          </section>
+        ) : null}
 
         <section className="dashboard-metrics-grid">
           {metrics.map((metric) => (

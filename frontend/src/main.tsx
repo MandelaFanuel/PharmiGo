@@ -5,6 +5,8 @@ import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import { PreferencesProvider } from "./context/PreferencesContext";
 import "./styles/variables.css";
+import "./styles/pharmacy-stock.css";
+import "./styles/dashboards.css";
 import "./styles/global.css";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
@@ -24,7 +26,12 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    const isLocalDevHost = ["localhost", "127.0.0.1"].includes(window.location.hostname);
+    const hostname = window.location.hostname;
+    const isLocalDevHost =
+      ["localhost", "127.0.0.1"].includes(hostname) ||
+      hostname.startsWith("192.168.") ||
+      hostname.startsWith("10.") ||
+      /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname);
 
     if (import.meta.env.DEV || isLocalDevHost) {
       navigator.serviceWorker.getRegistrations().then((registrations) =>

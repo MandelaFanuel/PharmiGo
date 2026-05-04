@@ -1,6 +1,6 @@
 import { startTransition, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
-import DashboardScaffold, { DashboardPanel } from "./DashboardScaffold";
+import DashboardScaffold, { DashboardPanel, EyeGlyph, RefreshGlyph } from "./DashboardScaffold";
 import InAppDocumentViewer from "./InAppDocumentViewer";
 import PublicPrescriptionSheet from "./PublicPrescriptionSheet";
 import { getApiOrigin } from "../config/endpoints";
@@ -271,7 +271,8 @@ export default function PatientDashboard() {
 
     try {
       const [profile, dashboard] = await Promise.all([fetchProfile(), fetchDashboard()]);
-      const historyPrescriptions = Array.isArray(profile.history?.prescriptions) ? profile.history.prescriptions : [];
+      const history = profile.history;
+      const historyPrescriptions = history && Array.isArray(history.prescriptions) ? history.prescriptions : [];
       startTransition(() => {
         setProfileName(profile.username || "Patient");
         setProfileMeta([formatPresenceLabel(profile.profile?.is_online, profile.profile?.last_seen, language), profile.profile?.phone_number || ""].filter(Boolean).join(" • "));
@@ -444,15 +445,16 @@ export default function PatientDashboard() {
       navSections={navSections}
       metrics={metrics}
       highlights={highlights}
-      actions={
-        <>
-          <button className="primary-button" onClick={() => void loadDashboardData()}>
-            {labels.refresh}
-          </button>
-          <button className="secondary-button" onClick={() => window.dispatchEvent(new CustomEvent("open-upload-modal"))}>
-            {labels.newPrescription}
-          </button>
-        </>
+      topbarActions={
+        <button
+          className="dashboard-icon-button dashboard-refresh-button"
+          onClick={() => void loadDashboardData()}
+          aria-label={labels.refresh}
+          title={labels.refresh}
+          type="button"
+        >
+          <RefreshGlyph />
+        </button>
       }
     >
       {activeSection === "dashboard" || activeSection === "prescriptions" ? (
@@ -576,52 +578,53 @@ function OriginalPrescriptionCards({
   }
 
   return (
-    <div className="dashboard-record-list">
+    <div className="dashboard-record-list dashboard-mobile-single-stack">
       {prescriptions.map((prescription) => {
         const documentUrl = getPrescriptionDocumentUrl(prescription);
         const selectedPharmacy = prescription.pharmacy_name || "En attente";
         return (
-        <article key={prescription.id} className="dashboard-record-card">
-          <div className="dashboard-record-head">
-            <div>
-              <strong>{prescription.medication_name}</strong>
-              <small>
-                <span className="public-reference-badge">{getPrescriptionReference(prescription)}</span> {formatExactDateTime(prescription.created_at, language)}
-              </small>
+          <article key={prescription.id} className="dashboard-record-card">
+            <div className="dashboard-record-head">
+              <div>
+                <strong>{prescription.medication_name}</strong>
+                <small>
+                  <span className="public-reference-badge">{getPrescriptionReference(prescription)}</span> {formatExactDateTime(prescription.created_at, language)}
+                </small>
+              </div>
+              <span className={`badge ${getStatusColor(prescription.status)}`}>{getStatusLabel(prescription.status)}</span>
             </div>
-            <span className={`badge ${getStatusColor(prescription.status)}`}>{getStatusLabel(prescription.status)}</span>
-          </div>
 
-          <div className="dashboard-data-block dashboard-data-block-info">
-            <span>{labels.original}</span>
-            <p>{labels.originalHint}</p>
-            <small>{labels.selectedPharmacy}: {selectedPharmacy}</small>
-          </div>
+            <div className="dashboard-data-block dashboard-data-block-info">
+              <span>{labels.original}</span>
+              <p>{labels.originalHint}</p>
+              <small>{labels.selectedPharmacy}: {selectedPharmacy}</small>
+            </div>
 
-          {documentUrl ? (
-            isImageDocument(documentUrl) ? (
-              <button
-                type="button"
-                className="prescription-image-preview dashboard-document-preview button-reset"
-                onClick={() => onOpenDocument(prescription)}
-              >
-                <img src={documentUrl} alt={`Ordonnance ${getPrescriptionReference(prescription)}`} />
-              </button>
+            {documentUrl ? (
+              isImageDocument(documentUrl) ? (
+                <button
+                  type="button"
+                  className="prescription-image-preview dashboard-document-preview button-reset"
+                  onClick={() => onOpenDocument(prescription)}
+                >
+                  <img src={documentUrl} alt={`Ordonnance ${getPrescriptionReference(prescription)}`} />
+                </button>
+              ) : (
+                <div className="prescription-document-panel dashboard-document-panel">
+                  <p>{labels.originalHint}</p>
+                  <button type="button" className="secondary-button dashboard-document-action" onClick={() => onOpenDocument(prescription)} aria-label={labels.viewOriginal} title={labels.viewOriginal}>
+                    <EyeGlyph />
+                    <span>{labels.viewOriginal}</span>
+                  </button>
+                </div>
+              )
             ) : (
               <div className="prescription-document-panel dashboard-document-panel">
-                <p>{labels.originalHint}</p>
-                <button type="button" className="secondary-button" onClick={() => onOpenDocument(prescription)}>
-                  {labels.viewOriginal}
-                </button>
+                <p>{labels.documentProtected}</p>
               </div>
-            )
-          ) : (
-            <div className="prescription-document-panel dashboard-document-panel">
-              <p>{labels.documentProtected}</p>
-            </div>
-          )}
-        </article>
-      );
+            )}
+          </article>
+        );
       })}
     </div>
   );
@@ -639,13 +642,13 @@ function ConfirmedMedicationCards({
   }
 
   return (
-    <div className="dashboard-record-list">
+    <div className="dashboard-record-list dashboard-mobile-single-stack">
       {prescriptions.map((prescription) => (
         <PublicPrescriptionSheet
           key={prescription.id}
           prescription={prescription}
           title={prescription.medication_name || "Ordonnance confirmee"}
-          className="compact"
+          className="compact dashboard-prescription-sheet"
         />
       ))}
     </div>
@@ -672,7 +675,7 @@ function HistoryCards({
   }
 
   return (
-    <div className="dashboard-record-list">
+    <div className="dashboard-record-list dashboard-mobile-single-stack">
       {prescriptions.map((prescription) => (
         <article key={`history-${prescription.id}`} className="dashboard-record-card">
           <div className="dashboard-record-head">

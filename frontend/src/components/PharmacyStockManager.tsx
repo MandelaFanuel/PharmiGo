@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { logClientError } from "../lib/logger";
-import { createPharmacyStockItem, deletePharmacyStockItem, fetchPharmacyStock, updatePharmacyStockItem } from "../services/api";
+import { createPharmacyStockItem, deletePharmacyStockItem, fetchPharmacyStock, patchPharmacyStockItem, updatePharmacyStockItem } from "../services/api";
 
 interface MedicationStock {
   id: number;
@@ -62,6 +62,7 @@ export default function PharmacyStockManager({
 }) {
   const [stock, setStock] = useState<MedicationStock[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [busyStockId, setBusyStockId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -88,6 +89,37 @@ export default function PharmacyStockManager({
     const timer = window.setTimeout(() => setSuccess(null), 2800);
     return () => window.clearTimeout(timer);
   }, [success]);
+
+  useEffect(() => {
+    const handleAddRequest = () => {
+      resetForm();
+      setEditingItem(null);
+      setShowForm(true);
+    };
+
+    const handleEditRequest = (event: Event) => {
+      const detail = (event as CustomEvent<{ id?: number; item?: Partial<MedicationStock> }>).detail;
+      if (!detail) {
+        return;
+      }
+
+      const existing = typeof detail.id === "number" ? stock.find((entry) => entry.id === detail.id) : null;
+      const source = existing ?? (detail.item ? normalizeStockItem(detail.item) : null);
+      if (!source) {
+        return;
+      }
+
+      handleEdit(source);
+    };
+
+    window.addEventListener("pharmacy-stock:add", handleAddRequest);
+    window.addEventListener("pharmacy-stock:edit", handleEditRequest as EventListener);
+
+    return () => {
+      window.removeEventListener("pharmacy-stock:add", handleAddRequest);
+      window.removeEventListener("pharmacy-stock:edit", handleEditRequest as EventListener);
+    };
+  }, [stock]);
 
   async function loadStock(notifyParent = false) {
     setIsLoading(true);
@@ -181,19 +213,29 @@ export default function PharmacyStockManager({
 
   async function handleQuantityChange(item: MedicationStock, delta: number) {
     const nextQuantity = Math.max(0, item.quantity + delta);
-    setIsLoading(true);
+    if (nextQuantity === item.quantity) {
+      return;
+    }
+
+    setBusyStockId(item.id);
     setError(null);
 
     try {
-      await updatePharmacyStockItem(item.id, {
-        medication_name: item.medication_name,
-        generic_name: item.generic_name ?? "",
-        dosage: item.dosage ?? "",
+      await patchPharmacyStockItem(item.id, {
         quantity: nextQuantity,
-        unit: item.unit,
-        price: item.price,
-        is_available: nextQuantity > 0 ? item.is_available : false,
+        is_available: nextQuantity > 0,
       });
+      setStock((current) =>
+        current.map((entry) =>
+          entry.id === item.id
+            ? {
+                ...entry,
+                quantity: nextQuantity,
+                is_available: nextQuantity > 0,
+              }
+            : entry
+        )
+      );
       setSuccess(delta > 0 ? "Quantite augmentee avec succes." : "Quantite diminuee avec succes.");
       await loadStock(true);
     } catch (err) {
@@ -201,7 +243,7 @@ export default function PharmacyStockManager({
       void err;
       logClientError("La mise a jour de la quantite a echoue.");
     } finally {
-      setIsLoading(false);
+      setBusyStockId(null);
     }
   }
 
@@ -292,54 +334,51 @@ export default function PharmacyStockManager({
           {stock.length === 0 ? (
             <div className="empty-state">Aucun médicament dans le stock</div>
           ) : (
-            <table className="stock-table">
-              <thead>
-                <tr>
-                  <th>Médicament</th>
-                  <th>Dosage</th>
-                  <th>Quantité</th>
-                  <th>Unité</th>
-                  <th>Prix</th>
-                  <th>Statut</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {stock.map((item) => (
-                  <tr key={item.id}>
-                    <td>
+            <div className="stock-card-list">
+              {stock.map((item) => (
+                <article key={item.id} className="stock-row-card">
+                  <div className="stock-row-main">
+                    <div className="stock-row-title">
                       <strong>{item.medication_name}</strong>
                       {item.generic_name ? <small>{item.generic_name}</small> : null}
-                    </td>
-                    <td>{item.dosage || "-"}</td>
-                    <td>
-                      <div className="stock-quantity-controls">
-                        <button type="button" className="icon-button" onClick={() => void handleQuantityChange(item, -1)} disabled={isLoading || item.quantity <= 0}>
-                          -
-                        </button>
-                        <strong>{item.quantity}</strong>
-                        <button type="button" className="icon-button" onClick={() => void handleQuantityChange(item, 1)} disabled={isLoading}>
-                          +
-                        </button>
-                      </div>
-                    </td>
-                    <td>{item.unit}</td>
-                    <td>{item.price.toFixed(2)} FCFA</td>
-                    <td>
-                      <span className={`badge ${item.is_available ? "success" : "warning"}`}>{item.is_available ? "Disponible" : "Indisponible"}</span>
-                    </td>
-                    <td>
-                      <button className="icon-button" onClick={() => handleEdit(item)} title="Modifier">
+                    </div>
+                    <span className="stock-row-dosage">{item.dosage || "-"}</span>
+                    <div className="stock-quantity-controls">
+                      <button
+                        type="button"
+                        className="icon-button compact"
+                        onClick={() => void handleQuantityChange(item, -1)}
+                        disabled={isLoading || busyStockId === item.id || item.quantity <= 0}
+                        aria-label={`Reduire la quantite de ${item.medication_name}`}
+                      >
+                        -
+                      </button>
+                      <strong>{item.quantity}</strong>
+                      <button
+                        type="button"
+                        className="icon-button compact"
+                        onClick={() => void handleQuantityChange(item, 1)}
+                        disabled={isLoading || busyStockId === item.id}
+                        aria-label={`Augmenter la quantite de ${item.medication_name}`}
+                      >
+                        +
+                      </button>
+                    </div>
+                    <span className="stock-row-unit">{item.unit}</span>
+                    <span className="stock-row-price">{item.price.toFixed(2)} FCFA</span>
+                    <span className={`badge ${item.is_available ? "success" : "warning"}`}>{item.is_available ? "Disponible" : "Indisponible"}</span>
+                    <div className="stock-row-actions">
+                      <button className="icon-button compact" onClick={() => handleEdit(item)} title="Modifier" disabled={busyStockId === item.id}>
                         ✏️
                       </button>
-                      <button className="icon-button delete" onClick={() => void handleDelete(item.id)} title="Supprimer">
+                      <button className="icon-button compact delete" onClick={() => void handleDelete(item.id)} title="Supprimer" disabled={busyStockId === item.id}>
                         🗑️
                       </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
           )}
         </div>
       )}

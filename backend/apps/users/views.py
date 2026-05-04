@@ -15,14 +15,18 @@ from rest_framework.views import APIView
 from apps.pharmacies.serializers import PharmacySerializer
 from apps.users.location import refresh_profile_location_from_request
 from .serializers import (
+    GoogleAuthSerializer,
     LoginSerializer,
     PasswordResetConfirmSerializer,
     PasswordResetRequestSerializer,
+    ResendVerificationEmailSerializer,
     RegisterSerializer,
     UserSerializer,
+    VerifyEmailSerializer,
     build_password_reset_payload,
 )
 from apps.users.models import UserProfile
+from apps.users.services import EmailDeliveryError, EmailVerificationError, send_email_verification_for_user, verify_email_token
 from pharmigo.api import broadcast_feed_event
 
 User = get_user_model()
@@ -49,17 +53,21 @@ class RegisterView(APIView):
         serializer = RegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
-        token = issue_auth_token(user)
+        try:
+            delivery = send_email_verification_for_user(user) or {}
+        except EmailDeliveryError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
         if getattr(getattr(user, "profile", None), "role", None) == "pharmacy" and getattr(user.profile, "pharmacy", None) is not None:
             broadcast_feed_event("pharmacy.created", PharmacySerializer(user.profile.pharmacy).data)
-        return Response(
-            {
-                "message": "Inscription reussie.",
-                "user": UserSerializer(user).data,
-                "token": token.key,
-            },
-            status=status.HTTP_201_CREATED,
-        )
+        response_payload = {
+            "message": "Inscription reussie. Verifiez maintenant votre adresse email pour activer votre compte.",
+            "user": UserSerializer(user).data,
+            "requires_email_verification": True,
+        }
+        if settings.DEBUG and delivery:
+            response_payload["email_delivery_mode"] = delivery.get("delivery_mode")
+            response_payload["debug_verification_token"] = delivery.get("verification_token")
+        return Response(response_payload, status=status.HTTP_201_CREATED)
 
 
 class LoginView(APIView):
@@ -77,6 +85,25 @@ class LoginView(APIView):
                 "user": UserSerializer(user).data,
                 "token": token.key,
             }
+        )
+
+
+class GoogleLoginView(APIView):
+    def post(self, request):
+        serializer = GoogleAuthSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.validated_data["user"]
+        profile = getattr(user, "profile", None)
+        if profile is not None:
+            refresh_profile_location_from_request(profile, request)
+        token = issue_auth_token(user)
+        return Response(
+            {
+                "message": "Connexion Google reussie.",
+                "user": UserSerializer(user).data,
+                "token": token.key,
+            },
+            status=status.HTTP_200_OK,
         )
 
 
@@ -156,3 +183,44 @@ class PasswordResetConfirmView(APIView):
         user.set_password(serializer.validated_data["new_password"])
         user.save(update_fields=["password"])
         return Response({"message": "Votre mot de passe a ete reinitialise avec succes."}, status=status.HTTP_200_OK)
+
+
+class VerifyEmailView(APIView):
+    def post(self, request):
+        serializer = VerifyEmailSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            user = verify_email_token(serializer.validated_data["token"])
+        except EmailVerificationError as exc:
+            return Response({"token": [str(exc)]}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(
+            {
+                "message": "Votre adresse email a ete verifiee avec succes.",
+                "user": UserSerializer(user).data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class ResendVerificationEmailView(APIView):
+    def post(self, request):
+        serializer = ResendVerificationEmailSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        email = serializer.validated_data["email"].strip().lower()
+
+        user = User.objects.filter(email__iexact=email).select_related("profile").first()
+        profile = getattr(user, "profile", None) if user is not None else None
+        delivery = None
+        if user is not None and profile is not None and not profile.email_verified:
+            try:
+                delivery = send_email_verification_for_user(user)
+            except Exception as exc:
+                logger.warning("Verification email could not be resent: %s", exc)
+
+        response_payload = {"message": "Si ce compte existe, un email de verification a ete envoye."}
+        if settings.DEBUG and delivery:
+            response_payload["email_delivery_mode"] = delivery.get("delivery_mode")
+            response_payload["debug_verification_token"] = delivery.get("verification_token")
+        return Response(response_payload, status=status.HTTP_200_OK)

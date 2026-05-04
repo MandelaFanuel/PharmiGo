@@ -162,15 +162,40 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-
 GOOGLE_VISION_ENABLED = _read_bool_env("GOOGLE_VISION_ENABLED", default=False)
 GOOGLE_APPLICATION_CREDENTIALS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
 
-FRONTEND_APP_URL = os.getenv("FRONTEND_APP_URL", "http://localhost:3001").strip() or "http://localhost:3001"
-DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "no-reply@pharmigo.local").strip() or "no-reply@pharmigo.local"
-EMAIL_BACKEND = os.getenv(
-    "EMAIL_BACKEND",
-    "django.core.mail.backends.console.EmailBackend" if DEBUG else "django.core.mail.backends.smtp.EmailBackend",
-).strip()
-EMAIL_HOST = os.getenv("EMAIL_HOST", "localhost").strip() or "localhost"
-EMAIL_PORT = int(os.getenv("EMAIL_PORT", "25"))
-EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "").strip()
-EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "").strip()
-EMAIL_USE_TLS = _read_bool_env("EMAIL_USE_TLS", default=False)
-EMAIL_USE_SSL = _read_bool_env("EMAIL_USE_SSL", default=False)
+FRONTEND_URL = (
+    os.getenv("FRONTEND_URL", "").strip()
+    or os.getenv("FRONTEND_APP_URL", "").strip()
+    or "http://localhost:3001"
+)
+FRONTEND_APP_URL = FRONTEND_URL
+EMAIL_FROM = (
+    os.getenv("EMAIL_FROM", "").strip()
+    or os.getenv("DEFAULT_FROM_EMAIL", "").strip()
+    or "no-reply@pharmigo.local"
+)
+DEFAULT_FROM_EMAIL = EMAIL_FROM
+
+SMTP_HOST = os.getenv("SMTP_HOST", "").strip() or os.getenv("EMAIL_HOST", "").strip()
+SMTP_PORT = os.getenv("SMTP_PORT", os.getenv("EMAIL_PORT", "")).strip()
+SMTP_USER = os.getenv("SMTP_USER", "").strip() or os.getenv("EMAIL_HOST_USER", "").strip()
+SMTP_PASSWORD = (
+    os.getenv("SMTP_PASSWORD", "").strip()
+    or os.getenv("SMTP_PASS", "").strip()
+    or os.getenv("EMAIL_HOST_PASSWORD", "").strip()
+)
+
+if not SMTP_HOST and SMTP_USER.endswith("@gmail.com"):
+    SMTP_HOST = "smtp.gmail.com"
+if not SMTP_PORT and SMTP_HOST == "smtp.gmail.com":
+    SMTP_PORT = "587"
+
+SMTP_CONFIGURED = bool(SMTP_HOST and SMTP_PORT and (SMTP_USER or SMTP_PASSWORD))
+DEFAULT_EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend" if SMTP_CONFIGURED else "django.core.mail.backends.console.EmailBackend"
+EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", DEFAULT_EMAIL_BACKEND).strip() or DEFAULT_EMAIL_BACKEND
+EMAIL_HOST = SMTP_HOST or "localhost"
+EMAIL_PORT = int(SMTP_PORT or "25")
+EMAIL_HOST_USER = SMTP_USER
+EMAIL_HOST_PASSWORD = SMTP_PASSWORD
+EMAIL_USE_TLS = _read_bool_env("EMAIL_USE_TLS", default=EMAIL_HOST == "smtp.gmail.com" and EMAIL_PORT == 587)
+EMAIL_USE_SSL = _read_bool_env("EMAIL_USE_SSL", "SMTP_SECURE", default=False)
+GOOGLE_OAUTH_CLIENT_ID = os.getenv("GOOGLE_OAUTH_CLIENT_ID", "").strip()

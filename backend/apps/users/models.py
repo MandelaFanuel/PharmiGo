@@ -18,6 +18,8 @@ class UserProfile(models.Model):
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default="patient")
     phone_number = models.CharField(max_length=30, blank=True)
     whatsapp_number = models.CharField(max_length=30, blank=True)
+    birth_date = models.DateField(blank=True, null=True)
+    gender = models.CharField(max_length=20, blank=True, default="")
     address = models.CharField(max_length=255, blank=True)
     profile_image = models.ImageField(upload_to="profiles/", blank=True, null=True)
     last_known_ip = models.GenericIPAddressField(blank=True, null=True)
@@ -36,9 +38,18 @@ class UserProfile(models.Model):
         related_name="user_profile",
     )
     created_at = models.DateTimeField(auto_now_add=True)
+    email_verified = models.BooleanField(default=False)
+    google_sub = models.CharField(max_length=255, blank=True, default="")
 
     class Meta:
         ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["phone_number"],
+                condition=~models.Q(phone_number=""),
+                name="users_profile_phone_unique_non_blank",
+            ),
+        ]
 
     def __str__(self) -> str:
         return f"{self.user.username} ({self.role})"
@@ -71,3 +82,17 @@ class UserProfile(models.Model):
         if not self.is_online or self.last_seen is None:
             return False
         return self.last_seen >= timezone.now() - timedelta(seconds=grace_seconds)
+
+
+class EmailVerificationToken(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="email_verification_tokens")
+    token_hash = models.CharField(max_length=64, unique=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"Email verification token for user {self.user_id}"

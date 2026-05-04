@@ -460,6 +460,8 @@ export interface AuthUserProfile {
   phone_number: string;
   whatsapp_number: string;
   address: string;
+  email_verified?: boolean;
+  google_connected?: boolean;
   created_at?: string;
   profile_image?: string | null;
   is_online?: boolean;
@@ -497,5 +499,8 @@ export interface AuthUser {
 export interface AuthResponse {
   message: string;
   user: AuthUser;
-  token: string;
+  token?: string;
+  requires_email_verification?: boolean;
+  email_delivery_mode?: "smtp" | "console_preview";
+  debug_verification_token?: string;
 }

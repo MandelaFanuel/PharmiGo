@@ -33,11 +33,10 @@ export default function PhoneNumberField({
         >
           {phoneCountries.map((country) => (
             <option key={country.code} value={country.code}>
-              {country.flag} {country.name} {country.dialCode}
+              {country.flag} {country.dialCode}
             </option>
           ))}
         </select>
-        <div className="phone-dial-code">{selectedCountry.dialCode}</div>
         <input
           name={name}
           type="tel"

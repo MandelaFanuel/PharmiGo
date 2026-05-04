@@ -3,6 +3,8 @@ import { startTransition, type FormEvent, type ReactNode, useDeferredValue, useM
 import { useLocation, useNavigate } from "react-router-dom";
 
 import ChatBotButton from "../components/ChatBotButton";
+import GoogleSignInButton from "../components/GoogleSignInButton";
+import ModalTransition from "../components/ModalTransition";
 import PhoneNumberField from "../components/PhoneNumberField";
 import NotificationToast from "../components/NotificationToast";
 import PrescriptionAnalysisPopup from "../components/PrescriptionAnalysisPopup";
@@ -12,6 +14,7 @@ import PatientDashboard from "../components/PatientDashboard";
 import PharmacyDashboard from "../components/PharmacyDashboard";
 import AdminDashboard from "../components/AdminDashboard";
 import PublicPrescriptionSheet from "../components/PublicPrescriptionSheet";
+import Reveal from "../components/Reveal";
 import { getApiOrigin, getChatWebSocketUrl } from "../config/endpoints";
 import { usePreferences } from "../context/PreferencesContext";
 import { downloadPharmiGoPDF } from "../utils/pharmigoPDF";
@@ -31,6 +34,7 @@ import {
   fetchPrescriptionAnalysisTask,
   fetchProfile,
   login,
+  loginWithGoogle,
   logout,
   markAllNotificationsAsRead,
   markNotificationAsRead,
@@ -72,9 +76,8 @@ type ModalType = "login" | "register" | "upload" | "profile" | "messages" | "pha
 type AccountType = "patient" | "pharmacy";
 
 type LoginFormState = {
-  phone_number: string;
+  email: string;
   password: string;
-  country_code: PhoneCountryCode;
 };
 
 type PatientRegisterFormState = {
@@ -150,6 +153,8 @@ type ShareMenuState = {
 
 type ShareChannel = "whatsapp" | "facebook" | "instagram" | "telegram" | "tiktok" | "copy" | "platform";
 
+const HOME_MOBILE_BREAKPOINT = 768;
+
 const defaultKpis: KPIShape = {
   response_time_minutes: 0,
   resolution_rate: 0,
@@ -175,8 +180,12 @@ function ModalShell({
   children: ReactNode;
 }) {
   return (
-    <div className="landing-modal-overlay" role="dialog" aria-modal="true" aria-label={title} onClick={onClose}>
-      <div className={className ? `landing-modal-card ${className}` : "landing-modal-card"} onClick={(event) => event.stopPropagation()}>
+    <ModalTransition
+      overlayClassName="landing-modal-overlay"
+      panelClassName={className ? `landing-modal-card ${className}` : "landing-modal-card"}
+      ariaLabel={title}
+      onBackdropClick={onClose}
+    >
         <div className="landing-modal-head">
           <div>
             <h2>{title}</h2>
@@ -187,8 +196,7 @@ function ModalShell({
           </button>
         </div>
         {children}
-      </div>
-    </div>
+    </ModalTransition>
   );
 }
 
@@ -198,6 +206,51 @@ function ProfileReadItem({ label, value }: { label: string; value: string }) {
       <span>{label}</span>
       <strong>{value}</strong>
     </div>
+  );
+}
+
+function HomePagination({
+  page,
+  totalPages,
+  onPageChange,
+  itemCount,
+}: {
+  page: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
+  itemCount: number;
+}) {
+  if (itemCount <= 0) {
+    return null;
+  }
+
+  const windowStart = Math.max(1, page - 2);
+  const windowEnd = Math.min(totalPages, windowStart + 4);
+  const pages = Array.from({ length: windowEnd - windowStart + 1 }, (_, index) => windowStart + index);
+
+  return (
+    <nav className="home-pagination" aria-label="Pagination">
+      <span className="home-pagination-summary">Page {page} / {Math.max(1, totalPages)}</span>
+      <button type="button" className="home-pagination-button" onClick={() => onPageChange(Math.max(1, page - 1))} disabled={page <= 1}>
+        Prec
+      </button>
+      <div className="home-pagination-pages">
+        {pages.map((pageNumber) => (
+          <button
+            key={pageNumber}
+            type="button"
+            className={pageNumber === page ? "home-pagination-button active" : "home-pagination-button"}
+            onClick={() => onPageChange(pageNumber)}
+            aria-current={pageNumber === page ? "page" : undefined}
+          >
+            {pageNumber}
+          </button>
+        ))}
+      </div>
+      <button type="button" className="home-pagination-button" onClick={() => onPageChange(Math.min(totalPages, page + 1))} disabled={page >= totalPages}>
+        Suiv
+      </button>
+    </nav>
   );
 }
 
@@ -216,6 +269,107 @@ function resolveMediaUrl(path?: string | null) {
   }
 
   return path.startsWith("/") ? path : `/${path}`;
+}
+
+function inferPharmacyTimeZone(pharmacy: Pharmacy) {
+  const hint = `${pharmacy.city || ""} ${pharmacy.address || ""}`.toLowerCase();
+
+  if (/bujumbura|gitega|ngozi|burundi/.test(hint)) return "Africa/Bujumbura";
+  if (/kigali|rwanda/.test(hint)) return "Africa/Kigali";
+  if (/kampala|uganda/.test(hint)) return "Africa/Kampala";
+  if (/nairobi|kenya/.test(hint)) return "Africa/Nairobi";
+  if (/dar es salaam|arusha|mwanza|tanzania/.test(hint)) return "Africa/Dar_es_Salaam";
+  if (/goma|bukavu|lubumbashi|kindu|congo est|rdc est/.test(hint)) return "Africa/Lubumbashi";
+  if (/kinshasa|matadi|kongo central|rdc|congo/.test(hint)) return "Africa/Kinshasa";
+
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || "Africa/Bujumbura";
+}
+
+function parseTimeToMinutes(raw: string) {
+  const [hourText = "0", minuteText = "0"] = raw.split(":");
+  const hours = Number.parseInt(hourText, 10);
+  const minutes = Number.parseInt(minuteText, 10);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) {
+    return null;
+  }
+  return hours * 60 + minutes;
+}
+
+function parseOpeningHoursRange(openingHours?: string | null) {
+  if (!openingHours) {
+    return null;
+  }
+
+  const normalized = openingHours.replace(/[–—]/g, "-").replace(/\s+/g, " ").trim();
+  const match = normalized.match(/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/);
+  if (!match) {
+    return null;
+  }
+
+  const openMinutes = parseTimeToMinutes(match[1]);
+  const closeMinutes = parseTimeToMinutes(match[2]);
+  if (openMinutes === null || closeMinutes === null) {
+    return null;
+  }
+
+  return { openMinutes, closeMinutes };
+}
+
+function getMinutesInTimeZone(timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date());
+
+  const hour = Number.parseInt(parts.find((part) => part.type === "hour")?.value ?? "0", 10);
+  const minute = Number.parseInt(parts.find((part) => part.type === "minute")?.value ?? "0", 10);
+  return hour * 60 + minute;
+}
+
+function getPharmacyScheduleStatus(pharmacy: Pharmacy, language: Language) {
+  const labels = {
+    open:
+      language === "en"
+        ? "Open"
+        : language === "sw"
+          ? "Wazi"
+          : language === "ln"
+            ? "Polele"
+            : language === "rn"
+              ? "Gufunguye"
+              : "Ouverte",
+    closed:
+      language === "en"
+        ? "Closed"
+        : language === "sw"
+          ? "Imefungwa"
+          : language === "ln"
+            ? "Ekangami"
+            : language === "rn"
+              ? "Gifunze"
+              : "Fermee",
+  };
+
+  const range = parseOpeningHoursRange(pharmacy.opening_hours);
+  if (!range) {
+    return {
+      className: pharmacy.is_open ? "open" : "neutral",
+      label: pharmacy.is_open ? labels.open : labels.closed,
+    };
+  }
+
+  const nowMinutes = getMinutesInTimeZone(inferPharmacyTimeZone(pharmacy));
+  const isOvernight = range.closeMinutes <= range.openMinutes;
+  const isOpen = isOvernight
+    ? nowMinutes >= range.openMinutes || nowMinutes < range.closeMinutes
+    : nowMinutes >= range.openMinutes && nowMinutes < range.closeMinutes;
+
+  return {
+    className: isOpen ? "open" : "neutral",
+    label: isOpen ? labels.open : labels.closed,
+  };
 }
 
 function getPharmacyOperationalStatus(pharmacy: Pharmacy, language: Language) {
@@ -242,17 +396,7 @@ function getPharmacyOperationalStatus(pharmacy: Pharmacy, language: Language) {
 function getPharmacySubscriptionStatus(pharmacy: Pharmacy, language: Language) {
   const status = String(pharmacy.subscription_status || "").toLowerCase();
   if (status === "active") {
-    return {
-      className: "official",
-      label:
-        language === "en"
-          ? "Paid status"
-          : language === "sw"
-            ? "Imelipiwa"
-            : language === "ln"
-              ? "Statut efutami"
-              : "Statut paye",
-    };
+    return null;
   }
 
   if (status === "trial") {
@@ -306,6 +450,16 @@ function getPharmacySubscriptionStatus(pharmacy: Pharmacy, language: Language) {
             ? "Statut ezali kozela"
             : "Statut en attente",
   };
+}
+
+function DeliveryIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="landing-svg-icon">
+      <path d="M3 7h11v8H3zM14 10h3l3 3v2h-6z" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="7.5" cy="17.5" r="1.8" fill="none" stroke="currentColor" strokeWidth="1.7" />
+      <circle cx="17.5" cy="17.5" r="1.8" fill="none" stroke="currentColor" strokeWidth="1.7" />
+    </svg>
+  );
 }
 
 function formatPresenceLabel(isOnline?: boolean, lastSeen?: string | null, language = "fr") {
@@ -365,21 +519,15 @@ function mergePrescriptionRecords(current: DashboardData | null, nextPrescriptio
   };
 }
 
-function normalizeLoginIdentifier(identifier: string, countryCode: PhoneCountryCode) {
+function normalizeLoginIdentifier(identifier: string) {
   const trimmed = identifier.trim();
-  if (!trimmed || trimmed.includes("@") || trimmed.startsWith("+")) {
-    return trimmed;
-  }
-  return buildPhoneNumber(countryCode, trimmed);
+  return trimmed.toLowerCase();
 }
 
-function validateLoginIdentifier(identifier: string, countryCode: PhoneCountryCode) {
+function validateLoginIdentifier(identifier: string) {
   const trimmed = identifier.trim();
   if (!trimmed) {
-    return "Le numero de telephone ou l'email est obligatoire.";
-  }
-  if (!trimmed.includes("@")) {
-    return validateInternationalPhoneNumber(normalizeLoginIdentifier(trimmed, countryCode));
+    return "L'adresse email est obligatoire.";
   }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
     return "Adresse email invalide.";
@@ -593,9 +741,10 @@ export default function Home() {
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [authBootstrapped, setAuthBootstrapped] = useState(false);
   const dashboardRefreshInFlightRef = useRef(false);
-  const [isLanguageMenuOpen, setIsLanguageMenuOpen] = useState(false);
+  const [, setIsLanguageMenuOpen] = useState(false);
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
   const [isNotificationMenuOpen, setIsNotificationMenuOpen] = useState(false);
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [profileBusy, setProfileBusy] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [profileSuccess, setProfileSuccess] = useState<string | null>(null);
@@ -636,7 +785,7 @@ export default function Home() {
   const [pharmacyCommentBusyId, setPharmacyCommentBusyId] = useState<number | null>(null);
   const [pharmacyInteractionError, setPharmacyInteractionError] = useState<string | null>(null);
   const [pharmacyInteractionSuccess, setPharmacyInteractionSuccess] = useState<string | null>(null);
-  const [loginForm, setLoginForm] = useState<LoginFormState>({ phone_number: "", password: "", country_code: "bi" });
+  const [loginForm, setLoginForm] = useState<LoginFormState>({ email: "", password: "" });
   const [patientRegisterForm, setPatientRegisterForm] = useState<PatientRegisterFormState>({
     username: "",
     phone_number: "",
@@ -686,6 +835,11 @@ export default function Home() {
   const [activePrescriptionPreview, setActivePrescriptionPreview] = useState<{ src: string; alt: string } | null>(null);
   const [directorySearchTerm, setDirectorySearchTerm] = useState("");
   const [shareMenu, setShareMenu] = useState<ShareMenuState | null>(null);
+  const [isCompactHomeView, setIsCompactHomeView] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth < HOME_MOBILE_BREAKPOINT : false
+  );
+  const [pharmacyPage, setPharmacyPage] = useState(1);
+  const [homePrescriptionPage, setHomePrescriptionPage] = useState(1);
 
   const copy = landingCopy[language] ?? landingCopy.fr;
   const languageMeta: Record<Language, LanguageMeta> = {
@@ -1127,97 +1281,125 @@ export default function Home() {
   }[language];
   const pharmigoModalContent = {
     fr: {
-      title: "PharmiGo : l'acces intelligent aux medicaments",
+      title: "PharmiGo : comment la plateforme fonctionne aujourd'hui",
       downloadPdf: "Telecharger PDF",
+      subtitle: "Guide theorique, fonctionnel et communautaire",
+      footer: "PharmiGo - Guide fonctionnel base sur les modules actuellement disponibles.",
+      filename: "PharmiGo-Guide-Fonctionnel-FR.pdf",
       sections: [
         {
           title: "Qu'est-ce que PharmiGo ?",
           intro:
-            "PharmiGo connecte les patients et les pharmacies avec des donnees reelles de stock, de disponibilite et de reponse.",
+            "PharmiGo est une plateforme web qui relie patients, pharmacies et administration autour d'une meme logique : trouver plus vite les medicaments, repondre avec des donnees reelles et suivre chaque demande jusqu'a sa cloture.",
           items: [
-            { title: "Diffusion en temps reel", body: "Une ordonnance publiee devient visible sans rechargement aux pharmacies concernees." },
-            { title: "Recherche ciblee", body: "La plateforme identifie rapidement les pharmacies capables de servir la demande." },
-            { title: "Choix guide", body: "Le patient compare prix, delais et disponibilite avant de confirmer son choix." },
+            { title: "Trois espaces coordonnes", body: "La plateforme propose un parcours patient, un parcours pharmacie et un back-office administrateur relies par les memes donnees." },
+            { title: "Donnees vivantes", body: "Ordonnances, stocks, disponibilites, notifications, commentaires et indicateurs se mettent a jour au fil des evenements de la plateforme." },
+            { title: "Usage local concret", body: "Le produit est pense pour le Burundi et la RDC, avec des langues multiples, des moyens de paiement abonnement locaux et un usage mobile en priorite." },
           ],
         },
         {
-          title: "Objectifs",
+          title: "Comment fonctionne le parcours patient ?",
           items: [
-            { title: "Reduire les ruptures", body: "Mieux orienter les patients vers les stocks disponibles." },
-            { title: "Faire gagner du temps", body: "Eviter les deplacements et appels inutiles." },
-            { title: "Rendre la sante plus accessible", body: "Donner un acces plus simple aux traitements essentiels." },
+            { title: "1. Publier une ordonnance ou un besoin", body: "Le patient peut televerser une image ou un PDF, puis suivre sa demande depuis la page d'accueil ou son dashboard." },
+            { title: "2. Lire, extraire et confirmer", body: "PharmiGo combine OCR, analyse Gemini et verification manuelle pour identifier les medicaments, dosages, quantites et posologies avant diffusion." },
+            { title: "3. Recevoir des propositions utiles", body: "La plateforme compare les medicaments confirmes avec les stocks, les reponses pharmacies, les horaires et la proximite pour aider le patient a choisir." },
+            { title: "4. Suivre jusqu'a la fin", body: "Le patient voit l'etat de son ordonnance, les notifications, l'historique, les documents originaux et la confirmation finale de service." },
           ],
         },
         {
-          title: "Comment ca marche ?",
+          title: "Comment fonctionne le parcours pharmacie ?",
           items: [
-            { title: "1. Publier", body: "Le patient envoie son ordonnance ou son besoin." },
-            { title: "2. Analyser et comparer", body: "PharmiGo analyse puis croise la demande avec les stocks pharmacies." },
-            { title: "3. Selectionner et servir", body: "Le patient choisit une pharmacie, puis le suivi continue jusqu'a la confirmation finale." },
+            { title: "1. Creer et activer son espace", body: "La pharmacie s'inscrit, complete son profil, renseigne ses horaires, sa livraison, sa photo et beneficie d'un essai ou d'un abonnement gere par la plateforme." },
+            { title: "2. Gerer un stock exploitable", body: "Chaque medicament peut etre ajoute, modifie, supprime ou ajuste en quantite. Ce stock alimente ensuite les suggestions et le chatbot." },
+            { title: "3. Repondre aux demandes", body: "Le dashboard pharmacie affiche les ordonnances disponibles, les medicaments confirmes par OCR et permet de repondre avec prix, delai et disponibilite." },
+            { title: "4. Servir et tracer", body: "La pharmacie suit ensuite les etats de preparation, disponibilite et service, avec historique et notifications associes." },
           ],
         },
         {
-          title: "Pourquoi PharmiGo est different",
+          title: "Comment fonctionne le pilotage administrateur ?",
           items: [
-            { title: "Temps reel", body: "Les dashboards, notifications et flux se synchronisent avec les evenements de la plateforme." },
-            { title: "Contexte local", body: "Les moyens de paiement, langues et parcours sont adaptes au Burundi et a la RDC." },
-            { title: "Trajectoire complete", body: "La plateforme couvre la demande, la reponse, la selection et la confirmation." },
+            { title: "Supervision des operations", body: "L'administrateur voit les pharmacies, patients, ordonnances originales, verifications OCR, abonnements, paiements et evenements systeme." },
+            { title: "Reglage du systeme", body: "Le dashboard admin permet d'ajuster la duree d'essai, le prix mensuel, les moyens de paiement et l'etat des abonnements pharmacies." },
+            { title: "Communication temps reel", body: "Les notifications globales peuvent etre diffusees vers tous, uniquement vers les patients ou uniquement vers les pharmacies." },
           ],
         },
         {
-          title: "Valeur pour les pharmacies",
+          title: "Ce qui distingue PharmiGo des approches classiques",
           items: [
-            { title: "Visibilite accrue", body: "Les pharmacies apparaissent sur de vraies demandes actives." },
-            { title: "Pilotage du stock", body: "Le stock peut etre mis a jour et exploite directement par les parcours patients." },
-            { title: "Revenus mieux cadres", body: "Abonnements et moyens de paiement sont geres au niveau systeme." },
+            { title: "Stock reel au coeur de la decision", body: "Les pharmacies ne sont pas seulement listees : elles sont rapprochees d'une demande selon leur stock declare, leur activite et leur capacite de reponse." },
+            { title: "OCR + IA + confirmation humaine", body: "La plateforme ne s'arrete pas a une lecture brute : elle aide a corriger et valider les medicaments avant de declencher la recherche." },
+            { title: "Distance et contexte local", body: "La geolocalisation, les villes, les horaires d'ouverture, la livraison et les moyens de paiement locaux rendent la suggestion plus pertinente." },
+            { title: "Experience vivante", body: "Pharmacies publiques, ordonnances confirmees, commentaires, likes, partages, messagerie et notifications donnent a la plateforme une vraie dimension communautaire." },
+          ],
+        },
+        {
+          title: "Utilite dans la communaute",
+          items: [
+            { title: "Pour les patients", body: "Moins de deplacements inutiles, moins d'appels a l'aveugle, une meilleure visibilite sur les options reelles et un meilleur suivi des demandes." },
+            { title: "Pour les pharmacies", body: "Plus de visibilite sur les besoins reels, une meilleure mise en valeur du stock et un cadre numerique pour servir, suivre et fideliser." },
+            { title: "Pour le systeme de sante local", body: "Une plateforme plus parlante, mobile, multilingue et pilotable, capable d'ameliorer la circulation de l'information medicamenteuse entre acteurs." },
           ],
         },
       ],
     },
     en: {
-      title: "PharmiGo: smart access to medicine",
+      title: "PharmiGo: how the platform works today",
       downloadPdf: "Download PDF",
+      subtitle: "Functional, theoretical, and community guide",
+      footer: "PharmiGo - Functional guide based on features currently available in the platform.",
+      filename: "PharmiGo-Functional-Guide-EN.pdf",
       sections: [
         {
           title: "What is PharmiGo?",
           intro:
-            "PharmiGo connects patients and pharmacies with live stock, availability, and response data.",
+            "PharmiGo is a web platform that connects patients, pharmacies, and administrators around one core mission: find medicines faster, answer with real data, and track each request until completion.",
           items: [
-            { title: "Real-time broadcast", body: "A published prescription becomes visible to relevant pharmacies without a page reload." },
-            { title: "Targeted search", body: "The platform quickly identifies pharmacies that can fulfill the request." },
-            { title: "Guided choice", body: "The patient compares price, timing, and availability before confirming." },
+            { title: "Three coordinated workspaces", body: "The platform includes a patient journey, a pharmacy workspace, and an administrator back office connected through the same data." },
+            { title: "Live platform data", body: "Prescriptions, stock, notifications, comments, feeds, and indicators evolve as platform events happen." },
+            { title: "Local-first product", body: "The experience is designed for Burundi and the DRC with multilingual access, pharmacy subscription payments, and mobile-first usage." },
           ],
         },
         {
-          title: "Goals",
+          title: "How does the patient flow work?",
           items: [
-            { title: "Reduce shortages", body: "Direct patients toward pharmacies with available stock." },
-            { title: "Save time", body: "Avoid unnecessary travel and repeated calls." },
-            { title: "Improve access", body: "Make essential treatment easier to reach." },
+            { title: "1. Publish a prescription or a medicine need", body: "Patients can upload an image or PDF and then track the request from the home page or their dashboard." },
+            { title: "2. Extract and confirm medicines", body: "PharmiGo combines OCR, Gemini analysis, and manual confirmation to validate medicine names, dosages, quantities, and directions before broadcasting." },
+            { title: "3. Receive useful options", body: "The platform cross-checks confirmed medicines with pharmacy stock, responses, opening hours, and proximity to support patient choice." },
+            { title: "4. Track the request to completion", body: "Patients follow statuses, notifications, history, original documents, and final service confirmation." },
           ],
         },
         {
-          title: "How it works",
+          title: "How does the pharmacy flow work?",
           items: [
-            { title: "1. Publish", body: "The patient submits a prescription or medicine request." },
-            { title: "2. Analyze and compare", body: "PharmiGo analyzes the request and matches it with pharmacy stock." },
-            { title: "3. Select and serve", body: "The patient chooses a pharmacy and the workflow continues until final confirmation." },
+            { title: "1. Create and activate the workspace", body: "Pharmacies register, complete their profile, define hours, delivery support, and profile image, then operate under trial or subscription management." },
+            { title: "2. Maintain usable stock", body: "Medicines can be added, edited, removed, or adjusted in quantity. This stock powers dashboard suggestions and chatbot recommendations." },
+            { title: "3. Respond to requests", body: "The pharmacy dashboard exposes available prescriptions, OCR-confirmed medicines, and response actions with price, timing, and availability." },
+            { title: "4. Serve and keep traceability", body: "Pharmacies continue with preparation, readiness, and served states, while keeping history and notifications aligned." },
           ],
         },
         {
-          title: "Why PharmiGo is different",
+          title: "How does administration work?",
           items: [
-            { title: "Real time", body: "Dashboards, notifications, and feeds stay aligned with platform events." },
-            { title: "Local context", body: "Payment methods, languages, and flows fit Burundi and DRC realities." },
-            { title: "End-to-end journey", body: "The platform covers request, response, selection, and completion." },
+            { title: "Operational supervision", body: "Administrators monitor pharmacies, patients, original prescriptions, OCR verifications, subscriptions, payments, and recent system activity." },
+            { title: "System controls", body: "The admin dashboard adjusts trial duration, monthly pricing, payment methods, and subscription states." },
+            { title: "Real-time communication", body: "Global notifications can be broadcast to everyone, only patients, or only pharmacies." },
           ],
         },
         {
-          title: "Value for pharmacies",
+          title: "What makes PharmiGo different?",
           items: [
-            { title: "More visibility", body: "Pharmacies appear on real active patient demand." },
-            { title: "Stock control", body: "Stock updates directly power the patient experience." },
-            { title: "Structured revenue", body: "Subscriptions and payment methods are managed at system level." },
+            { title: "Real stock at the center of decisions", body: "Pharmacies are not simply listed: they are matched against real demand based on declared stock, response capability, and current activity." },
+            { title: "OCR + AI + human confirmation", body: "The platform does more than read an image: it helps correct and validate medicines before starting the matching process." },
+            { title: "Distance and local context", body: "Geolocation, city data, opening hours, delivery support, and local payment methods make each suggestion more practical." },
+            { title: "A living community layer", body: "Public pharmacies, confirmed prescriptions, comments, likes, shares, messaging, and notifications create a more active experience than a static directory." },
+          ],
+        },
+        {
+          title: "Community value",
+          items: [
+            { title: "For patients", body: "Less unnecessary travel, fewer blind calls, better visibility into realistic options, and stronger request follow-up." },
+            { title: "For pharmacies", body: "Better visibility on real demand, stronger stock exposure, and a digital workspace to serve, follow, and retain patients." },
+            { title: "For local healthcare coordination", body: "A mobile, multilingual, more understandable platform that improves the circulation of medicine availability information between actors." },
           ],
         },
       ],
@@ -1840,6 +2022,13 @@ export default function Home() {
     }
   }, [authBootstrapped, currentUser?.id]);
 
+  useEffect(() => {
+    const syncViewport = () => setIsCompactHomeView(window.innerWidth < HOME_MOBILE_BREAKPOINT);
+    syncViewport();
+    window.addEventListener("resize", syncViewport);
+    return () => window.removeEventListener("resize", syncViewport);
+  }, []);
+
   const navigationItems = useMemo(
     () => [
       { href: "#services", label: copy.navServices },
@@ -1931,6 +2120,25 @@ export default function Home() {
 
     return filteredPublishedPrescriptions.filter((prescription) => prescriptionHasConfirmedMedications(prescription));
   }, [currentUser?.profile?.role, filteredPublishedPrescriptions]);
+  const homePharmacyPageSize = isCompactHomeView ? 20 : 30;
+  const homePrescriptionPageSize = isCompactHomeView ? 20 : 30;
+  const totalPharmacyPages = Math.max(1, Math.ceil(filteredPharmacies.length / homePharmacyPageSize));
+  const safePharmacyPage = Math.min(pharmacyPage, totalPharmacyPages);
+  const pagedPharmacies = useMemo(
+    () => filteredPharmacies.slice((safePharmacyPage - 1) * homePharmacyPageSize, safePharmacyPage * homePharmacyPageSize),
+    [filteredPharmacies, homePharmacyPageSize, safePharmacyPage]
+  );
+  const homeVisiblePrescriptions = currentUser?.profile?.role === "patient" ? patientConfirmedPrescriptions : publicVisiblePrescriptions;
+  const totalHomePrescriptionPages = Math.max(1, Math.ceil(homeVisiblePrescriptions.length / homePrescriptionPageSize));
+  const safeHomePrescriptionPage = Math.min(homePrescriptionPage, totalHomePrescriptionPages);
+  const pagedHomePrescriptions = useMemo(
+    () =>
+      homeVisiblePrescriptions.slice(
+        (safeHomePrescriptionPage - 1) * homePrescriptionPageSize,
+        safeHomePrescriptionPage * homePrescriptionPageSize
+      ),
+    [homePrescriptionPageSize, homeVisiblePrescriptions, safeHomePrescriptionPage]
+  );
   const pharmacyProfilePrescriptions = useMemo(() => {
     if (currentUser?.profile?.role !== "pharmacy" || !currentPharmacyId) {
       return [];
@@ -1972,7 +2180,19 @@ export default function Home() {
     t("section.security"),
   ].filter(Boolean);
   const accountLabel = currentUser?.profile?.pharmacy_name || currentUser?.username || uiText.accountReady;
+
+  useEffect(() => {
+    setPharmacyPage(1);
+  }, [directorySearchTerm, homePharmacyPageSize]);
+
+  useEffect(() => {
+    setHomePrescriptionPage(1);
+  }, [normalizedDirectorySearchTerm, currentUser?.profile?.role, homePrescriptionPageSize]);
   const currentLanguageMeta = languageMeta[language];
+  const currentUserAvatar =
+    currentUser?.profile?.role === "pharmacy"
+      ? resolveMediaUrl(currentUser.profile?.pharmacy_image ?? null)
+      : resolveMediaUrl(currentUser?.profile?.profile_image ?? null);
   const notifications = dashboardNotifications;
   const unreadNotificationsCount = notifications.filter((item) => !item.is_read).length;
   const availableRecipientPharmacies = pharmacies.filter((item) => item.id !== currentPharmacyId);
@@ -2236,6 +2456,18 @@ export default function Home() {
       setIsLanguageMenuOpen(false);
       setIsThemeMenuOpen(false);
       setIsNotificationMenuOpen(false);
+      setIsProfileMenuOpen(false);
+      return;
+    }
+
+    if (modal === "login" || modal === "register") {
+      setActiveModal(null);
+      setIsMenuOpen(false);
+      setIsLanguageMenuOpen(false);
+      setIsThemeMenuOpen(false);
+      setIsNotificationMenuOpen(false);
+      setIsProfileMenuOpen(false);
+      navigate(modal === "login" ? "/login" : "/register");
       return;
     }
 
@@ -2252,6 +2484,7 @@ export default function Home() {
     setIsLanguageMenuOpen(false);
     setIsThemeMenuOpen(false);
     setIsNotificationMenuOpen(false);
+    setIsProfileMenuOpen(false);
     if (modal === "messages") {
       markMessagesAsRead();
     }
@@ -2314,6 +2547,7 @@ export default function Home() {
     setIsLanguageMenuOpen(false);
     setIsThemeMenuOpen(false);
     setIsNotificationMenuOpen(false);
+    setIsProfileMenuOpen(false);
     setActiveModal(null);
     navigate("/", { replace: true });
   }
@@ -2399,15 +2633,15 @@ export default function Home() {
     setAuthError(null);
     setAuthSuccess(null);
     setAuthFieldErrors({});
-    const identifier = loginForm.phone_number.trim();
+    const identifier = loginForm.email.trim();
     const password = loginForm.password;
-    const normalizedIdentifier = normalizeLoginIdentifier(identifier, loginForm.country_code);
-    const identifierValidationError = validateLoginIdentifier(identifier, loginForm.country_code);
+    const normalizedIdentifier = normalizeLoginIdentifier(identifier);
+    const identifierValidationError = validateLoginIdentifier(identifier);
 
     if (identifierValidationError || !password.trim()) {
       setAuthError(uiText.authRequired);
       setAuthFieldErrors({
-        ...(identifierValidationError ? { phone_number: identifierValidationError } : {}),
+        ...(identifierValidationError ? { email: identifierValidationError } : {}),
         ...(password.trim() ? {} : { password: "Le mot de passe est obligatoire." }),
       });
       if (identifierValidationError) {
@@ -2420,13 +2654,16 @@ export default function Home() {
 
     try {
       const result = await login({
-        phone_number: normalizedIdentifier,
+        email: normalizedIdentifier,
         password,
       });
+      if (!result.token) {
+        throw new Error("Token de connexion manquant.");
+      }
       setAuthError(null);
       setAuthFieldErrors({});
       openDashboardForUser(result.user, result.token);
-      setLoginForm((current) => ({ ...current, phone_number: "", password: "" }));
+      setLoginForm((current) => ({ ...current, email: "", password: "" }));
       setShowLoginPassword(false);
       setAuthSuccess(uiText.authLoginSuccess);
       void fetchDashboard().then((dashboardData) => setDashboard(dashboardData)).catch(() => undefined);
@@ -2459,11 +2696,12 @@ export default function Home() {
     const pharmacyPhoneValidationError = validateInternationalPhoneNumber(pharmacyFullPhone);
 
     if (accountType === "patient") {
-      if (!patientUsername || !patientPhone || !patientPassword.trim()) {
+      if (!patientUsername || !patientPhone || !patientEmail || !patientPassword.trim()) {
         setAuthError(uiText.authRequired);
         setAuthFieldErrors({
           ...(patientUsername ? {} : { username: "Le nom d'utilisateur est obligatoire." }),
           ...(patientPhone ? {} : { phone_number: "Le numero de telephone est obligatoire." }),
+          ...(patientEmail ? {} : { email: "L'adresse email est obligatoire." }),
           ...(patientPassword.trim() ? {} : { password: "Le mot de passe est obligatoire." }),
         });
         return;
@@ -2481,11 +2719,12 @@ export default function Home() {
         return;
       }
     } else {
-      if (!pharmacyName || !pharmacyPhone || !pharmacyAddress || !pharmacyPassword.trim()) {
+      if (!pharmacyName || !pharmacyPhone || !pharmacyEmail || !pharmacyAddress || !pharmacyPassword.trim()) {
         setAuthError(uiText.authRequired);
         setAuthFieldErrors({
           ...(pharmacyName ? {} : { pharmacy_name: "Le nom de la pharmacie est obligatoire." }),
           ...(pharmacyPhone ? {} : { phone_number: "Le numero de telephone est obligatoire." }),
+          ...(pharmacyEmail ? {} : { email: "L'adresse email est obligatoire." }),
           ...(pharmacyAddress ? {} : { address: "L'adresse exacte est obligatoire." }),
           ...(pharmacyPassword.trim() ? {} : { password: "Le mot de passe est obligatoire." }),
         });
@@ -2516,14 +2755,10 @@ export default function Home() {
           email: patientEmail,
           password: patientPassword,
         });
-        const session = await login({ phone_number: patientFullPhone, password: patientPassword });
-        setAuthError(null);
-        setAuthFieldErrors({});
-        openDashboardForUser(session.user, session.token);
-        void fetchDashboard().then((dashboardData) => setDashboard(dashboardData)).catch(() => undefined);
         setPatientRegisterForm({ username: "", phone_number: "", email: "", password: "", country_code: patientRegisterForm.country_code });
         setShowPatientRegisterPassword(false);
-        setAuthSuccess(`${uiText.authRegisterSuccessPatient} ${uiText.authLoginSuccess}`);
+        setActiveModal("login");
+        setAuthSuccess("Compte cree. Verifiez votre email avant de vous connecter.");
         return;
       }
 
@@ -2536,11 +2771,6 @@ export default function Home() {
         password: pharmacyPassword,
         pharmacy_image: pharmacyRegisterForm.pharmacy_image,
       });
-      const session = await login({ phone_number: pharmacyFullPhone, password: pharmacyPassword });
-      setAuthError(null);
-      setAuthFieldErrors({});
-      openDashboardForUser(session.user, session.token);
-      void fetchDashboard().then((dashboardData) => setDashboard(dashboardData)).catch(() => undefined);
       setPharmacyRegisterForm({
         pharmacy_name: "",
         phone_number: "",
@@ -2551,9 +2781,33 @@ export default function Home() {
         country_code: pharmacyRegisterForm.country_code,
       });
       setShowPharmacyRegisterPassword(false);
-      setAuthSuccess(`${uiText.authRegisterSuccessPharmacy} ${uiText.authLoginSuccess}`);
+      setActiveModal("login");
+      setAuthSuccess("Compte pharmacie cree. Verifiez votre email avant de vous connecter.");
     } catch (error) {
       const parsedError = parseApiError(error, uiText.authRequired);
+      setAuthError(parsedError.message);
+      setAuthFieldErrors(parsedError.fieldErrors);
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  async function handleGoogleAuth(credential: string) {
+    setAuthBusy(true);
+    setAuthError(null);
+    setAuthSuccess(null);
+    setAuthFieldErrors({});
+
+    try {
+      const result = await loginWithGoogle({ credential });
+      if (!result.token) {
+        throw new Error("Token de connexion Google manquant.");
+      }
+      openDashboardForUser(result.user, result.token);
+      setAuthSuccess(uiText.authLoginSuccess);
+      void fetchDashboard().then((dashboardData) => setDashboard(dashboardData)).catch(() => undefined);
+    } catch (error) {
+      const parsedError = parseApiError(error, "Connexion Google impossible pour le moment.");
       setAuthError(parsedError.message);
       setAuthFieldErrors(parsedError.fieldErrors);
     } finally {
@@ -3052,46 +3306,12 @@ export default function Home() {
             <div className="landing-utility-menu">
               <button
                 type="button"
-                className="landing-icon-trigger landing-language-trigger nav-desktop-only"
-                onClick={() => {
-                  setIsLanguageMenuOpen((current) => !current);
-                  setIsThemeMenuOpen(false);
-                  setIsNotificationMenuOpen(false);
-                }}
-                aria-expanded={isLanguageMenuOpen}
-                aria-label="Choisir la langue"
-              >
-                <GlobeIcon />
-                <span className="landing-language-label">{currentLanguageMeta.label}</span>
-              </button>
-              {isLanguageMenuOpen ? (
-                <div className="landing-popover-menu language-menu">
-                  {languageOptions.map((option) => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      className={language === option.value ? "landing-popover-item active" : "landing-popover-item"}
-                      onClick={() => {
-                        setLanguage(option.value);
-                        setIsLanguageMenuOpen(false);
-                      }}
-                    >
-                      <span>{languageMeta[option.value].flag}</span>
-                      <span>{languageMeta[option.value].label}</span>
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-
-            <div className="landing-utility-menu">
-              <button
-                type="button"
                 className="landing-icon-trigger nav-desktop-only"
                 onClick={() => {
                   setIsThemeMenuOpen((current) => !current);
                   setIsLanguageMenuOpen(false);
                   setIsNotificationMenuOpen(false);
+                  setIsProfileMenuOpen(false);
                 }}
                 aria-expanded={isThemeMenuOpen}
                 aria-label="Changer le theme"
@@ -3124,7 +3344,10 @@ export default function Home() {
                   <button
                     type="button"
                     className="landing-icon-trigger nav-desktop-only"
-                    onClick={() => openModal("messages")}
+                    onClick={() => {
+                      setIsProfileMenuOpen(false);
+                      openModal("messages");
+                    }}
                     aria-label="Messagerie pharmacies"
                   >
                     <MessageIcon />
@@ -3140,6 +3363,7 @@ export default function Home() {
                       setIsNotificationMenuOpen((current) => !current);
                       setIsLanguageMenuOpen(false);
                       setIsThemeMenuOpen(false);
+                      setIsProfileMenuOpen(false);
                     }}
                     aria-expanded={isNotificationMenuOpen}
                     aria-label="Notifications"
@@ -3186,12 +3410,57 @@ export default function Home() {
                     </div>
                   ) : null}
                 </div>
-                <button type="button" className="landing-account-chip" onClick={() => openModal("dashboard")}>
-                  {accountLabel}
-                </button>
-                <button type="button" className="landing-logout-button" onClick={handleLogout}>
-                  Deconnexion
-                </button>
+                <div className="landing-utility-menu">
+                  <button
+                    type="button"
+                    className="landing-account-chip"
+                    onClick={() => {
+                      setIsProfileMenuOpen((current) => !current);
+                      setIsLanguageMenuOpen(false);
+                      setIsThemeMenuOpen(false);
+                      setIsNotificationMenuOpen(false);
+                    }}
+                    aria-expanded={isProfileMenuOpen}
+                    aria-label={accountLabel}
+                  >
+                    {currentUserAvatar ? (
+                      <img src={currentUserAvatar} alt={accountLabel} className="landing-account-avatar" />
+                    ) : (
+                      <span className="landing-account-avatar landing-account-avatar-fallback" aria-hidden="true">
+                        {accountLabel.slice(0, 1).toUpperCase()}
+                      </span>
+                    )}
+                  </button>
+                  {isProfileMenuOpen ? (
+                    <div className="landing-popover-menu profile-menu">
+                      <button type="button" className="landing-popover-item" onClick={() => openModal("dashboard")}>
+                        <span>Dashboard</span>
+                      </button>
+                      <div className="landing-profile-menu-section">
+                        <span className="landing-profile-menu-label">Langue</span>
+                        <div className="landing-profile-language-list">
+                          {languageOptions.map((option) => (
+                            <button
+                              key={option.value}
+                              type="button"
+                              className={language === option.value ? "landing-popover-item active" : "landing-popover-item"}
+                              onClick={() => {
+                                setLanguage(option.value);
+                                setIsProfileMenuOpen(false);
+                              }}
+                            >
+                              <span>{languageMeta[option.value].flag}</span>
+                              <span>{languageMeta[option.value].label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <button type="button" className="landing-popover-item landing-popover-item-danger" onClick={handleLogout}>
+                        <span>Deconnexion</span>
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
               </>
             ) : (
               <button type="button" className="landing-signin-button" onClick={() => openModal("login")}>
@@ -3273,7 +3542,7 @@ export default function Home() {
         </div>
       </header>
 
-      <section className="landing-hero designed-hero" id="hero">
+      <Reveal as="section" className="landing-hero designed-hero" id="hero">
         <div className="hero-story-panel">
           <span className="landing-section-kicker">{copy.heroKicker}</span>
           <div className="hero-wordmark-block">
@@ -3366,9 +3635,9 @@ export default function Home() {
             ))}
           </div>
         </div>
-      </section>
+      </Reveal>
 
-      <section className="landing-network-grid" id="pharmacies">
+      <Reveal as="section" className="landing-network-grid" id="pharmacies">
         <div className="landing-network-main">
           <div className="landing-section-heading compact with-search">
             <div className="landing-section-heading-copy">
@@ -3393,11 +3662,12 @@ export default function Home() {
 
           {filteredPharmacies.length ? (
             <div className="pharmacy-showcase-list">
-              {filteredPharmacies.map((pharmacy) => {
+              {pagedPharmacies.map((pharmacy) => {
                 const pharmacyImage = resolveMediaUrl(pharmacy.profile_image);
                 const hasVisibleImage = Boolean(pharmacyImage) && !brokenPharmacyImages[pharmacy.id];
                 const pharmacyImageSrc = hasVisibleImage && pharmacyImage ? pharmacyImage : undefined;
                 const operationalStatus = getPharmacyOperationalStatus(pharmacy, language);
+                const scheduleStatus = getPharmacyScheduleStatus(pharmacy, language);
                 const subscriptionStatus = getPharmacySubscriptionStatus(pharmacy, language);
 
                 return (
@@ -3456,27 +3726,11 @@ export default function Home() {
                             <p>{pharmacy.address || feedText.pharmacyUnavailableLocation}</p>
                           </div>
 
-                          <div className="pharmacy-showcase-side">
-                            <div className="pharmacy-showcase-statuses">
-                              <span className={`pharmacy-status-pill ${operationalStatus.className}`}>{operationalStatus.label}</span>
-                              <span className={pharmacy.is_open ? "pharmacy-status-pill open" : "pharmacy-status-pill neutral"}>
-                                {pharmacy.is_open ? feedText.pharmacyOpen : feedText.pharmacyOffline}
-                              </span>
-                              <span className={`pharmacy-status-pill ${subscriptionStatus.className}`}>{subscriptionStatus.label}</span>
-                              {subscriptionStatus.detail ? <span className="pharmacy-status-pill subtle">{subscriptionStatus.detail}</span> : null}
-                            </div>
-                            <button
-                              type="button"
-                              className="pharmacy-info-button"
-                              onClick={() => {
-                                if (pharmacyImageSrc) {
-                                  setActivePrescriptionPreview({ src: pharmacyImageSrc, alt: pharmacy.name });
-                                }
-                              }}
-                              aria-label={`Agrandir le profil de ${pharmacy.name}`}
-                            >
-                              i
-                            </button>
+                          <div className="pharmacy-showcase-statuses">
+                            <span className={`pharmacy-status-pill ${operationalStatus.className}`}>{operationalStatus.label}</span>
+                            <span className={`pharmacy-status-pill ${scheduleStatus.className}`}>{scheduleStatus.label}</span>
+                            {subscriptionStatus ? <span className={`pharmacy-status-pill ${subscriptionStatus.className}`}>{subscriptionStatus.label}</span> : null}
+                            {subscriptionStatus?.detail ? <span className="pharmacy-status-pill subtle">{subscriptionStatus.detail}</span> : null}
                           </div>
                         </div>
 
@@ -3492,9 +3746,14 @@ export default function Home() {
                         </div>
 
                         <div className="pharmacy-showcase-tags">
-                          <span className="pharmacy-showcase-tag">
-                            {pharmacy.delivery_supported || pharmacy.delivery_available ? feedText.deliveryAvailable : feedText.pickupOnsite}
-                          </span>
+                          {pharmacy.delivery_supported || pharmacy.delivery_available ? (
+                            <span className="pharmacy-showcase-tag with-icon">
+                              <DeliveryIcon />
+                              <span>{feedText.deliveryAvailable}</span>
+                            </span>
+                          ) : (
+                            <span className="pharmacy-showcase-tag">{feedText.pickupOnsite}</span>
+                          )}
                           <span className="pharmacy-showcase-tag subtle">
                             {pharmacy.response_count ?? 0} {feedText.servedCount}
                           </span>
@@ -3614,10 +3873,11 @@ export default function Home() {
               <p>{normalizedDirectorySearchTerm ? feedText.noPharmacySearchResult : "Aucune pharmacie enregistree n'est visible pour le moment."}</p>
             </div>
           )}
+          <HomePagination page={safePharmacyPage} totalPages={totalPharmacyPages} onPageChange={setPharmacyPage} itemCount={filteredPharmacies.length} />
         </div>
-      </section>
+      </Reveal>
 
-      <section className="landing-stat-band" id="services">
+      <Reveal as="section" className="landing-stat-band" id="services">
         <article className="landing-stat-card emphasis">
           <span>{t("kpi.response")}</span>
           <strong>{kpis.response_time_minutes} min</strong>
@@ -3638,9 +3898,9 @@ export default function Home() {
           <strong>{kpis.confirmed_quotes}</strong>
           <p>{copy.finalBody}</p>
         </article>
-      </section>
+      </Reveal>
 
-      <section className="landing-section-grid" id="how-it-works">
+      <Reveal as="section" className="landing-section-grid" id="how-it-works">
         <div className="landing-section-heading">
           <span className="landing-section-kicker">{copy.workflowKicker}</span>
           <h2>{copy.workflowTitle}</h2>
@@ -3656,9 +3916,9 @@ export default function Home() {
             </article>
           ))}
         </div>
-      </section>
+      </Reveal>
 
-      <section className="landing-final-cta">
+      <Reveal as="section" className="landing-final-cta">
         <div>
           <span className="landing-section-kicker">{copy.finalKicker}</span>
           <h2>{copy.finalTitle}</h2>
@@ -3677,9 +3937,9 @@ export default function Home() {
             </button>
           ) : null}
         </div>
-      </section>
+      </Reveal>
 
-      <section className="landing-utility-ribbon" id="support">
+      <Reveal as="section" className="landing-utility-ribbon" id="support">
         <div className="landing-utility-copy">
           <span className="landing-section-kicker">{copy.supportKicker}</span>
           <strong>{copy.supportTitle}</strong>
@@ -3702,9 +3962,9 @@ export default function Home() {
             </article>
           ))}
         </div>
-      </section>
+      </Reveal>
 
-      <section className="landing-section-grid pharmacy-live-board">
+      <Reveal as="section" className="landing-section-grid pharmacy-live-board">
         <div className="landing-section-heading compact">
           <span className="landing-section-kicker">{feedText.liveKicker}</span>
           <h2>{feedText.liveTitle}</h2>
@@ -3718,7 +3978,7 @@ export default function Home() {
         {currentUser?.profile?.role === "patient" ? (
           patientConfirmedPrescriptions.length ? (
             <div className="prescription-live-list prescription-grid-two-up">
-              {patientConfirmedPrescriptions.map((prescription) => renderInteractivePrescriptionSheet(prescription))}
+              {pagedHomePrescriptions.map((prescription) => renderInteractivePrescriptionSheet(prescription))}
             </div>
           ) : (
             <article className="landing-confidentiality-card">
@@ -3734,7 +3994,7 @@ export default function Home() {
           publicVisiblePrescriptions.length ? (
             !currentUser ? (
               <div className="prescription-live-list prescription-grid-two-up">
-                {publicVisiblePrescriptions.map((prescription) => (
+                {pagedHomePrescriptions.map((prescription) => (
                   <PublicPrescriptionSheet
                     key={prescription.id}
                     prescription={prescription}
@@ -3744,7 +4004,7 @@ export default function Home() {
               </div>
             ) : (
               <div className="prescription-live-list prescription-grid-two-up">
-                {publicVisiblePrescriptions.map((prescription) => renderInteractivePrescriptionSheet(prescription))}
+                {pagedHomePrescriptions.map((prescription) => renderInteractivePrescriptionSheet(prescription))}
               </div>
             )
           ) : (
@@ -3766,9 +4026,10 @@ export default function Home() {
             </div>
           </article>
         )}
+        <HomePagination page={safeHomePrescriptionPage} totalPages={totalHomePrescriptionPages} onPageChange={setHomePrescriptionPage} itemCount={homeVisiblePrescriptions.length} />
         {pharmacyInteractionError ? <p className="form-feedback error">{pharmacyInteractionError}</p> : null}
         {pharmacyInteractionSuccess ? <p className="form-feedback success">{pharmacyInteractionSuccess}</p> : null}
-      </section>
+      </Reveal>
 
       <footer className="landing-inline-footer">
         <div className="landing-inline-footer-grid">
@@ -3844,40 +4105,24 @@ export default function Home() {
           onClose={closeModal}
         >
           <form className="auth-form inline-modal-form" onSubmit={handleLoginSubmit} autoComplete="off">
-            {!loginForm.phone_number.includes("@") ? (
-              <label>
-                <span>Pays du numero</span>
-                <select
-                  value={loginForm.country_code}
-                  onChange={(event) =>
-                    setLoginForm((current) => ({
-                      ...current,
-                      country_code: event.target.value as PhoneCountryCode,
-                    }))
-                  }
-                >
-                  <option value="bi">Burundi (+257)</option>
-                  <option value="cd">RDC (+243)</option>
-                  <option value="tz">Tanzanie (+255)</option>
-                </select>
-              </label>
-            ) : null}
+            <GoogleSignInButton onCredential={handleGoogleAuth} onError={setAuthError} disabled={authBusy} />
+            <p className="auth-switch">Google cree ou reconnecte automatiquement un compte patient verifie.</p>
             <label>
-              <span>{uiText.authIdentifier}</span>
+              <span>Adresse email</span>
               <input
-                name="phone_number"
-                type="text"
-                autoComplete="off"
-                placeholder={uiText.authIdentifierPlaceholder}
-                className={authFieldErrors.phone_number ? "field-input-error" : ""}
-                value={loginForm.phone_number}
+                name="email"
+                type="email"
+                autoComplete="email"
+                placeholder="vous@exemple.com"
+                className={authFieldErrors.email ? "field-input-error" : ""}
+                value={loginForm.email}
                 onChange={(event) => {
                   setAuthError(null);
-                  clearAuthFieldError("phone_number");
-                  setLoginForm((current) => ({ ...current, phone_number: event.target.value }));
+                  clearAuthFieldError("email");
+                  setLoginForm((current) => ({ ...current, email: event.target.value }));
                 }}
               />
-              {authFieldErrors.phone_number ? <small className="field-error">{authFieldErrors.phone_number}</small> : null}
+              {authFieldErrors.email ? <small className="field-error">{authFieldErrors.email}</small> : null}
             </label>
             <label>
               <span>{copy.authPassword}</span>
@@ -3899,7 +4144,7 @@ export default function Home() {
               </div>
               {authFieldErrors.password ? <small className="field-error">{authFieldErrors.password}</small> : null}
             </label>
-            <p className="auth-helper-text">{uiText.authPhoneHint}</p>
+            <p className="auth-helper-text">Utilisez votre adresse email verifiee. L'administrateur se connecte aussi via son email officiel.</p>
             {authError ? <p className="form-feedback error">{authError}</p> : null}
             {authSuccess ? <p className="form-feedback success">{authSuccess}</p> : null}
             <button type="submit" className="pharmigo-primary-btn auth-submit" disabled={authBusy}>
@@ -3908,6 +4153,11 @@ export default function Home() {
             {!currentUser ? (
               <p className="auth-switch">
                 <a href="/forgot-password">Mot de passe oublie ?</a>
+              </p>
+            ) : null}
+            {!currentUser ? (
+              <p className="auth-switch">
+                <a href="/verify-email">Email non verifie ?</a>
               </p>
             ) : null}
             {!currentUser ? (
@@ -3930,6 +4180,8 @@ export default function Home() {
           onClose={closeModal}
         >
           <form className="auth-form inline-modal-form" onSubmit={handleRegisterSubmit}>
+            <GoogleSignInButton onCredential={handleGoogleAuth} onError={setAuthError} disabled={authBusy} text="signup_with" />
+            <p className="auth-switch">L'inscription Google cree un compte patient avec email deja verifie.</p>
             <div className="auth-role-switch" aria-label="Type de compte">
               <button
                 type="button"
@@ -3981,11 +4233,11 @@ export default function Home() {
                   error={authFieldErrors.phone_number}
                 />
                 <label>
-                  <span>Email facultatif</span>
+                  <span>Email obligatoire</span>
                   <input
                     name="patient_email"
                     type="email"
-                    placeholder="Optionnel, utile si vous oubliez le mot de passe"
+                    placeholder="vous@exemple.com"
                     className={authFieldErrors.email ? "field-input-error" : ""}
                     value={patientRegisterForm.email}
                     onChange={(event) => {
@@ -3995,7 +4247,7 @@ export default function Home() {
                     }}
                   />
                   {authFieldErrors.email ? <small className="field-error">{authFieldErrors.email}</small> : null}
-                  <small className="field-help">La connexion reste par numero de telephone. L'email est seulement utile pour recuperer le mot de passe plus tard.</small>
+                  <small className="field-help">Un lien de verification sera envoye avant la premiere connexion.</small>
                 </label>
                 <label>
                   <span>{copy.authPassword}</span>
@@ -4052,11 +4304,11 @@ export default function Home() {
                   error={authFieldErrors.phone_number}
                 />
                 <label>
-                  <span>Email facultatif</span>
+                  <span>Email obligatoire</span>
                   <input
                     name="pharmacy_email"
                     type="email"
-                    placeholder="Optionnel, utile si vous oubliez le mot de passe"
+                    placeholder="contact@pharmacie.com"
                     className={authFieldErrors.email ? "field-input-error" : ""}
                     value={pharmacyRegisterForm.email}
                     onChange={(event) => {
@@ -4066,7 +4318,7 @@ export default function Home() {
                     }}
                   />
                   {authFieldErrors.email ? <small className="field-error">{authFieldErrors.email}</small> : null}
-                  <small className="field-help">La connexion pharmacie reste basee sur le numero et le mot de passe. Cet email est optionnel.</small>
+                  <small className="field-help">Le compte restera bloque tant que cet email n'a pas ete verifie.</small>
                 </label>
                 <label>
                   <span>{copy.authAddress}</span>
@@ -4121,7 +4373,9 @@ export default function Home() {
             )}
 
             <p className="auth-helper-text">
-              {accountType === "patient" ? uiText.authRegisterPhoneHint : `${uiText.authRegisterPhoneHint} ${uiText.authPharmacyHint}`}
+              {accountType === "patient"
+                ? "Le numero reste utile pour votre profil, mais l'email est obligatoire et devra etre verifie avant connexion."
+                : "Ajoutez le numero de la pharmacie et un email obligatoire. Le compte sera active apres verification de cet email."}
             </p>
             {authError ? <p className="form-feedback error">{authError}</p> : null}
             {authSuccess ? <p className="form-feedback success">{authSuccess}</p> : null}
@@ -4697,8 +4951,11 @@ export default function Home() {
       ) : null}
 
       {activeAnalysisTaskId ? (
-        <div className="guardian-popup-overlay" role="dialog" aria-modal="true" aria-label="Analyse en cours">
-          <div className="guardian-popup-card guardian-popup-loader-card">
+        <ModalTransition
+          overlayClassName="guardian-popup-overlay"
+          panelClassName="guardian-popup-card guardian-popup-loader-card"
+          ariaLabel="Analyse en cours"
+        >
             <div className="guardian-popup-head">
               <div>
                 <p className="guardian-popup-kicker">Assistant PharmiGo</p>
@@ -4716,8 +4973,7 @@ export default function Home() {
                     : "Analyse de mon ordonnance en cours..."}
               </p>
             </div>
-          </div>
-        </div>
+        </ModalTransition>
       ) : null}
 
       {analysisPopupRecord?.bot_result ? (
@@ -4740,8 +4996,12 @@ export default function Home() {
       ) : null}
 
       {shareMenu ? (
-        <div className="landing-share-overlay" role="dialog" aria-modal="true" aria-label={localizedUi.shareDialogTitle} onClick={() => setShareMenu(null)}>
-          <div className="landing-share-card" onClick={(event) => event.stopPropagation()}>
+        <ModalTransition
+          overlayClassName="landing-share-overlay"
+          panelClassName="landing-share-card"
+          ariaLabel={localizedUi.shareDialogTitle}
+          onBackdropClick={() => setShareMenu(null)}
+        >
             <div className="landing-share-head">
               <div>
                 <span className="landing-section-kicker">{localizedUi.shareDialogTitle}</span>
@@ -4761,19 +5021,16 @@ export default function Home() {
               <button type="button" className="pharmigo-secondary-btn share-channel-button" onClick={() => void handleShareChannel("copy")}><CopyLinkIcon />{localizedUi.shareCopy}</button>
               <button type="button" className="pharmigo-secondary-btn share-channel-button" onClick={() => void handleShareChannel("platform")}><InternalShareIcon />{localizedUi.shareRepublish}</button>
             </div>
-          </div>
-        </div>
+        </ModalTransition>
       ) : null}
 
       {activePrescriptionPreview ? (
-        <div
-          className="prescription-lightbox"
-          role="dialog"
-          aria-modal="true"
-          aria-label={feedText.documentLabel}
-          onClick={() => setActivePrescriptionPreview(null)}
+        <ModalTransition
+          overlayClassName="prescription-lightbox"
+          panelClassName="prescription-lightbox-dialog"
+          ariaLabel={feedText.documentLabel}
+          onBackdropClick={() => setActivePrescriptionPreview(null)}
         >
-          <div className="prescription-lightbox-dialog" onClick={(event) => event.stopPropagation()}>
             <button
               type="button"
               className="prescription-lightbox-close"
@@ -4782,8 +5039,7 @@ export default function Home() {
               {copy.modalClose}
             </button>
             <img src={activePrescriptionPreview.src} alt={activePrescriptionPreview.alt} />
-          </div>
-        </div>
+        </ModalTransition>
       ) : null}
 
       {/* PharmiGo Modal */}
@@ -4791,15 +5047,19 @@ export default function Home() {
       <ChatBotButton />
 
       {showPharmiGoModal ? (
-        <div className="pharmigo-modal-overlay" onClick={() => setShowPharmiGoModal(false)}>
-          <div className="pharmigo-modal-dialog" onClick={(event) => event.stopPropagation()}>
+        <ModalTransition
+          overlayClassName="pharmigo-modal-overlay"
+          panelClassName="pharmigo-modal-dialog"
+          ariaLabel={pharmigoModalContent.title}
+          onBackdropClick={() => setShowPharmiGoModal(false)}
+        >
             <div className="pharmigo-modal-header">
               <h2 className="pharmigo-modal-title">{pharmigoModalContent.title}</h2>
               <div className="pharmigo-modal-actions">
                 <button
                   type="button"
                   className="pharmigo-pdf-download-btn"
-                  onClick={() => downloadPharmiGoPDF()}
+                  onClick={() => downloadPharmiGoPDF(pharmigoModalContent)}
                 >
                   📄 {pharmigoModalContent.downloadPdf}
                 </button>
@@ -4833,8 +5093,7 @@ export default function Home() {
                 </div>
               ))}
             </div>
-          </div>
-        </div>
+        </ModalTransition>
       ) : null}
     </div>
   );

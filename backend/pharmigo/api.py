@@ -1,6 +1,7 @@
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from datetime import timedelta
+from django.conf import settings
 from django.db.models import Avg, Count, Q
 from django.utils import timezone
 from rest_framework import parsers, routers, status, viewsets
@@ -18,8 +19,8 @@ from apps.pharmigo_chatbot.models import ChatbotLearningData
 from apps.prescriptions.models import Prescription, PrescriptionComment, PrescriptionEngagement, PrescriptionResponse
 from apps.prescriptions.serializers import PrescriptionCommentSerializer, PrescriptionResponseSerializer, PrescriptionSerializer
 from apps.users.phone_numbers import normalize_phone_number
-from apps.users.location import refresh_profile_location_from_request
-from apps.users.serializers import UserSerializer
+from apps.users.location import refresh_profile_location_from_request, sync_profile_coordinates
+from apps.users.serializers import UserSerializer, email_already_used, phone_number_already_used
 from django.contrib.auth import get_user_model
 from apps.users.models import UserProfile
 from apps.pharmacies.models import PharmacySubscription, SubscriptionPayment, SubscriptionSystemSettings
@@ -744,10 +745,25 @@ def dashboard(request):
     elif is_admin_user(user):
         pass
     elif hasattr(user, "profile") and user.profile.role == "patient":
+        patient_start_at = getattr(user.profile, "created_at", None)
         prescription_queryset = prescription_queryset.filter(patient_user=user)
+        if patient_start_at is not None:
+            prescription_queryset = prescription_queryset.filter(created_at__gte=patient_start_at)
     elif hasattr(user, "profile") and user.profile.role == "pharmacy":
         prescription_queryset = prescription_queryset.filter(
-            status__in=["confirmed", "searching", "pharmacy_selected", "preparing", "ready", "served", "patient_confirmed", "completed"]
+            status__in=[
+                "uploaded",
+                "analyzing",
+                "confirmation_pending",
+                "confirmed",
+                "searching",
+                "pharmacy_selected",
+                "preparing",
+                "ready",
+                "served",
+                "patient_confirmed",
+                "completed",
+            ]
         )
     else:
         prescription_queryset = prescription_queryset.none()
@@ -934,7 +950,7 @@ def admin_dashboard(request):
             "receiver_phone": payment.receiver_phone,
             "payment_status": payment.payment_status,
             "transaction_reference": payment.transaction_reference,
-            "proof_image": request.build_absolute_uri(payment.proof_image.url) if payment.proof_image else None,
+            "proof_image": payment.proof_image.url if payment.proof_image else None,
             "payment_month": payment.payment_month,
             "verified_at": payment.verified_at,
             "verified_by_name": payment.verified_by.username if payment.verified_by else None,
@@ -1014,9 +1030,13 @@ def profile(request):
     if request.method == "GET":
         payload = UserSerializer(user).data
         if hasattr(user, "profile") and user.profile.role == "patient":
+            patient_history_queryset = Prescription.objects.filter(patient_user=user).select_related("pharmacy").prefetch_related("responses__pharmacy")
+            patient_start_at = getattr(user.profile, "created_at", None)
+            if patient_start_at is not None:
+                patient_history_queryset = patient_history_queryset.filter(created_at__gte=patient_start_at)
             payload["history"] = {
                 "prescriptions": PrescriptionSerializer(
-                    Prescription.objects.filter(patient_user=user).select_related("pharmacy").prefetch_related("responses__pharmacy")[:20],
+                    patient_history_queryset[:20],
                     many=True,
                     context={"request": request},
                 ).data
@@ -1040,6 +1060,28 @@ def profile(request):
 
     profile = getattr(user, "profile", None)
     data = request.data
+
+    def coerce_optional_float(value):
+        if value in (None, ""):
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    if profile is not None:
+        latitude = coerce_optional_float(data.get("latitude"))
+        longitude = coerce_optional_float(data.get("longitude"))
+        location_city = str(data.get("location_city", "")).strip()
+        location_country = str(data.get("location_country", "")).strip()
+        if latitude is not None or longitude is not None or location_city or location_country:
+            sync_profile_coordinates(
+                profile,
+                latitude=latitude,
+                longitude=longitude,
+                city=location_city,
+                country=location_country,
+            )
 
     if user.is_staff:
         username = str(data.get("username", user.username)).strip() or user.username
@@ -1068,11 +1110,13 @@ def profile(request):
 
         if not username:
             return Response({"username": ["Le nom d'utilisateur est obligatoire."]}, status=status.HTTP_400_BAD_REQUEST)
+        if not email:
+            return Response({"email": ["L'adresse email est obligatoire."]}, status=status.HTTP_400_BAD_REQUEST)
         if User.objects.exclude(pk=user.pk).filter(username=username).exists():
             return Response({"username": ["Ce nom d'utilisateur est deja utilise."]}, status=status.HTTP_400_BAD_REQUEST)
-        if email and User.objects.exclude(pk=user.pk).filter(email__iexact=email).exists():
+        if email_already_used(email, exclude_user_id=user.pk):
             return Response({"email": ["Cette adresse email est deja utilisee."]}, status=status.HTTP_400_BAD_REQUEST)
-        if UserProfile.objects.exclude(pk=profile.pk).filter(phone_number=phone_number).exists():
+        if phone_number_already_used(phone_number, exclude_profile_id=profile.pk):
             return Response({"phone_number": ["Ce numero de telephone est deja utilise."]}, status=status.HTTP_400_BAD_REQUEST)
 
         user.username = username
@@ -1089,10 +1133,12 @@ def profile(request):
             phone_number = normalize_phone_number(str(data.get("phone_number", pharmacy.phone_number)))
         except Exception as exc:
             return Response({"phone_number": [str(exc)]}, status=status.HTTP_400_BAD_REQUEST)
-        if email and User.objects.exclude(pk=user.pk).filter(email__iexact=email).exists():
+        if not email:
+            return Response({"email": ["L'adresse email est obligatoire."]}, status=status.HTTP_400_BAD_REQUEST)
+        if email_already_used(email, exclude_user_id=user.pk, exclude_pharmacy_id=pharmacy.pk):
             return Response({"email": ["Cette adresse email est deja utilisee."]}, status=status.HTTP_400_BAD_REQUEST)
-        if email and Pharmacy.objects.exclude(pk=pharmacy.pk).filter(email__iexact=email).exists():
-            return Response({"email": ["Cette adresse email est deja utilisee."]}, status=status.HTTP_400_BAD_REQUEST)
+        if phone_number_already_used(phone_number, exclude_profile_id=profile.pk, exclude_pharmacy_id=pharmacy.pk):
+            return Response({"phone_number": ["Ce numero de telephone est deja utilise."]}, status=status.HTTP_400_BAD_REQUEST)
         pharmacy.name = str(data.get("pharmacy_name", pharmacy.name)).strip() or pharmacy.name
         pharmacy.city = str(data.get("city", pharmacy.city)).strip() or pharmacy.city
         pharmacy.address = str(data.get("address", pharmacy.address)).strip() or pharmacy.address

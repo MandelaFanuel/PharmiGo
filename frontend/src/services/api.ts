@@ -510,6 +510,11 @@ export async function updatePharmacyStockItem(id: number, payload: object) {
   return data;
 }
 
+export async function patchPharmacyStockItem(id: number, payload: object) {
+  const { data } = await api.patch(`${API_ENDPOINTS.prescriptions}pharmacy-stock/${id}/`, payload);
+  return data;
+}
+
 export async function deletePharmacyStockItem(id: number) {
   await api.delete(`${API_ENDPOINTS.prescriptions}pharmacy-stock/${id}/`);
 }
@@ -617,7 +622,7 @@ export async function fetchPrescriptionRecommendations(
   return data;
 }
 
-export async function login(payload: { phone_number: string; password: string }): Promise<AuthResponse> {
+export async function login(payload: { email: string; password: string }): Promise<AuthResponse> {
   return postWithFallback<AuthResponse>(API_ENDPOINTS.authLogin, API_ENDPOINTS.authLoginFallback, payload);
 }
 
@@ -625,6 +630,8 @@ export async function register(payload: {
   account_type: "patient" | "pharmacy";
   username?: string;
   phone_number?: string;
+  birth_date?: string;
+  gender?: "male" | "female" | "other" | "";
   email?: string;
   password: string;
   pharmacy_name?: string;
@@ -645,6 +652,26 @@ export async function register(payload: {
   }
 
   return postWithFallback<AuthResponse>(API_ENDPOINTS.authRegister, API_ENDPOINTS.authRegisterFallback, body);
+}
+
+export async function loginWithGoogle(payload: { credential: string }): Promise<AuthResponse> {
+  return postWithFallback<AuthResponse>(API_ENDPOINTS.authGoogle, API_ENDPOINTS.authGoogleFallback, payload);
+}
+
+export async function verifyEmail(payload: { token: string }): Promise<{ message: string; user: AuthResponse["user"] }> {
+  return postWithFallback<{ message: string; user: AuthResponse["user"] }>(
+    API_ENDPOINTS.authVerifyEmail,
+    API_ENDPOINTS.authVerifyEmailFallback,
+    payload
+  );
+}
+
+export async function resendVerificationEmail(payload: { email: string }): Promise<{ message: string; email_delivery_mode?: "smtp" | "console_preview"; debug_verification_token?: string }> {
+  return postWithFallback<{ message: string; email_delivery_mode?: "smtp" | "console_preview"; debug_verification_token?: string }>(
+    API_ENDPOINTS.authResendVerificationEmail,
+    API_ENDPOINTS.authResendVerificationEmailFallback,
+    payload
+  );
 }
 
 export async function requestPasswordReset(payload: { email: string }): Promise<{ message: string }> {
@@ -682,6 +709,16 @@ export async function fetchProtectedDocument(documentUrl: string): Promise<strin
 }
 
 export async function updatePatientProfile(payload: { username: string; phone_number: string; email?: string }): Promise<AuthResponse["user"]> {
+  const { data } = await api.patch<AuthResponse["user"]>(API_ENDPOINTS.profile, payload);
+  return data;
+}
+
+export async function updateProfileLocation(payload: {
+  latitude: number;
+  longitude: number;
+  location_city?: string;
+  location_country?: string;
+}): Promise<AuthResponse["user"]> {
   const { data } = await api.patch<AuthResponse["user"]>(API_ENDPOINTS.profile, payload);
   return data;
 }

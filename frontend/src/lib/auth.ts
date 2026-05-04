@@ -65,6 +65,16 @@ export function getDashboardPathForUser(user: AuthUser | null | undefined) {
   return `/?modal=dashboard&role=${role}`;
 }
 
+export function isEmailVerified(user: AuthUser | null | undefined) {
+  if (!user) {
+    return false;
+  }
+  if (user.is_staff || user.profile?.role === "admin") {
+    return true;
+  }
+  return Boolean(user.profile?.email_verified);
+}
+
 export function clearStoredAuthSession() {
   runtimeAuthToken = null;
   localStorage.removeItem(CURRENT_USER_KEY);

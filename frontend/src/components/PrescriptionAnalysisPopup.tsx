@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import { confirmPrescriptionMedications, fetchPrescriptionRecommendations, searchPrescriptionPharmacies, selectPrescriptionPharmacy } from "../services/api";
 import { usePreferences } from "../context/PreferencesContext";
+import ModalTransition from "./ModalTransition";
 import type { MatchedPharmacy, PrescriptionBotResult, PrescriptionRecord } from "../types";
 
 interface PrescriptionAnalysisPopupProps {
@@ -193,8 +194,7 @@ export default function PrescriptionAnalysisPopup({
   }
 
   return (
-    <div className="guardian-popup-overlay" role="dialog" aria-modal="true" aria-label={dialogLabel} onClick={onClose}>
-      <div className="guardian-popup-card" onClick={(event) => event.stopPropagation()}>
+    <ModalTransition overlayClassName="guardian-popup-overlay" panelClassName="guardian-popup-card" ariaLabel={dialogLabel} onBackdropClick={onClose}>
         <div className="guardian-popup-head">
           <div>
             <p className="guardian-popup-kicker">Assistant PharmiGo</p>
@@ -415,7 +415,6 @@ export default function PrescriptionAnalysisPopup({
         ) : null}
 
         {error ? <p className="guardian-popup-inline-error">{error}</p> : null}
-      </div>
-    </div>
+    </ModalTransition>
   );
 }

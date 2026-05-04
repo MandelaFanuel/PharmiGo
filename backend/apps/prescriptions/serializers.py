@@ -211,8 +211,7 @@ class PrescriptionSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         if request is None or not self._can_view_sensitive_details(obj) or not obj.has_private_document():
             return None
-        url = reverse("prescription-document-access", kwargs={"prescription_id": obj.id})
-        return request.build_absolute_uri(url) if request else url
+        return reverse("prescription-document-access", kwargs={"prescription_id": obj.id})
 
     def get_prescription_file(self, obj):
         return self._build_secure_document_url(obj)

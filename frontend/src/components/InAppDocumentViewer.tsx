@@ -1,5 +1,7 @@
 import { useEffect } from "react";
 
+import ModalTransition from "./ModalTransition";
+
 type InAppDocumentViewerProps = {
   title: string;
   src: string | null;
@@ -31,8 +33,7 @@ export default function InAppDocumentViewer({ title, src, onClose }: InAppDocume
   const pdfDocument = isPdfDocument(src);
 
   return (
-    <div className="document-viewer-overlay" role="dialog" aria-modal="true" aria-label={title}>
-      <div className="document-viewer-dialog">
+    <ModalTransition overlayClassName="document-viewer-overlay" panelClassName="document-viewer-dialog" ariaLabel={title}>
         <div className="document-viewer-head">
           <div>
             <span className="document-viewer-kicker">Ordonnance originale</span>
@@ -52,7 +53,6 @@ export default function InAppDocumentViewer({ title, src, onClose }: InAppDocume
             <iframe src={src} title={title} className="document-viewer-frame" />
           )}
         </div>
-      </div>
-    </div>
+    </ModalTransition>
   );
 }

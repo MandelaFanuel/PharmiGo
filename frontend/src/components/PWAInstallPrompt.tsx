@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
+import ModalTransition from "./ModalTransition";
+
 type InstallPromptEvent = Event & {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
@@ -86,8 +88,7 @@ export default function PWAInstallPrompt() {
   }
 
   return (
-    <div className="pharmigo-modal-overlay" role="dialog" aria-modal="true" aria-label="Installer PharmiGo">
-      <div className="landing-modal-card install-prompt-card">
+    <ModalTransition overlayClassName="pharmigo-modal-overlay" panelClassName="landing-modal-card install-prompt-card" ariaLabel="Installer PharmiGo">
         <div className="landing-modal-head install-prompt-head">
           <div>
             <span className="landing-section-kicker">Installation recommandee</span>
@@ -136,7 +137,6 @@ export default function PWAInstallPrompt() {
             Continuer sur le web
           </button>
         </div>
-      </div>
-    </div>
+    </ModalTransition>
   );
 }

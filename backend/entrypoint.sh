@@ -51,4 +51,5 @@ if key:
 else:
     print("Gemini vision integration disabled.")
 PY
-exec daphne -b 0.0.0.0 -p 8000 pharmigo.asgi:application
+PORT_TO_BIND="${PORT:-8000}"
+exec daphne -b 0.0.0.0 -p "$PORT_TO_BIND" pharmigo.asgi:application

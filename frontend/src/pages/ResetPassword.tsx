@@ -74,7 +74,7 @@ export default function ResetPassword() {
       <div className="auth-panel auth-copy">
         <span className="landing-section-kicker">Acces</span>
         <h1>Choisissez un nouveau mot de passe.</h1>
-        <p>Ce lien est temporaire. Une fois le mot de passe defini, vous pourrez reprendre votre connexion normale sur PharmiGo.</p>
+        <p>Ce lien est temporaire. Une fois le mot de passe defini, vous pourrez vous reconnecter avec votre adresse email et ce nouveau mot de passe.</p>
       </div>
 
       <div className="auth-panel auth-form-panel">

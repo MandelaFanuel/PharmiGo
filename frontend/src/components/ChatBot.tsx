@@ -149,6 +149,7 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
       recentTitle: "Conversation recente",
       archiveTitle: "Voir les conversations passees",
       archiveHide: "Masquer les archives",
+      archiveBackToRecent: "Voir les discussions recentes",
       archiveEmpty: "Aucune conversation archivee pour le moment.",
       noRecentConversation: "Les conversations plus anciennes sont archivees ci-dessous.",
       placeholder: "Posez votre question sur un medicament ou tapez analyser",
@@ -177,6 +178,7 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
       recentTitle: "Recent conversation",
       archiveTitle: "View past conversations",
       archiveHide: "Hide archives",
+      archiveBackToRecent: "View recent conversations",
       archiveEmpty: "No archived conversations yet.",
       noRecentConversation: "Older conversations are archived below.",
       placeholder: "Ask about a medicine or type analyze",
@@ -206,6 +208,7 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
       recentTitle: "Ikiganiro giheruka",
       archiveTitle: "Raba ibiganiro vya kera",
       archiveHide: "Hisha archives",
+      archiveBackToRecent: "Raba ibiganiro vya vuba",
       archiveEmpty: "Nta biganiro vya kera biraboneka.",
       noRecentConversation: "Ibiganiro vya kera bibitswe hepfo.",
       placeholder: "Baza ikibazo kuri medicament canke wandike analyser",
@@ -235,6 +238,7 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
       recentTitle: "Mazungumzo ya hivi karibuni",
       archiveTitle: "Tazama mazungumzo ya zamani",
       archiveHide: "Ficha kumbukumbu",
+      archiveBackToRecent: "Tazama mazungumzo ya karibuni",
       archiveEmpty: "Hakuna mazungumzo ya zamani bado.",
       noRecentConversation: "Mazungumzo ya zamani yamehifadhiwa hapa chini.",
       placeholder: "Uliza kuhusu dawa au andika analyze",
@@ -264,6 +268,7 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
       recentTitle: "Lisolo ya sika",
       archiveTitle: "Tala masolo ya kala",
       archiveHide: "Bomba archives",
+      archiveBackToRecent: "Tala masolo ya sika",
       archiveEmpty: "Lisolo ya kala ezali te mpo na sikoyo.",
       noRecentConversation: "Masolo ya kala ebombami awa na se.",
       placeholder: "Tuna motuna na kisi to koma analyze",
@@ -285,6 +290,7 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
   const [ocrModal, setOcrModal] = useState<{ ocrText: string; confidence: number; botResult: PrescriptionBotResult } | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const historyIdentity = useMemo(() => getChatIdentity(), [isOpen]);
   const historyStorageKey = useMemo(() => getChatHistoryStorageKey(historyIdentity), [historyIdentity]);
   const recentMessages = useMemo(() => messages.filter((message) => !isArchivedMessage(message.created_at)), [messages]);
@@ -357,6 +363,14 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [recentMessages, workflowState, availablePharmacies.length]);
+
+  useEffect(() => {
+    if (!messagesContainerRef.current) {
+      return;
+    }
+
+    messagesContainerRef.current.scrollTop = 0;
+  }, [showArchived]);
 
   function addBotMessage(message: string) {
     setMessages((current) => [
@@ -550,9 +564,16 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
           </div>
         </div>
 
-        <div className="chatbot-messages">
+        <div className="chatbot-messages" ref={messagesContainerRef}>
           {showArchived ? (
             <div className="chatbot-archive-panel">
+              <button
+                className="chatbot-inline-link"
+                type="button"
+                onClick={() => setShowArchived(false)}
+              >
+                {labels.archiveBackToRecent}
+              </button>
               {archivedSections.length ? (
                 archivedSections.map(([sectionLabel, sectionMessages]) => (
                   <section key={sectionLabel} className="chatbot-archive-section">
@@ -574,87 +595,89 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
                 <div className="chatbot-empty-state">{labels.archiveEmpty}</div>
               )}
             </div>
-          ) : null}
+          ) : (
+            <>
+              <div className="chatbot-recent-label">{labels.recentTitle}</div>
 
-          <div className="chatbot-recent-label">{labels.recentTitle}</div>
+              {recentMessages.length === 0 && archivedMessages.length ? (
+                <div className="chatbot-empty-state">{labels.noRecentConversation}</div>
+              ) : null}
 
-          {recentMessages.length === 0 && archivedMessages.length ? (
-            <div className="chatbot-empty-state">{labels.noRecentConversation}</div>
-          ) : null}
-
-          {recentMessages.map((message) => (
-            <div key={message.id} className={`message ${message.sender === "user" ? "message-user" : "message-bot"}`}>
-              <div className="message-content">
-                {message.sender === "bot" ? (
-                  <img src="/chatbot-guardian.png" alt="" className="message-avatar-image" />
-                ) : null}
-                <div className="message-text">{formatMessage(message.message)}</div>
-                <span className="message-time">{formatExactDateTime(message.created_at, language)}</span>
-              </div>
-            </div>
-          ))}
-
-          {workflowState === "uploading" ? (
-            <div className="workflow-interface">
-              <label className="upload-area">
-                <input
-                  type="file"
-                  accept="image/*,.pdf"
-                  className="sr-only-file-input"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (file) {
-                      void handleFileUpload(file);
-                    }
-                  }}
-                />
-                <div className="upload-content">
-                  <img src="/chatbot-guardian.png" alt="" className="upload-guardian-image" />
-                  <p>{labels.uploadTitle}</p>
-                  <p className="upload-hint">{labels.uploadHint}</p>
+              {recentMessages.map((message) => (
+                <div key={message.id} className={`message ${message.sender === "user" ? "message-user" : "message-bot"}`}>
+                  <div className="message-content">
+                    {message.sender === "bot" ? (
+                      <img src="/chatbot-guardian.png" alt="" className="message-avatar-image" />
+                    ) : null}
+                    <div className="message-text">{formatMessage(message.message)}</div>
+                    <span className="message-time">{formatExactDateTime(message.created_at, language)}</span>
+                  </div>
                 </div>
-              </label>
-            </div>
-          ) : null}
+              ))}
 
-          {workflowState === "selection" && availablePharmacies.length ? (
-            <div className="workflow-interface">
-              <div className="pharmacy-list">
-                {availablePharmacies.map((pharmacy) => (
-                  <div key={pharmacy.pharmacy_id} className="pharmacy-card">
-                    <div className="pharmacy-info">
-                      <strong>{pharmacy.name}</strong>
-                      <p>{pharmacy.address}</p>
-                      <p>{pharmacy.phone}</p>
+              {workflowState === "uploading" ? (
+                <div className="workflow-interface">
+                  <label className="upload-area">
+                    <input
+                      type="file"
+                      accept="image/*,.pdf"
+                      className="sr-only-file-input"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (file) {
+                          void handleFileUpload(file);
+                        }
+                      }}
+                    />
+                    <div className="upload-content">
+                      <img src="/chatbot-guardian.png" alt="" className="upload-guardian-image" />
+                      <p>{labels.uploadTitle}</p>
+                      <p className="upload-hint">{labels.uploadHint}</p>
                     </div>
-                    <div className="pharmacy-actions">
-                      <button
-                        className="select-pharmacy-btn"
-                        disabled={selectionBusyId === pharmacy.pharmacy_id}
-                        onClick={() => void handlePharmacySelection(pharmacy)}
-                      >
-                        {selectionBusyId === pharmacy.pharmacy_id ? labels.selectionSending : labels.selectionCta}
-                      </button>
+                  </label>
+                </div>
+              ) : null}
+
+              {workflowState === "selection" && availablePharmacies.length ? (
+                <div className="workflow-interface">
+                  <div className="pharmacy-list">
+                    {availablePharmacies.map((pharmacy) => (
+                      <div key={pharmacy.pharmacy_id} className="pharmacy-card">
+                        <div className="pharmacy-info">
+                          <strong>{pharmacy.name}</strong>
+                          <p>{pharmacy.address}</p>
+                          <p>{pharmacy.phone}</p>
+                        </div>
+                        <div className="pharmacy-actions">
+                          <button
+                            className="select-pharmacy-btn"
+                            disabled={selectionBusyId === pharmacy.pharmacy_id}
+                            onClick={() => void handlePharmacySelection(pharmacy)}
+                          >
+                            {selectionBusyId === pharmacy.pharmacy_id ? labels.selectionSending : labels.selectionCta}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {isLoading ? (
+                <div className="message message-bot">
+                  <div className="message-content">
+                    <img src="/chatbot-guardian.png" alt="" className="message-avatar-image" />
+                    <div className="typing-indicator">
+                      <span></span>
+                      <span></span>
+                      <span></span>
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
-          ) : null}
-
-          {isLoading ? (
-            <div className="message message-bot">
-              <div className="message-content">
-                <img src="/chatbot-guardian.png" alt="" className="message-avatar-image" />
-                <div className="typing-indicator">
-                  <span></span>
-                  <span></span>
-                  <span></span>
                 </div>
-              </div>
-            </div>
-          ) : null}
-          <div ref={messagesEndRef} />
+              ) : null}
+              <div ref={messagesEndRef} />
+            </>
+          )}
         </div>
 
         <div className="chatbot-input-area">

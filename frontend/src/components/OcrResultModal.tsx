@@ -1,4 +1,5 @@
 import { usePreferences } from "../context/PreferencesContext";
+import ModalTransition from "./ModalTransition";
 import type { PrescriptionBotResult } from "../types";
 
 interface OcrResultModalProps {
@@ -75,8 +76,7 @@ export default function OcrResultModal({ ocrText, confidence, botResult, onClose
   const canShowReadableText = Boolean(ocrText && botResult.raw_text_displayable && botResult.analysis_source === "gemini");
 
   return (
-    <div className="ocr-modal-overlay" onClick={onClose}>
-      <div className="ocr-modal" onClick={(e) => e.stopPropagation()}>
+    <ModalTransition overlayClassName="ocr-modal-overlay" panelClassName="ocr-modal" ariaLabel={labels.title} onBackdropClick={onClose}>
         <div className="ocr-modal-header">
           <h2>{labels.title}</h2>
           <button className="ocr-modal-close" onClick={onClose}>✕</button>
@@ -141,7 +141,6 @@ export default function OcrResultModal({ ocrText, confidence, botResult, onClose
             {labels.confirm}
           </button>
         </div>
-      </div>
-    </div>
+    </ModalTransition>
   );
 }

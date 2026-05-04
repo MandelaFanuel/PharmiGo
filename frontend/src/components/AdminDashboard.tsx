@@ -1,6 +1,6 @@
-import { type FormEvent, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { type FormEvent, type ReactNode, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
-import DashboardScaffold, { DashboardPanel } from "./DashboardScaffold";
+import DashboardScaffold, { DashboardPanel, EyeGlyph, RefreshGlyph } from "./DashboardScaffold";
 import InAppDocumentViewer from "./InAppDocumentViewer";
 import PublicPrescriptionSheet from "./PublicPrescriptionSheet";
 import { getApiOrigin, getChatWebSocketUrl } from "../config/endpoints";
@@ -42,6 +42,74 @@ type AdminSection =
 const PHARMACY_PAGE_SIZE = 4;
 
 const SEARCH_LOCALES = ["fr-FR", "en-US", "sw-TZ"] as const;
+
+function ActionIconButton({
+  label,
+  title,
+  tone,
+  onClick,
+  children,
+}: {
+  label: string;
+  title?: string;
+  tone?: "default" | "danger" | "success" | "warning";
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  const toneClass = tone && tone !== "default" ? ` dashboard-action-icon-button-${tone}` : "";
+  return (
+    <button
+      type="button"
+      className={`dashboard-action-icon-button${toneClass}`}
+      onClick={onClick}
+      aria-label={label}
+      title={title ?? label}
+    >
+      {children}
+    </button>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M5 12.5 9.5 17 19 7.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function BanIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" strokeWidth="2" />
+      <path d="M8.5 15.5 15.5 8.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M5 7h14M9 7V5h6v2m-7 3v7m4-7v7m4-7v7M7 7l1 12h8l1-12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function SuspendIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M9 6v12M15 6v12" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function PencilIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4 20h4l10-10-4-4L4 16v4Zm9.5-13.5 4 4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
 
 function resolveMediaUrl(path?: string | null) {
   if (!path) {
@@ -498,8 +566,8 @@ export default function AdminDashboard() {
     }
   }
 
-  async function loadDashboard(withLoader = true) {
-    if (refreshInFlightRef.current) {
+  async function loadDashboard(withLoader = true, force = false) {
+    if (refreshInFlightRef.current && !force) {
       return;
     }
 
@@ -526,7 +594,7 @@ export default function AdminDashboard() {
   async function handleRefresh() {
     setFeedback(null);
     setError(null);
-    await Promise.all([loadAdminProfile(), loadDashboard(true)]);
+    await Promise.all([loadAdminProfile(), loadDashboard(true, true)]);
   }
 
   async function handleOpenDocument(prescription: PrescriptionRecord) {
@@ -1000,12 +1068,10 @@ export default function AdminDashboard() {
       navSections={navSections}
       metrics={metrics}
       highlights={highlights}
-      actions={
-        <div className="dashboard-actions">
-          <button className="primary-button" type="button" onClick={() => void handleRefresh()}>
-            {labels.refresh}
-          </button>
-        </div>
+      topbarActions={
+        <button className="dashboard-icon-button dashboard-refresh-button" type="button" onClick={() => void handleRefresh()} aria-label={labels.refresh} title={labels.refresh}>
+          <RefreshGlyph />
+        </button>
       }
     >
       {error ? <p className="form-feedback error">{error}</p> : null}
@@ -1040,24 +1106,12 @@ export default function AdminDashboard() {
               labels={["Notif", "Msgs", "Reponses", "Paiements", "Learn", "Rx"]}
             />
           </DashboardPanel>
-          <DashboardPanel title={labels.recentNotifications} description={labels.recentNotificationsHint} className="dashboard-panel-span-3">
-            <div className="admin-table-grid">
-              {(data?.notifications ?? []).slice(0, 6).map((notification) => (
-                <article key={notification.id} className="admin-data-card">
-                  <strong>{notification.title}</strong>
-                  <p>{notification.message}</p>
-                  <small>{formatExactDateTime(notification.created_at, language)}</small>
-                </article>
-              ))}
-              {!(data?.notifications ?? []).length ? <div className="empty-state">Aucune notification recente.</div> : null}
-            </div>
-          </DashboardPanel>
         </>
       ) : null}
 
       {activeSection === "pharmacies" ? (
         <DashboardPanel title={labels.pharmacies} description="Pagination de 4 pharmacies avec photo de profil, actions et statut synchronises." className="dashboard-panel-span-3">
-          <div className="admin-table-grid">
+          <div className="admin-table-grid dashboard-mobile-single-stack">
             {pagedPharmacies.map((pharmacy) => (
               <AdminPharmacyCard
                 key={pharmacy.id}
@@ -1077,19 +1131,24 @@ export default function AdminDashboard() {
 
       {activeSection === "patients" ? (
         <DashboardPanel title={labels.patients} description="Liste patient avec recherche en temps reel et pagination de 4." className="dashboard-panel-span-3">
-          <div className="admin-table-grid">
+          <div className="admin-table-grid dashboard-mobile-single-stack">
             {pagedPatients.map((patient) => (
               <article key={patient.id} className="admin-data-card">
                 <strong>{patient.username}</strong>
                 <span className={`badge ${patient.is_staff ? "info" : "neutral"}`}>{patient.role}</span>
                 <p>{patient.email || "Sans email"}</p>
                 <div className="admin-card-actions">
-                  <button type="button" className="secondary-button" onClick={() => void toggleUserBan(patient.id, patient.is_active !== false)}>
-                    {patient.is_active === false ? "Reactiver" : "Desactiver"}
-                  </button>
-                  <button type="button" className="notification-inline-action danger" onClick={() => void handleDeleteUser(patient.id)}>
-                    Supprimer
-                  </button>
+                  <ActionIconButton
+                    label={patient.is_active === false ? "Reactiver l'utilisateur" : "Desactiver l'utilisateur"}
+                    title={patient.is_active === false ? "Reactiver" : "Desactiver"}
+                    tone={patient.is_active === false ? "success" : "warning"}
+                    onClick={() => void toggleUserBan(patient.id, patient.is_active !== false)}
+                  >
+                    <BanIcon />
+                  </ActionIconButton>
+                  <ActionIconButton label="Supprimer l'utilisateur" title="Supprimer" tone="danger" onClick={() => void handleDeleteUser(patient.id)}>
+                    <TrashIcon />
+                  </ActionIconButton>
                 </div>
               </article>
             ))}
@@ -1100,7 +1159,7 @@ export default function AdminDashboard() {
 
       {activeSection === "prescriptions" ? (
         <DashboardPanel title={labels.prescriptions} description="Ordonnances originales privees, avec recherche temps reel par reference, patient et pharmacie." className="dashboard-panel-span-3">
-          <div className="admin-table-grid">
+          <div className="admin-table-grid dashboard-mobile-single-stack">
             {pagedPrescriptions.map((prescription) => (
               <article key={prescription.id} className="dashboard-record-card">
                 <div className="dashboard-record-head">
@@ -1129,8 +1188,9 @@ export default function AdminDashboard() {
                   ) : (
                     <div className="prescription-document-panel dashboard-document-panel">
                       <p>Document original securise et disponible pour verification administrative.</p>
-                      <button type="button" className="secondary-button" onClick={() => void handleOpenDocument(prescription)}>
-                        Voir l'ordonnance originale
+                      <button type="button" className="secondary-button dashboard-document-action" onClick={() => void handleOpenDocument(prescription)} aria-label="Voir l'ordonnance originale" title="Voir l'ordonnance originale">
+                        <EyeGlyph />
+                        <span>Voir l'ordonnance originale</span>
                       </button>
                     </div>
                   )
@@ -1148,13 +1208,13 @@ export default function AdminDashboard() {
 
       {activeSection === "ocr" ? (
         <DashboardPanel title={labels.ocr} description="Medicaments confirmes et analyse OCR relies aux memes references publiques." className="dashboard-panel-span-3">
-          <div className="admin-table-grid">
+          <div className="admin-table-grid dashboard-mobile-single-stack">
             {paginateItems(filteredOcrPrescriptions, prescriptionPage).pagedItems.map((prescription) => (
               <PublicPrescriptionSheet
                 key={prescription.id}
                 prescription={prescription}
                 title={prescription.medication_name || "Ordonnance medicale"}
-                className="compact"
+                className="compact dashboard-prescription-sheet"
                 footer={
                   <div className="admin-prescription-footer">
                     <span className="badge info">{prescription.status}</span>
@@ -1258,9 +1318,9 @@ export default function AdminDashboard() {
                       <span>{labels.paymentInstructions}</span>
                       <textarea value={method.instructions} onChange={(event) => updatePaymentMethod(index, "instructions", event.target.value)} rows={3} />
                     </label>
-                    <button type="button" className="notification-inline-action danger" onClick={() => removePaymentMethod(index)}>
-                      Supprimer
-                    </button>
+                    <ActionIconButton label="Supprimer ce mode de paiement" title="Supprimer" tone="danger" onClick={() => removePaymentMethod(index)}>
+                      <TrashIcon />
+                    </ActionIconButton>
                   </div>
                 ))}
               </div>
@@ -1325,7 +1385,7 @@ export default function AdminDashboard() {
               </div>
               <div className="admin-table-grid">
                 {activeSubscriptions.length ? activeSubscriptions.map((subscription) => (
-                  <article key={`active-${subscription.id}`} className="admin-data-card">
+                  <article key={`active-${subscription.id}`} className="admin-data-card admin-pharmacy-dashboard-card admin-subscription-pharmacy-card">
                     <div className="admin-card-header">
                       <div className="admin-profile-chip">
                         {pharmacyLookup.get(subscription.pharmacy_id)?.profile_image ? (
@@ -1344,12 +1404,14 @@ export default function AdminDashboard() {
                       </div>
                       <span className="badge success">{subscription.subscription_status}</span>
                     </div>
-                    <p>{formatExactDateTime(subscription.trial_start_date, language)} → {formatExactDateTime(subscription.trial_end_date, language)}</p>
-                    <small>{subscription.days_remaining} jours restants</small>
+                    <div className="admin-pharmacy-dashboard-details">
+                      <p>{formatExactDateTime(subscription.trial_start_date, language)} → {formatExactDateTime(subscription.trial_end_date, language)}</p>
+                      <small>{subscription.days_remaining} jours restants</small>
+                    </div>
                     <div className="admin-card-actions">
-                      <button type="button" className="notification-inline-action" onClick={() => void handleSubscriptionStatusChange(subscription.pharmacy_id, "suspended")}>
-                        Desactiver
-                      </button>
+                      <ActionIconButton label="Suspendre l'abonnement" title="Suspendre" tone="warning" onClick={() => void handleSubscriptionStatusChange(subscription.pharmacy_id, "suspended")}>
+                        <SuspendIcon />
+                      </ActionIconButton>
                     </div>
                   </article>
                 )) : <div className="empty-state">Aucun abonnement actif pour le moment.</div>}
@@ -1363,7 +1425,7 @@ export default function AdminDashboard() {
               </div>
               <div className="admin-table-grid">
                 {pagedSubscriptions.map((subscription) => (
-                  <article key={subscription.id} className="admin-data-card">
+                  <article key={subscription.id} className="admin-data-card admin-pharmacy-dashboard-card admin-subscription-pharmacy-card">
                     <div className="admin-card-header">
                       <div className="admin-profile-chip">
                         {pharmacyLookup.get(subscription.pharmacy_id)?.profile_image ? (
@@ -1384,15 +1446,19 @@ export default function AdminDashboard() {
                         {subscription.subscription_status}
                       </span>
                     </div>
-                    <p>{formatExactDateTime(subscription.trial_start_date, language)} → {formatExactDateTime(subscription.trial_end_date, language)}</p>
-                    <small>{subscription.days_remaining} jours restants</small>
+                    <div className="admin-pharmacy-dashboard-details">
+                      <p>{formatExactDateTime(subscription.trial_start_date, language)} → {formatExactDateTime(subscription.trial_end_date, language)}</p>
+                      <small>{subscription.days_remaining} jours restants</small>
+                    </div>
                     <div className="admin-card-actions">
-                      <button type="button" className="secondary-button" onClick={() => void handleSubscriptionStatusChange(subscription.pharmacy_id, subscription.subscription_status === "active" ? "suspended" : "active")}>
-                        {subscription.subscription_status === "active" ? "Desactiver" : "Activer"}
-                      </button>
-                      <button type="button" className="secondary-button" onClick={() => void handleSubscriptionStatusChange(subscription.pharmacy_id, "trial")}>
-                        Mettre en essai
-                      </button>
+                      <ActionIconButton
+                        label={subscription.subscription_status === "active" ? "Suspendre l'abonnement" : "Activer l'abonnement"}
+                        title={subscription.subscription_status === "active" ? "Suspendre" : "Activer"}
+                        tone={subscription.subscription_status === "active" ? "warning" : "success"}
+                        onClick={() => void handleSubscriptionStatusChange(subscription.pharmacy_id, subscription.subscription_status === "active" ? "suspended" : "active")}
+                      >
+                        {subscription.subscription_status === "active" ? <SuspendIcon /> : <CheckIcon />}
+                      </ActionIconButton>
                     </div>
                   </article>
                 ))}
@@ -1548,13 +1614,13 @@ function AdminPharmacyCard({
     subscriptionStatus === "active" ? "success" : subscriptionStatus === "trial" ? "info" : "warning";
   const subscriptionLabel =
     subscriptionStatus === "active"
-      ? "Statut paye"
+      ? "Verifiee"
       : subscriptionStatus === "trial"
         ? `Trial period${typeof subscription?.days_remaining === "number" ? ` · ${subscription.days_remaining} j` : ""}`
         : "Suspendue";
 
   return (
-    <article className="admin-data-card">
+    <article className="admin-data-card admin-pharmacy-dashboard-card">
       <div className="admin-card-header">
         <div className="admin-profile-chip">
           {pharmacy.profile_image ? (
@@ -1575,25 +1641,40 @@ function AdminPharmacyCard({
           <span className={`badge ${subscriptionBadgeClass}`}>{subscriptionLabel}</span>
         </div>
       </div>
-      <p>{pharmacy.city} • {pharmacy.address}</p>
-      <small>Inscription: {formatExactDateTime(pharmacy.created_at, language)}</small>
-      <small>Abonnement: {subscriptionStatus}</small>
+      <div className="admin-pharmacy-dashboard-details">
+        <p>{pharmacy.city}</p>
+        <p>{pharmacy.address}</p>
+        <small>Inscription: {formatExactDateTime(pharmacy.created_at, language)}</small>
+        <small>Abonnement: {subscriptionStatus}</small>
+      </div>
       <div className="admin-card-actions admin-card-actions-rail" role="toolbar" aria-label={`Actions pour ${pharmacy.name}`}>
-        <button type="button" className="secondary-button" onClick={() => void onSubscriptionStatusChange(pharmacy.id, "active")}>
-          {subscriptionStatus === "active" ? "Activee" : "Activer"}
-        </button>
-        <button type="button" className="secondary-button" onClick={() => void onSubscriptionStatusChange(pharmacy.id, "trial")}>
-          {subscriptionStatus === "trial" ? "Trial period" : "Mettre en trial"}
-        </button>
-        <button type="button" className="notification-inline-action" onClick={() => void onSubscriptionStatusChange(pharmacy.id, "suspended")}>
-          {subscriptionStatus === "suspended" ? "Suspendue" : "Suspendre"}
-        </button>
-        <button type="button" className="secondary-button" onClick={() => void onToggleBan(pharmacy.id, pharmacy.is_active !== false)}>
-          {pharmacy.is_active === false ? "Reactiver" : "Bannir"}
-        </button>
-        <button type="button" className="notification-inline-action danger" onClick={() => void onDelete(pharmacy.id)}>
-          Supprimer
-        </button>
+        <ActionIconButton
+          label={subscriptionStatus === "active" ? "Pharmacie deja active" : "Activer la pharmacie"}
+          title={subscriptionStatus === "active" ? "Activee" : "Activer"}
+          tone="success"
+          onClick={() => void onSubscriptionStatusChange(pharmacy.id, "active")}
+        >
+          <CheckIcon />
+        </ActionIconButton>
+        <ActionIconButton
+          label={subscriptionStatus === "suspended" ? "Pharmacie deja suspendue" : "Suspendre la pharmacie"}
+          title={subscriptionStatus === "suspended" ? "Suspendue" : "Suspendre"}
+          tone="warning"
+          onClick={() => void onSubscriptionStatusChange(pharmacy.id, "suspended")}
+        >
+          <SuspendIcon />
+        </ActionIconButton>
+        <ActionIconButton
+          label={pharmacy.is_active === false ? "Reactiver la pharmacie" : "Bannir la pharmacie"}
+          title={pharmacy.is_active === false ? "Reactiver" : "Bannir"}
+          tone={pharmacy.is_active === false ? "success" : "warning"}
+          onClick={() => void onToggleBan(pharmacy.id, pharmacy.is_active !== false)}
+        >
+          <BanIcon />
+        </ActionIconButton>
+        <ActionIconButton label="Supprimer la pharmacie" title="Supprimer" tone="danger" onClick={() => void onDelete(pharmacy.id)}>
+          <TrashIcon />
+        </ActionIconButton>
       </div>
     </article>
   );
@@ -1609,18 +1690,20 @@ function BarChartCard({
   const maxValue = Math.max(1, ...bars.map((item) => item.value));
 
   return (
-    <div className="admin-graph-card">
+    <div className="admin-graph-card admin-performance-card">
       <div className="admin-graph-head">
         <strong>{title}</strong>
       </div>
-      <div className="admin-bar-chart">
+      <div className="admin-performance-bars">
         {bars.map((bar) => (
-          <div key={bar.label} className="admin-bar-item">
-            <div className="admin-bar-value">{bar.value}</div>
-            <div className="admin-bar-track">
-              <div className="admin-bar-fill" style={{ height: `${(bar.value / maxValue) * 100}%` }} />
+          <div key={bar.label} className="admin-performance-bar-row">
+            <div className="admin-performance-bar-head">
+              <span>{bar.label}</span>
+              <strong>{bar.value}</strong>
             </div>
-            <span>{bar.label}</span>
+            <div className="admin-performance-bar-track" aria-hidden="true">
+              <div className="admin-performance-bar-fill" style={{ width: `${(bar.value / maxValue) * 100}%` }} />
+            </div>
           </div>
         ))}
       </div>
@@ -1636,6 +1719,13 @@ function LineChartCard({
   labels: string[];
 }) {
   const maxValue = Math.max(1, ...values);
+  const areaPoints = `0,100 ${values
+    .map((value, index) => {
+      const x = (index / Math.max(values.length - 1, 1)) * 100;
+      const y = 100 - (value / maxValue) * 100;
+      return `${x},${y}`;
+    })
+    .join(" ")} 100,100`;
   const points = values
     .map((value, index) => {
       const x = (index / Math.max(values.length - 1, 1)) * 100;
@@ -1645,13 +1735,35 @@ function LineChartCard({
     .join(" ");
 
   return (
-    <div className="admin-graph-card admin-graph-card-wide">
-      <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="admin-line-chart">
-        <polyline points={points} className="admin-line-path" />
-      </svg>
-      <div className="admin-line-labels">
+    <div className="admin-graph-card admin-graph-card-wide admin-activity-card">
+      <div className="admin-activity-chart-shell">
+        <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="admin-line-chart">
+          <defs>
+            <linearGradient id="admin-activity-fill" x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0%" stopColor="rgba(76, 111, 255, 0.32)" />
+              <stop offset="100%" stopColor="rgba(76, 111, 255, 0.04)" />
+            </linearGradient>
+          </defs>
+          <polygon points={areaPoints} className="admin-line-area" />
+          <polyline points={points} className="admin-line-path" />
+          {values.map((value, index) => {
+            const x = (index / Math.max(values.length - 1, 1)) * 100;
+            const y = 100 - (value / maxValue) * 100;
+            return <circle key={`${labels[index]}-${index}`} cx={x} cy={y} r="2.1" className="admin-line-point" />;
+          })}
+        </svg>
+        <div className="admin-line-labels admin-activity-labels">
+          {labels.map((label, index) => (
+            <span key={`${label}-${index}`}>{label}</span>
+          ))}
+        </div>
+      </div>
+      <div className="admin-activity-summary">
         {labels.map((label, index) => (
-          <span key={`${label}-${index}`}>{label}</span>
+          <div key={`${label}-summary`} className="admin-activity-summary-item">
+            <span>{label}</span>
+            <strong>{values[index] ?? 0}</strong>
+          </div>
         ))}
       </div>
     </div>
