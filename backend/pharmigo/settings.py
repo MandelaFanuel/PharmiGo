@@ -174,31 +174,14 @@ EMAIL_FROM = (
     or "no-reply@pharmigo.local"
 )
 DEFAULT_FROM_EMAIL = EMAIL_FROM
+SMTP_HOST = os.getenv("SMTP_HOST", "").strip()
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587") or "587")
+SMTP_USER = os.getenv("SMTP_USER", "").strip()
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "").strip()
+EMAIL_USE_TLS = _read_bool_env("EMAIL_USE_TLS", default=True)
+EMAIL_USE_SSL = _read_bool_env("EMAIL_USE_SSL", default=False)
+EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", "20") or "20")
 RESEND_API_KEY = os.getenv("RESEND_API_KEY", "").strip()
 RESEND_API_URL = os.getenv("RESEND_API_URL", "https://api.resend.com/emails").strip() or "https://api.resend.com/emails"
 RESEND_FROM_EMAIL = os.getenv("RESEND_FROM_EMAIL", "").strip() or EMAIL_FROM
-
-SMTP_HOST = os.getenv("SMTP_HOST", "").strip() or os.getenv("EMAIL_HOST", "").strip()
-SMTP_PORT = os.getenv("SMTP_PORT", os.getenv("EMAIL_PORT", "")).strip()
-SMTP_USER = os.getenv("SMTP_USER", "").strip() or os.getenv("EMAIL_HOST_USER", "").strip()
-SMTP_PASSWORD = (
-    os.getenv("SMTP_PASSWORD", "").strip()
-    or os.getenv("SMTP_PASS", "").strip()
-    or os.getenv("EMAIL_HOST_PASSWORD", "").strip()
-)
-
-if not SMTP_HOST and SMTP_USER.endswith("@gmail.com"):
-    SMTP_HOST = "smtp.gmail.com"
-if not SMTP_PORT and SMTP_HOST == "smtp.gmail.com":
-    SMTP_PORT = "587"
-
-SMTP_CONFIGURED = bool(SMTP_HOST and SMTP_PORT and (SMTP_USER or SMTP_PASSWORD))
-DEFAULT_EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend" if SMTP_CONFIGURED else "django.core.mail.backends.console.EmailBackend"
-EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", DEFAULT_EMAIL_BACKEND).strip() or DEFAULT_EMAIL_BACKEND
-EMAIL_HOST = SMTP_HOST or "localhost"
-EMAIL_PORT = int(SMTP_PORT or "25")
-EMAIL_HOST_USER = SMTP_USER
-EMAIL_HOST_PASSWORD = SMTP_PASSWORD
-EMAIL_USE_TLS = _read_bool_env("EMAIL_USE_TLS", default=EMAIL_HOST == "smtp.gmail.com" and EMAIL_PORT == 587)
-EMAIL_USE_SSL = _read_bool_env("EMAIL_USE_SSL", "SMTP_SECURE", default=False)
 GOOGLE_OAUTH_CLIENT_ID = os.getenv("GOOGLE_OAUTH_CLIENT_ID", "").strip()
