@@ -3,14 +3,13 @@ import json
 import logging
 import os
 import secrets
-from smtplib import SMTPException
 from datetime import timedelta
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.core.mail import EmailMessage, get_connection, send_mail
+from django.core.mail import EmailMessage, get_connection
 from django.db import transaction
 from django.utils import timezone
 from google.auth.transport import requests as google_requests
@@ -42,58 +41,87 @@ def build_verification_url(raw_token: str) -> str:
 
 
 def email_delivery_uses_console_backend() -> bool:
-    return settings.EMAIL_BACKEND == "django.core.mail.backends.console.EmailBackend"
+    return bool(getattr(settings, "DEBUG", False))
+
+
+def smtp_email_configured() -> bool:
+    return bool(getattr(settings, "SMTP_HOST", "").strip() and getattr(settings, "SMTP_USER", "").strip())
 
 
 def resend_api_configured() -> bool:
     return bool(getattr(settings, "RESEND_API_KEY", "").strip())
 
 
-def send_transactional_email(subject: str, message: str, recipient_email: str) -> dict:
-    if resend_api_configured():
-        payload = json.dumps(
-            {
-                "from": settings.RESEND_FROM_EMAIL,
-                "to": [recipient_email],
-                "subject": subject,
-                "text": message,
-            }
-        ).encode("utf-8")
-        request = Request(
-            settings.RESEND_API_URL,
-            data=payload,
-            headers={
-                "Authorization": f"Bearer {settings.RESEND_API_KEY}",
-                "Content-Type": "application/json",
-            },
-            method="POST",
-        )
-        try:
-            with urlopen(request, timeout=20) as response:
-                response_body = response.read().decode("utf-8") if response else ""
-                response_data = json.loads(response_body) if response_body else {}
-                return {
-                    "delivery_mode": "resend_api",
-                    "provider_message_id": response_data.get("id"),
-                }
-        except HTTPError as exc:
-            error_body = exc.read().decode("utf-8", errors="replace")
-            logger.warning("Resend API delivery failed for %s: %s %s", recipient_email, exc.code, error_body)
-            raise EmailDeliveryError("Impossible d'envoyer l'email pour le moment via Resend.") from exc
-        except URLError as exc:
-            logger.warning("Resend API unreachable for %s: %s", recipient_email, exc)
-            raise EmailDeliveryError("Le service d'emails est momentanement inaccessible.") from exc
+def send_smtp_transactional_email(subject: str, message: str, recipient_email: str) -> dict:
+    if not smtp_email_configured():
+        raise EmailDeliveryError("La configuration SMTP est absente.")
 
-    send_mail(
-        subject=subject,
-        message=message,
-        from_email=settings.EMAIL_FROM,
-        recipient_list=[recipient_email],
-        fail_silently=False,
+    connection = get_connection(
+        backend="django.core.mail.backends.smtp.EmailBackend",
+        host=settings.SMTP_HOST,
+        port=settings.SMTP_PORT,
+        username=settings.SMTP_USER,
+        password=settings.SMTP_PASSWORD,
+        use_tls=settings.EMAIL_USE_TLS,
+        use_ssl=settings.EMAIL_USE_SSL,
+        timeout=getattr(settings, "EMAIL_TIMEOUT", 20),
     )
-    return {
-        "delivery_mode": "console_preview" if email_delivery_uses_console_backend() else "smtp",
-    }
+    email = EmailMessage(
+        subject=subject,
+        body=message,
+        from_email=settings.EMAIL_FROM,
+        to=[recipient_email],
+        connection=connection,
+    )
+    try:
+        email.send(fail_silently=False)
+        return {
+            "delivery_mode": "smtp",
+            "provider_message_id": None,
+        }
+    except Exception as exc:
+        logger.warning("SMTP delivery failed for %s: %s", recipient_email, exc)
+        raise EmailDeliveryError("Impossible d'envoyer l'email pour le moment via SMTP.") from exc
+
+
+def send_transactional_email(subject: str, message: str, recipient_email: str) -> dict:
+    if smtp_email_configured():
+        return send_smtp_transactional_email(subject=subject, message=message, recipient_email=recipient_email)
+    if not resend_api_configured():
+        raise EmailDeliveryError("Aucun service d'email n'est configure.")
+
+    payload = json.dumps(
+        {
+            "from": settings.RESEND_FROM_EMAIL,
+            "to": [recipient_email],
+            "subject": subject,
+            "text": message,
+        }
+    ).encode("utf-8")
+    request = Request(
+        settings.RESEND_API_URL,
+        data=payload,
+        headers={
+            "Authorization": f"Bearer {settings.RESEND_API_KEY}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=20) as response:
+            response_body = response.read().decode("utf-8") if response else ""
+            response_data = json.loads(response_body) if response_body else {}
+            return {
+                "delivery_mode": "resend_api",
+                "provider_message_id": response_data.get("id"),
+            }
+    except HTTPError as exc:
+        error_body = exc.read().decode("utf-8", errors="replace")
+        logger.warning("Resend API delivery failed for %s: %s %s", recipient_email, exc.code, error_body)
+        raise EmailDeliveryError("Impossible d'envoyer l'email pour le moment via Resend.") from exc
+    except URLError as exc:
+        logger.warning("Resend API unreachable for %s: %s", recipient_email, exc)
+        raise EmailDeliveryError("Le service d'emails est momentanement inaccessible.") from exc
 
 
 def build_unique_username(base_value: str) -> str:
@@ -158,8 +186,6 @@ def send_verification_email(user, raw_token: str) -> dict:
                 "verification_token": raw_token,
                 "delivery_error": str(exc),
             }
-        if isinstance(exc, SMTPException):
-            raise EmailDeliveryError("Impossible d'envoyer l'email de verification. Verifiez la configuration SMTP.") from exc
         raise EmailDeliveryError("Impossible d'envoyer l'email de verification pour le moment.") from exc
 
 

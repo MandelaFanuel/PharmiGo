@@ -2,6 +2,30 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
     {
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
+    },
+    {
+      "source": "/ws/(.*)",
+      "destination": "/ws/$1"
+    },
+    {
+      "source": "/media/(.*)",
+      "destination": "/media/$1"
+    },
+    {
+      "source": "/static/(.*)",
+      "destination": "/static/$1"
+    },
+    {
+      "source": "/assets/(.*)",
+      "destination": "/assets/$1"
+    },
+    {
+      "source": "/favicon.ico",
+      "destination": "/favicon.ico"
+    },
+    {
       "source": "/((?!api/|ws/|media/|static/|assets/|.*\\..*).*)",
       "destination": "/index.html"
     }

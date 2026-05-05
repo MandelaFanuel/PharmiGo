@@ -1,6 +1,6 @@
 import axios from "axios";
 
-import { API_ENDPOINTS } from "../config/endpoints";
+import { API_ENDPOINTS, getApiBaseUrl } from "../config/endpoints";
 import { clearStoredAuthSession, getStoredAuthToken } from "../lib/auth";
 import { logClientError } from "../lib/logger";
 import type {
@@ -25,7 +25,7 @@ import type {
 } from "../types";
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || "/api",
+  baseURL: getApiBaseUrl(),
 });
 
 async function postWithFallback<T>(primaryUrl: string, fallbackUrl: string, body: unknown, headers?: Record<string, string>) {
