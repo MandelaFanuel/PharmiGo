@@ -36,15 +36,41 @@ export const API_ENDPOINTS = {
   chatbotMessages: "/pharmigo/chatbot/messages/",
 } as const;
 
-export function getApiOrigin() {
+const PRODUCTION_API_BASE_URL = "https://pharmigo-backend.onrender.com/api";
+const PRODUCTION_API_ORIGIN = "https://pharmigo-backend.onrender.com";
+
+export function getApiBaseUrl() {
   const explicitBase = import.meta.env.VITE_API_BASE_URL;
   if (explicitBase) {
+    return explicitBase;
+  }
+
+  if (typeof window !== "undefined" && window.location.hostname === "pharmigo.vercel.app") {
+    return PRODUCTION_API_BASE_URL;
+  }
+
+  return "/api";
+}
+
+export function getApiOrigin() {
+  const explicitOrigin = import.meta.env.VITE_API_ORIGIN;
+  if (explicitOrigin) {
+    return explicitOrigin;
+  }
+
+  const apiBaseUrl = getApiBaseUrl();
+  if (apiBaseUrl) {
     try {
-      return new URL(explicitBase, window.location.origin).origin;
+      return new URL(apiBaseUrl, window.location.origin).origin;
     } catch {
       return typeof window !== "undefined" ? window.location.origin : null;
     }
   }
+
+  if (typeof window !== "undefined" && window.location.hostname === "pharmigo.vercel.app") {
+    return PRODUCTION_API_ORIGIN;
+  }
+
   return typeof window !== "undefined" ? window.location.origin : null;
 }
 
@@ -52,6 +78,10 @@ export function getChatWebSocketUrl(roomName: string) {
   const explicitBase = import.meta.env.VITE_WS_BASE_URL;
   if (explicitBase) {
     return `${explicitBase.replace(/\/$/, "")}/ws/chat/${roomName}/`;
+  }
+
+  if (typeof window !== "undefined" && window.location.hostname === "pharmigo.vercel.app") {
+    return `wss://pharmigo-backend.onrender.com/ws/chat/${roomName}/`;
   }
 
   const apiOrigin = getApiOrigin();
