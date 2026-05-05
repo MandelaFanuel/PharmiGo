@@ -174,6 +174,9 @@ EMAIL_FROM = (
     or "no-reply@pharmigo.local"
 )
 DEFAULT_FROM_EMAIL = EMAIL_FROM
+RESEND_API_KEY = os.getenv("RESEND_API_KEY", "").strip()
+RESEND_API_URL = os.getenv("RESEND_API_URL", "https://api.resend.com/emails").strip() or "https://api.resend.com/emails"
+RESEND_FROM_EMAIL = os.getenv("RESEND_FROM_EMAIL", "").strip() or EMAIL_FROM
 
 SMTP_HOST = os.getenv("SMTP_HOST", "").strip() or os.getenv("EMAIL_HOST", "").strip()
 SMTP_PORT = os.getenv("SMTP_PORT", os.getenv("EMAIL_PORT", "")).strip()

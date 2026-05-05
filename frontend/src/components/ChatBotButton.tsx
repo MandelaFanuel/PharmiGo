@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 
 import ChatBot from "./ChatBot";
 import { usePreferences } from "../context/PreferencesContext";
@@ -16,6 +17,7 @@ export default function ChatBotButton() {
   const [guardianMessageIndex, setGuardianMessageIndex] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
   const { t, language } = usePreferences();
+  const portalTarget = useMemo(() => (typeof document !== "undefined" ? document.body : null), []);
 
   const localizedGuardianMessages = {
     fr: guardianMessages,
@@ -79,7 +81,7 @@ export default function ChatBotButton() {
     return () => window.clearInterval(interval);
   }, [isPaused, localizedGuardianMessages.length]);
 
-  return (
+  const floatingNode = (
     <>
       <button
         className={isPaused ? "chatbot-toggle paused" : "chatbot-toggle"}
@@ -98,4 +100,10 @@ export default function ChatBotButton() {
       <ChatBot isOpen={isOpen} onClose={closeChat} />
     </>
   );
+
+  if (!portalTarget) {
+    return floatingNode;
+  }
+
+  return createPortal(floatingNode, portalTarget);
 }

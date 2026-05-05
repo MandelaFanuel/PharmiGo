@@ -3,7 +3,6 @@ import logging
 from django.contrib.auth import logout
 from django.contrib.auth import get_user_model
 from django.contrib.auth.tokens import default_token_generator
-from django.core.mail import send_mail
 from django.utils.encoding import force_str
 from django.utils.http import urlsafe_base64_decode
 from django.conf import settings
@@ -26,7 +25,13 @@ from .serializers import (
     build_password_reset_payload,
 )
 from apps.users.models import UserProfile
-from apps.users.services import EmailDeliveryError, EmailVerificationError, send_email_verification_for_user, verify_email_token
+from apps.users.services import (
+    EmailDeliveryError,
+    EmailVerificationError,
+    send_email_verification_for_user,
+    send_transactional_email,
+    verify_email_token,
+)
 from pharmigo.api import broadcast_feed_event
 
 User = get_user_model()
@@ -147,12 +152,10 @@ class PasswordResetRequestView(APIView):
                 "Si vous n'etes pas a l'origine de cette demande, ignorez simplement ce message."
             )
             try:
-                send_mail(
+                send_transactional_email(
                     subject="Reinitialisation de votre mot de passe PharmiGo",
                     message=message,
-                    from_email=settings.DEFAULT_FROM_EMAIL,
-                    recipient_list=[email],
-                    fail_silently=False,
+                    recipient_email=email,
                 )
             except Exception as exc:
                 logger.warning("Password reset email could not be sent: %s", exc)
@@ -216,8 +219,18 @@ class ResendVerificationEmailView(APIView):
         if user is not None and profile is not None and not profile.email_verified:
             try:
                 delivery = send_email_verification_for_user(user)
+            except EmailDeliveryError as exc:
+                logger.warning("Verification email resend failed for %s: %s", email, exc)
+                return Response(
+                    {"detail": "Le service d'envoi d'emails est temporairement indisponible. Reessayez plus tard."},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
             except Exception as exc:
                 logger.warning("Verification email could not be resent: %s", exc)
+                return Response(
+                    {"detail": "Le service d'envoi d'emails est temporairement indisponible. Reessayez plus tard."},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
 
         response_payload = {"message": "Si ce compte existe, un email de verification a ete envoye."}
         if settings.DEBUG and delivery:
