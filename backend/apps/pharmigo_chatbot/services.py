@@ -752,6 +752,21 @@ class ChatbotResponseService:
         "ordonnance",
     ]
 
+    GENERAL_CONVERSATION_MARKERS = [
+        "bonjour",
+        "salut",
+        "bonsoir",
+        "coucou",
+        "merci",
+        "qui es tu",
+        "que fais tu",
+        "que peux tu faire",
+        "comment utiliser",
+        "comment ca marche",
+        "aide moi",
+        "presente toi",
+    ]
+
     def __init__(self):
         from apps.prescriptions.services.qa_service import QAService
 
@@ -766,6 +781,17 @@ class ChatbotResponseService:
         context = self.context_service.build_context(user)
         role = context["role"] if context["role"] in {"patient", "pharmacy"} else "all"
         lowered_question = cleaned_question.lower()
+
+        if self._looks_like_general_conversation(cleaned_question):
+            generic_answer = self.gemini_chat.generate_response(
+                question=cleaned_question,
+                role=role,
+                internal_answer="Je suis PharmiGo, votre assistant de sante. Je peux vous aider a trouver des medicaments dans les stocks des pharmacies, expliquer le fonctionnement de la plateforme, accompagner la verification d'email, les ordonnances et repondre aux questions generales de sante de facon informative.",
+                structured_context=self._build_gemini_context_payload(role=role, context=context, user=user, medication_names=[]),
+                allow_general_fallback=True,
+                response_kind="general_conversation",
+            )
+            return generic_answer or "Je suis PharmiGo, votre assistant de sante. Je peux vous guider dans la plateforme, vous aider a chercher des medicaments et repondre a vos questions."
 
         if "page d'accueil" in lowered_question and "ordonnance" in lowered_question and ("publier" in lowered_question or "puis-je" in lowered_question):
             return self._compose_final_answer(
@@ -1068,7 +1094,16 @@ class ChatbotResponseService:
 
     def _looks_like_medication_request(self, question):
         lowered = question.lower()
+        if self._looks_like_general_conversation(lowered):
+            return False
         return any(marker in lowered for marker in self.MEDICINE_REQUEST_MARKERS)
+
+    def _looks_like_general_conversation(self, question: str) -> bool:
+        lowered = normalize_text(question or "")
+        if not lowered:
+            return False
+
+        return any(marker in lowered for marker in self.GENERAL_CONVERSATION_MARKERS)
 
     def _answer_medicine_lookup(self, medication_names: List[str], role: str, user=None) -> Tuple[str, float]:
         del role

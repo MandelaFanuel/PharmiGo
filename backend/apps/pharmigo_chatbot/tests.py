@@ -34,3 +34,14 @@ class ChatbotResponseServiceTests(TestCase):
         self.assertTrue(response)
         self.assertIsInstance(response, str)
         self.assertGreater(len(response), 20)
+
+    @patch("apps.pharmigo_chatbot.services.GeminiChatService.generate_response")
+    def test_greeting_does_not_trigger_medication_lookup(self, mocked_generate):
+        mocked_generate.return_value = "Bonjour, je suis PharmiGo et je peux vous accompagner."
+        service = ChatbotResponseService()
+
+        with patch.object(service, "_answer_medicine_lookup", wraps=service._answer_medicine_lookup) as mocked_lookup:
+            response = service.answer("Bonjour PharmiGo, peux-tu me dire ce que tu fais ?", self.user)
+
+        self.assertEqual(response, "Bonjour, je suis PharmiGo et je peux vous accompagner.")
+        mocked_lookup.assert_not_called()

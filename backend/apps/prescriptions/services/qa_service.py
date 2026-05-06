@@ -105,6 +105,9 @@ class QAService:
         normalized_question = re.sub(r"[^\w\sàâäéèêëîïôöùûüçµ-]", " ", question.lower())
         tokens = [token.strip() for token in normalized_question.split() if token.strip()]
 
+        if self._is_about_usage(normalized_question) and not self._looks_like_medication_request(normalized_question):
+            return found
+
         for alias, canonical in self.all_medication_aliases.items():
             if alias in normalized_question and canonical not in found:
                 found.append(canonical)
@@ -213,6 +216,24 @@ class QAService:
             return f"Je n'ai pas encore trouvé de pharmacie avec {requested}{dosage_text} dans les stocks enregistrés en temps réel."
 
     def _looks_like_medication_request(self, question: str) -> bool:
+        if self._is_about_usage(question):
+            usage_only_markers = [
+                "bonjour",
+                "salut",
+                "bonsoir",
+                "qui es tu",
+                "qui es-tu",
+                "que fais tu",
+                "que fais-tu",
+                "que peux tu faire",
+                "que peux-tu faire",
+                "comment utiliser",
+                "comment ça marche",
+                "comment ca marche",
+            ]
+            if any(marker in question for marker in usage_only_markers):
+                return False
+
         request_markers = [
             "où",
             "ou",
