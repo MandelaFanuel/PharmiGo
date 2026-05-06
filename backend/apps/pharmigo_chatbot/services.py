@@ -466,11 +466,14 @@ class ChatbotContextService:
         profile = getattr(user, "profile", None) if getattr(user, "is_authenticated", False) else None
         role = getattr(profile, "role", "guest") if profile else "guest"
         pharmacy = getattr(profile, "pharmacy", None) if profile else None
+        display_name = self._derive_display_name(user)
 
         context = {
             "role": role,
+            "is_authenticated": bool(getattr(user, "is_authenticated", False)),
             "user_id": getattr(user, "id", None),
             "username": getattr(user, "username", "") if getattr(user, "is_authenticated", False) else "",
+            "display_name": display_name,
             "address": getattr(profile, "address", "") if profile else "",
             "pending_confirmations": [],
             "recent_notifications": [],
@@ -483,6 +486,11 @@ class ChatbotContextService:
             "interactions": [],
             "pharmacy_contacts": [],
             "recent_messages": [],
+            "patient_support_profile": {
+                "possible_chronic_condition": False,
+                "chronic_signals": [],
+                "encouragement_style": "standard",
+            },
         }
 
         if not getattr(user, "is_authenticated", False):
@@ -529,6 +537,7 @@ class ChatbotContextService:
             context["nearby_pharmacies"] = list(
                 RealPharmacy.objects.order_by("name").values("id", "name", "address", "city", "phone_number")[:10]
             )
+            context["patient_support_profile"] = self._build_patient_support_profile(context["recent_prescriptions"])
         elif role == "pharmacy" and pharmacy is not None:
             context["pharmacy_stock"] = list(
                 RealPharmacyStock.objects.filter(pharmacy=pharmacy).order_by("-last_updated").values(
@@ -569,6 +578,44 @@ class ChatbotContextService:
             )
 
         return context
+
+    @staticmethod
+    def _derive_display_name(user) -> str:
+        if not getattr(user, "is_authenticated", False):
+            return ""
+
+        first_name = (getattr(user, "first_name", "") or "").strip()
+        last_name = (getattr(user, "last_name", "") or "").strip()
+        if first_name and last_name:
+            return f"{first_name} {last_name}".strip()
+        if first_name:
+            return first_name
+        return (getattr(user, "username", "") or "").strip()
+
+    @staticmethod
+    def _build_patient_support_profile(recent_prescriptions: List[Dict[str, Any]]) -> Dict[str, Any]:
+        chronic_markers = {
+            "hypertension": ["amlodipine", "losartan", "enalapril"],
+            "diabete": ["metformine", "glibenclamide", "insuline", "insulin"],
+            "asthme": ["salbutamol", "beclometasone", "budesonide"],
+            "epilepsie": ["carbamazepine", "valproate", "phenobarbital", "levetiracetam"],
+            "cardiaque": ["bisoprolol", "furosemide", "spironolactone"],
+        }
+
+        detected_signals: List[str] = []
+        for prescription in recent_prescriptions or []:
+            medication_name = normalize_text((prescription or {}).get("medication_name") or "")
+            if not medication_name:
+                continue
+            for label, markers in chronic_markers.items():
+                if any(marker in medication_name for marker in markers) and label not in detected_signals:
+                    detected_signals.append(label)
+
+        return {
+            "possible_chronic_condition": bool(detected_signals),
+            "chronic_signals": detected_signals[:4],
+            "encouragement_style": "gentle_follow_up" if detected_signals else "standard",
+        }
 
 
 class GeminiChatService:
@@ -669,13 +716,20 @@ class GeminiChatService:
             "Tu es PharmiGo, l'assistant conversationnel officiel de la plateforme PharmiGo.\n\n"
             "Objectif:\n"
             "- Repondre de maniere humaine, naturelle, empathique et professionnelle.\n"
-            "- Repondre dans la langue du message de l'utilisateur.\n"
+            "- Repondre dans la langue du message de l'utilisateur, notamment en francais, kirundi, swahili de Tanzanie ou lingala selon la langue detectee.\n"
             "- Utiliser EN PRIORITE les donnees internes PharmiGo fournies ci-dessous.\n"
             "- Ne jamais inventer un stock, une pharmacie, un prix, une adresse, un numero de telephone ou une disponibilite.\n"
             "- Si les donnees PharmiGo ne suffisent pas ET si `allow_general_fallback` vaut true, tu peux completer avec une reponse generale, "
             "mais en distinguant clairement ce qui vient de PharmiGo et ce qui est une information generale.\n"
-            "- Ne donne jamais de diagnostic medical et ne remplace pas un professionnel de sante.\n"
+            "- Ne donne jamais de diagnostic medical et ne remplace pas un professionnel de sante. Tu peux donner des conseils generaux, prudents et bienveillants, avec signes d'alerte quand c'est utile.\n"
             "- Si la demande porte sur un medicament, garde le flux existant de PharmiGo: recherche interne d'abord, puis explication claire pour l'utilisateur.\n"
+            "- Si la conversation commence vraiment ou si l'utilisateur salue, tu peux saluer une fois. Sinon, n'ouvre pas chaque reponse par Bonjour.\n"
+            "- Si l'utilisateur est connecte et qu'un nom est fourni, tu peux utiliser son prenom ou son nom de maniere naturelle, avec parcimonie, pour rendre l'echange plus humain.\n"
+            "- Si la personne semble stressée, anxieuse, fatiguee ou possiblement confrontee a un suivi chronique, adopte un ton rassurant et vivant, redonne de l'espoir sans exagérer ni promettre une guérison.\n"
+            "- Quand un medicament n'est pas trouve, reponds avec douceur, puis propose de l'aider a chercher autrement ou a envoyer son ordonnance pour aller plus vite et eviter des déplacements inutiles.\n"
+            "- Tu peux poser une courte question de suivi utile pour faire avancer l'echange.\n"
+            "- Presente les echanges comme prives et sensibles dans l'espace PharmiGo, sans promettre une confidentialite absolue que tu ne peux pas verifier techniquement.\n"
+            "- Ne cherche jamais a rendre l'utilisateur dependant de toi, ne culpabilise jamais, ne dis jamais que tu es seul ou triste, et ne manipule pas ses emotions.\n"
             "- Sois utile, concret, chaleureux, et evite les formulations robotiques.\n"
             "- Retourne uniquement la reponse finale a afficher a l'utilisateur, sans JSON ni markdown complexe.\n\n"
             "DONNEES A RESPECTER:\n"
@@ -987,9 +1041,12 @@ class ChatbotResponseService:
         user=None,
         medication_names: List[str],
     ) -> Dict[str, Any]:
+        recent_chat_history = self._get_recent_chat_history(user)
         return {
             "role": role,
+            "is_authenticated": bool(context.get("is_authenticated")),
             "username": context.get("username") or "",
+            "display_name": context.get("display_name") or "",
             "address": context.get("address") or "",
             "medication_names": medication_names[:10],
             "pending_confirmations_count": len(context.get("pending_confirmations") or []),
@@ -1001,7 +1058,12 @@ class ChatbotResponseService:
             "public_prescriptions": (context.get("public_prescriptions") or [])[:6],
             "pharmacy_contacts": (context.get("pharmacy_contacts") or [])[:5],
             "recent_messages": (context.get("recent_messages") or [])[:5],
-            "recent_chat_history": self._get_recent_chat_history(user),
+            "recent_chat_history": recent_chat_history,
+            "conversation_profile": self._build_conversation_profile(
+                recent_chat_history=recent_chat_history,
+                context=context,
+            ),
+            "patient_support_profile": context.get("patient_support_profile") or {},
         }
 
     @staticmethod
@@ -1025,6 +1087,29 @@ class ChatbotResponseService:
             }
             for row in history
         ]
+
+    def _build_conversation_profile(
+        self,
+        *,
+        recent_chat_history: List[Dict[str, str]],
+        context: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        recent_user_messages = [
+            row for row in recent_chat_history if (row.get("sender") or "").lower() == "user"
+        ]
+        first_user_message = recent_user_messages[0]["message"] if recent_user_messages else ""
+        normalized_first = normalize_text(first_user_message)
+        greeting_markers = ["bonjour", "salut", "bonsoir", "coucou", "amakuru", "jambo", "habari", "mbote"]
+        started_with_greeting = any(marker in normalized_first for marker in greeting_markers)
+
+        return {
+            "turn_count": len(recent_chat_history),
+            "user_turn_count": len(recent_user_messages),
+            "is_new_conversation": len(recent_chat_history) <= 2,
+            "started_with_greeting": started_with_greeting,
+            "should_greet_now": len(recent_chat_history) <= 2,
+            "can_use_name": bool(context.get("display_name")),
+        }
 
     def _detect_medicine_name(self, question):
         medications = self.qa_service._extract_requested_medications(question.lower())
@@ -1590,6 +1675,7 @@ class ChatbotResponseService:
 
     def _personalize_answer(self, answer, role, context, medication_name=""):
         answer = answer.strip()
+        display_name = (context.get("display_name") or "").strip()
         if role == "patient":
             answer = answer.replace("Le patient", "Je").replace("le patient", "je")
             answer = answer.replace("L'utilisateur", "Je").replace("l'utilisateur", "je")
@@ -1601,6 +1687,8 @@ class ChatbotResponseService:
                 answer += " J'ai aussi repéré des médicaments en attente de confirmation dans mon ordonnance."
             if medication_name and "PharmiGo" not in answer and "pharmacie" in answer.lower():
                 answer += f" Je me base sur les pharmacies et les stocks réellement enregistrés pour {medication_name}."
+            if display_name and not answer.lower().startswith(("bonjour", "salut", "bonsoir")):
+                answer = f"{display_name}, {answer[0].lower() + answer[1:]}" if len(answer) > 1 else f"{display_name}, {answer}"
         elif role == "pharmacy":
             answer = answer.replace("Une pharmacie", "Votre pharmacie").replace("La pharmacie", "Votre pharmacie")
             if context["pharmacy_stock"]:
