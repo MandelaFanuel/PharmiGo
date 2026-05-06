@@ -2522,6 +2522,7 @@ label span {
 .auth-form-panel {
   display: flex;
   align-items: center;
+  min-width: 0;
 }
 
 .auth-form {
@@ -2551,13 +2552,18 @@ label span {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
+  width: 100%;
+  min-width: 0;
   padding-right: 10px;
   border: 1px solid var(--line);
   border-radius: 16px;
   background: var(--surface-strong);
+  box-sizing: border-box;
 }
 
 .password-field input {
+  width: 100%;
+  min-width: 0;
   border: none;
   background: transparent;
   box-shadow: none;
@@ -2573,8 +2579,9 @@ label span {
 }
 
 .password-toggle-button {
-  min-width: 74px;
-  padding: 8px 12px;
+  min-width: 62px;
+  min-height: 40px;
+  padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: 14px;
   background: color-mix(in srgb, var(--surface) 90%, transparent 10%);
@@ -2582,6 +2589,10 @@ label span {
   font-size: 0.84rem;
   font-weight: 700;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
 }
 
 .auth-switch a {
@@ -2593,10 +2604,15 @@ label span {
   width: 100%;
   display: flex;
   justify-content: center;
+  align-items: stretch;
 }
 
 .google-signin-block > div {
   width: 100%;
+  max-width: 100%;
+  min-height: 44px;
+  overflow: hidden;
+  border-radius: 14px;
 }
 
 .login-shell {
@@ -2631,6 +2647,7 @@ label span {
   align-items: center;
   justify-content: center;
   padding: 24px 22px 24px 16px;
+  min-width: 0;
   background:
     radial-gradient(circle at top left, color-mix(in srgb, var(--primary) 14%, transparent 86%), transparent 38%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(255, 255, 255, 0.88));
@@ -2638,6 +2655,8 @@ label span {
 
 .login-form {
   width: min(100%, 412px);
+  max-width: 100%;
+  min-width: 0;
   gap: 14px;
 }
 
@@ -2812,11 +2831,13 @@ label span {
 .login-field select,
 .login-field input,
 .login-form .password-field {
+  width: 100%;
   min-height: 46px;
   border-radius: 14px;
   border-color: color-mix(in srgb, var(--line) 88%, white 12%);
   background: color-mix(in srgb, white 82%, var(--surface) 18%);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  box-sizing: border-box;
 }
 
 .login-field input,
@@ -2826,19 +2847,21 @@ label span {
 }
 
 .login-form .password-field {
-  padding-right: 8px;
+  padding-right: 6px;
 }
 
 .login-form .password-toggle-button {
-  min-width: 58px;
-  min-height: 34px;
-  border-radius: 10px;
+  min-width: 46px;
+  width: 46px;
+  min-height: 38px;
+  border-radius: 12px;
   background: color-mix(in srgb, var(--primary) 8%, white 92%);
   font-size: 0.78rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   color: var(--primary);
+  padding: 0;
 }
 
 .password-toggle-icon {
@@ -2847,11 +2870,14 @@ label span {
 }
 
 .login-submit {
+  width: 100%;
   min-height: 52px;
-  margin-top: 2px;
+  margin-top: 4px;
   border-radius: 16px;
+  padding-inline: 18px;
   font-size: 0.95rem;
   box-shadow: 0 14px 24px color-mix(in srgb, var(--primary) 22%, transparent 78%);
+  box-sizing: border-box;
 }
 
 .login-divider {
@@ -2883,7 +2909,9 @@ label span {
 .login-google-wrap {
   display: flex;
   justify-content: center;
+  align-items: stretch;
   width: 100%;
+  min-width: 0;
 }
 
 .login-google-wrap-prominent {
@@ -5969,6 +5997,7 @@ label span {
 @media (max-width: 980px) {
   .auth-shell {
     grid-template-columns: 1fr;
+    min-width: 0;
   }
 
   .login-shell {
@@ -5977,7 +6006,11 @@ label span {
 
   .login-form-panel {
     order: 2;
-    padding: 30px 22px;
+    padding: 30px 18px 24px;
+  }
+
+  .auth-book-panel {
+    padding-top: 22px;
   }
 
   .auth-surface-toolbar {
@@ -5992,41 +6025,139 @@ label span {
   .auth-book,
   .login-form {
     width: 100%;
+    max-width: 100%;
+  }
+
+  .auth-book {
+    perspective: none;
   }
 
   .auth-book-pages {
-    min-height: 760px;
+    position: static;
+    min-height: auto;
+    transform: none !important;
+    transform-style: flat;
+    transition: none;
   }
 
   .auth-book.is-register .auth-book-pages {
-    min-height: 860px;
+    min-height: auto;
+  }
+
+  .auth-page-face {
+    position: static;
+    inset: auto;
+    transform: none !important;
+    backface-visibility: visible;
+    -webkit-backface-visibility: visible;
+  }
+
+  .auth-book:not(.is-register) .auth-page-face-login,
+  .auth-book.is-register .auth-page-face-register {
+    display: grid;
+  }
+
+  .auth-book:not(.is-register) .auth-page-face-register,
+  .auth-book.is-register .auth-page-face-login {
+    display: none;
   }
 
   .login-visual-panel {
     order: 1;
-    padding: 18px;
+    padding: 18px 18px 0;
   }
 
   .login-visual-backdrop {
-    min-height: 340px;
-    padding: 22px;
+    min-height: 252px;
+    padding: 18px 18px 10px;
   }
 
   .login-visual-copy {
     width: 100%;
+    gap: 8px;
   }
 
   .login-visual-copy h2 {
-    font-size: clamp(1.8rem, 5vw, 2.5rem);
+    font-size: clamp(1.6rem, 5vw, 2.15rem);
   }
 
   .login-visual-stage {
-    min-height: 220px;
-    margin-top: -4px;
+    min-height: 118px;
+    margin-top: 0;
+    align-content: center;
+  }
+
+  .login-visual-stage.is-register {
+    margin-top: 0;
   }
 
   .login-chatbot-image {
-    width: min(100%, 300px);
+    width: min(100%, 180px);
+  }
+
+  .auth-inline-mode-switch {
+    margin: 6px 0 6px;
+  }
+
+  .auth-mode-switch {
+    max-width: 100%;
+  }
+
+  .auth-mode-chip {
+    min-height: 42px;
+    font-size: 0.9rem;
+  }
+
+  .login-submit {
+    min-height: 52px;
+    border-radius: 18px;
+    font-size: 0.94rem;
+  }
+
+  .login-form .password-field {
+    min-height: 48px;
+    padding-right: 5px;
+  }
+
+  .login-form .password-toggle-button {
+    width: 44px;
+    min-width: 44px;
+    min-height: 36px;
+    border-radius: 11px;
+  }
+
+  .google-signin-block > div {
+    min-height: 42px;
+  }
+
+  .auth-account-book {
+    perspective: none;
+  }
+
+  .auth-account-pages {
+    position: static;
+    min-height: auto;
+    transform: none !important;
+    transform-style: flat;
+    transition: none;
+  }
+
+  .auth-account-face {
+    position: static;
+    inset: auto;
+    transform: none !important;
+    backface-visibility: visible;
+    -webkit-backface-visibility: visible;
+  }
+
+  .auth-account-book:not(.is-pharmacy) .auth-account-face-patient,
+  .auth-account-book.is-pharmacy .auth-account-face-pharmacy {
+    display: grid;
+  }
+
+  .auth-account-book:not(.is-pharmacy) .auth-account-face-pharmacy,
+  .auth-account-book.is-pharmacy .auth-account-face-patient {
+    display: none;
   }
 
   .landing-inline-footer {
@@ -6110,29 +6241,93 @@ label span {
 }
 
 @media (max-width: 640px) {
+  .login-form-panel {
+    padding: 26px 12px 22px;
+  }
+
   .login-copy-block h1 {
     font-size: clamp(1.7rem, 7vw, 2.2rem);
   }
 
   .auth-mode-chip {
-    padding-inline: 12px;
+    min-height: 40px;
+    padding-inline: 8px;
+    font-size: 0.88rem;
   }
 
   .auth-book-pages {
-    min-height: 860px;
-  }
-
-  .auth-book.is-register .auth-book-pages {
-    min-height: 940px;
+    min-height: auto;
   }
 
   .login-visual-backdrop {
-    min-height: 300px;
-    padding: 18px;
+    min-height: 220px;
+    padding: 16px 16px 8px;
   }
 
   .login-visual-badge {
-    font-size: 0.75rem;
+    font-size: 0.72rem;
+  }
+
+  .login-visual-copy p {
+    max-width: 28ch;
+    font-size: 0.88rem;
+    line-height: 1.5;
+  }
+
+  .login-visual-stage {
+    min-height: 92px;
+  }
+
+  .login-visual-stage.is-register {
+    margin-top: 0;
+  }
+
+  .login-chatbot-image {
+    width: min(100%, 148px);
+  }
+
+  .login-submit {
+    min-height: 50px;
+    width: 100%;
+    padding-inline: 16px;
+    border-radius: 16px;
+    font-size: 0.92rem;
+  }
+
+  .login-form .password-field {
+    min-height: 46px;
+    grid-template-columns: minmax(0, 1fr) 42px;
+    gap: 6px;
+    padding-right: 4px;
+  }
+
+  .login-form .password-toggle-button {
+    width: 42px;
+    min-width: 42px;
+    min-height: 34px;
+    border-radius: 10px;
+  }
+
+  .password-toggle-icon {
+    width: 17px;
+    height: 17px;
+  }
+
+  .login-google-wrap {
+    margin-top: 2px;
+  }
+
+  .google-signin-block > div {
+    min-height: 40px;
+    border-radius: 12px;
+  }
+
+  .login-field,
+  .login-divider,
+  .login-links-grid,
+  .login-register-link {
+    width: 100%;
+    min-width: 0;
   }
 
   .login-links-grid {

@@ -50,13 +50,13 @@ Set at minimum:
 - `DEFAULT_ADMIN_USERNAME`
 - `FRONTEND_APP_URL`
 - `DEFAULT_FROM_EMAIL`
-- `EMAIL_BACKEND`
-- `EMAIL_HOST`
-- `EMAIL_PORT`
-- `EMAIL_HOST_USER`
-- `EMAIL_HOST_PASSWORD`
+- `SMTP_HOST`
+- `SMTP_PORT`
+- `SMTP_USER`
+- `SMTP_PASSWORD`
 - `EMAIL_USE_TLS`
 - `EMAIL_USE_SSL`
+- `EMAIL_TIMEOUT`
 
 Optional but recommended where applicable:
 
@@ -108,9 +108,12 @@ Optional but recommended where applicable:
   - phone number + password
 - Admin login remains:
   - admin email + password
+- For the current production setup, outbound email is expected to use DNSExit SMTP relay
+- Confirm `EMAIL_FROM` and `DEFAULT_FROM_EMAIL` match the verified sender domain
 - Validate outbound email before launch by testing:
   - password reset request
   - password reset confirmation
+  - account signup email verification
 
 ## Frontend deployment checklist for Vercel
 

@@ -38,6 +38,11 @@ export const API_ENDPOINTS = {
 
 const PRODUCTION_API_BASE_URL = "https://pharmigo-backend.onrender.com/api";
 const PRODUCTION_API_ORIGIN = "https://pharmigo-backend.onrender.com";
+const PRODUCTION_FRONTEND_HOSTS = new Set(["pharmigo.vercel.app", "pharmigo.jo3.org"]);
+
+function isProductionFrontendHost() {
+  return typeof window !== "undefined" && PRODUCTION_FRONTEND_HOSTS.has(window.location.hostname);
+}
 
 export function getApiBaseUrl() {
   const explicitBase = import.meta.env.VITE_API_BASE_URL;
@@ -45,7 +50,7 @@ export function getApiBaseUrl() {
     return explicitBase;
   }
 
-  if (typeof window !== "undefined" && window.location.hostname === "pharmigo.vercel.app") {
+  if (isProductionFrontendHost()) {
     return PRODUCTION_API_BASE_URL;
   }
 
@@ -67,7 +72,7 @@ export function getApiOrigin() {
     }
   }
 
-  if (typeof window !== "undefined" && window.location.hostname === "pharmigo.vercel.app") {
+  if (isProductionFrontendHost()) {
     return PRODUCTION_API_ORIGIN;
   }
 
@@ -77,10 +82,17 @@ export function getApiOrigin() {
 export function getChatWebSocketUrl(roomName: string) {
   const explicitBase = import.meta.env.VITE_WS_BASE_URL;
   if (explicitBase) {
-    return `${explicitBase.replace(/\/$/, "")}/ws/chat/${roomName}/`;
+    const normalizedBase = explicitBase.replace(/\/$/, "");
+    if (/^wss?:\/\//.test(normalizedBase)) {
+      return `${normalizedBase}/chat/${roomName}/`;
+    }
+    if (normalizedBase === "/ws" || normalizedBase === "ws") {
+      return `/ws/chat/${roomName}/`;
+    }
+    return `${normalizedBase}/ws/chat/${roomName}/`;
   }
 
-  if (typeof window !== "undefined" && window.location.hostname === "pharmigo.vercel.app") {
+  if (isProductionFrontendHost()) {
     return `wss://pharmigo-backend.onrender.com/ws/chat/${roomName}/`;
   }
 

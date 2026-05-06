@@ -21,3 +21,5 @@ __pycache__/
 credentials.json
 service-account*.json
 secrets*.json
+.vercel
+node_modules/

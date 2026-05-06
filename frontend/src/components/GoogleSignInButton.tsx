@@ -58,7 +58,35 @@ export default function GoogleSignInButton({
 }) {
   const buttonRef = useRef<HTMLDivElement | null>(null);
   const [loading, setLoading] = useState(true);
+  const [buttonWidth, setButtonWidth] = useState(360);
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+
+  useEffect(() => {
+    const element = buttonRef.current;
+    if (!element) {
+      return;
+    }
+
+    const updateWidth = () => {
+      const parentWidth = element.parentElement?.clientWidth ?? element.clientWidth ?? 360;
+      const nextWidth = Math.max(220, Math.min(360, Math.floor(parentWidth)));
+      setButtonWidth((current) => (current === nextWidth ? current : nextWidth));
+    };
+
+    updateWidth();
+
+    if (typeof ResizeObserver !== "undefined") {
+      const observer = new ResizeObserver(() => updateWidth());
+      observer.observe(element);
+      if (element.parentElement) {
+        observer.observe(element.parentElement);
+      }
+      return () => observer.disconnect();
+    }
+
+    window.addEventListener("resize", updateWidth);
+    return () => window.removeEventListener("resize", updateWidth);
+  }, []);
 
   useEffect(() => {
     if (!clientId) {
@@ -84,7 +112,7 @@ export default function GoogleSignInButton({
           size: "large",
           text,
           shape: "rectangular",
-          width: 360,
+          width: buttonWidth,
         });
       })
       .catch((error: Error) => {
@@ -101,7 +129,7 @@ export default function GoogleSignInButton({
     return () => {
       cancelled = true;
     };
-  }, [clientId, onCredential, onError, text]);
+  }, [buttonWidth, clientId, onCredential, onError, text]);
 
   if (!clientId) {
     return null;
