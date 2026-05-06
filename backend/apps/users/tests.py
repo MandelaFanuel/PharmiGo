@@ -1,5 +1,6 @@
 from datetime import timedelta
 from hashlib import sha256
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core import mail
@@ -10,7 +11,7 @@ from rest_framework.test import APITestCase
 from apps.pharmacies.models import PharmacySubscription
 from apps.users.models import EmailVerificationToken, UserProfile
 from apps.users.serializers import DEFAULT_ADMIN_EMAIL, DEFAULT_ADMIN_PASSWORD
-from apps.users.services import send_email_verification_for_user
+from apps.users.services import EmailDeliveryError, send_email_verification_for_user
 
 User = get_user_model()
 
@@ -300,6 +301,26 @@ class AuthenticationFlowTests(APITestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn("email", response.data)
+
+    @patch("apps.users.views.send_email_verification_for_user", side_effect=EmailDeliveryError("Impossible d'envoyer l'email de verification pour le moment."))
+    def test_register_succeeds_even_if_verification_email_delivery_fails(self, mocked_send):
+        response = self.client.post(
+            "/api/auth/register/",
+            {
+                "account_type": "patient",
+                "username": "patient-email-retry",
+                "phone_number": "+25761000999",
+                "email": "patient-email-retry@example.com",
+                "password": "secret123",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(response.data["requires_email_verification"])
+        self.assertIn("n'a pas pu etre envoye", response.data["message"])
+        self.assertTrue(User.objects.filter(username="patient-email-retry").exists())
+        mocked_send.assert_called_once()
 
     def test_pharmacy_register_with_duplicate_phone_number_is_rejected(self):
         self.client.post(

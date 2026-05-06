@@ -58,14 +58,20 @@ class RegisterView(APIView):
         serializer = RegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
+        delivery = {}
+        message = "Inscription reussie. Verifiez maintenant votre adresse email pour activer votre compte."
         try:
             delivery = send_email_verification_for_user(user) or {}
         except EmailDeliveryError as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            logger.warning("Registration verification email could not be sent for %s: %s", user.email, exc)
+            message = (
+                "Inscription reussie, mais l'email de verification n'a pas pu etre envoye pour le moment. "
+                "Ouvrez la page de verification pour renvoyer le lien dans quelques instants."
+            )
         if getattr(getattr(user, "profile", None), "role", None) == "pharmacy" and getattr(user.profile, "pharmacy", None) is not None:
             broadcast_feed_event("pharmacy.created", PharmacySerializer(user.profile.pharmacy).data)
         response_payload = {
-            "message": "Inscription reussie. Verifiez maintenant votre adresse email pour activer votre compte.",
+            "message": message,
             "user": UserSerializer(user).data,
             "requires_email_verification": True,
         }
