@@ -1008,6 +1008,27 @@ class ChatbotResponseService:
         "douleur",
         "fievre",
         "fièvre",
+        "souffr",
+        "soufr",
+        "malade",
+        "je suis mal",
+        "je me sens mal",
+        "je ne me sens pas bien",
+        "pas bien",
+        "fatigue",
+        "fatigué",
+        "fatiguee",
+        "fatiguée",
+        "faible",
+        "faiblesse",
+        "epuise",
+        "épuisé",
+        "epuisee",
+        "épuisée",
+        "angoisse",
+        "anxieux",
+        "anxieuse",
+        "stress",
         "symptome",
         "symptôme",
         "enceinte",
@@ -1049,15 +1070,20 @@ class ChatbotResponseService:
         lowered_question = cleaned_question.lower()
 
         if self._looks_like_general_conversation(cleaned_question):
+            internal_seed = self._build_general_conversation_seed(
+                question=cleaned_question,
+                role=role,
+                context=context,
+            )
             generic_answer = self.gemini_chat.generate_response(
                 question=cleaned_question,
                 role=role,
-                internal_answer="Je suis PharmiGo, votre assistant de sante. Je peux vous aider a trouver des medicaments dans les stocks des pharmacies, expliquer le fonctionnement de la plateforme, accompagner la verification d'email, les ordonnances et repondre aux questions generales de sante de facon informative.",
+                internal_answer=internal_seed,
                 structured_context=self._build_gemini_context_payload(role=role, context=context, user=user, medication_names=[]),
                 allow_general_fallback=True,
                 response_kind="general_conversation",
             )
-            return generic_answer or "Je suis PharmiGo, votre assistant de sante. Je peux vous guider dans la plateforme, vous aider a chercher des medicaments et repondre a vos questions."
+            return generic_answer or internal_seed
 
         health_answer = self._answer_health_question(cleaned_question, role, context)
         if health_answer:
@@ -1417,6 +1443,8 @@ class ChatbotResponseService:
         lowered = question.lower()
         if self._looks_like_general_conversation(lowered):
             return False
+        if self._looks_like_health_question(lowered):
+            return False
         return any(marker in lowered for marker in self.MEDICINE_REQUEST_MARKERS)
 
     def _looks_like_general_conversation(self, question: str) -> bool:
@@ -1431,6 +1459,46 @@ class ChatbotResponseService:
         if not lowered or self._looks_like_general_conversation(lowered):
             return False
         return any(marker in lowered for marker in self.HEALTH_QUESTION_MARKERS)
+
+    def _build_general_conversation_seed(self, *, question: str, role: str, context: Dict[str, Any]) -> str:
+        normalized = normalize_text(question or "")
+        display_name = context.get("display_name") or ""
+        intro_name = f"{display_name}, " if display_name and len(normalized.split()) > 2 else ""
+        profile = context.get("conversation_profile") or {}
+        should_greet = bool(profile.get("should_greet_now"))
+
+        if any(marker in normalized for marker in ["bonjour", "salut", "bonsoir", "coucou", "amakuru", "jambo", "habari", "mbote"]):
+            greeting = "Bonjour" if should_greet else "Je suis la"
+            return (
+                f"{greeting} {intro_name}je suis PharmiGo. "
+                "Je peux t'aider a comprendre la plateforme, chercher des medicaments dans les pharmacies, "
+                "analyser une ordonnance et repondre a des questions generales de sante avec prudence. "
+                "Dis-moi simplement ce dont tu as besoin maintenant."
+            ).replace("  ", " ").strip()
+
+        if any(marker in normalized for marker in ["que fais tu", "que peux tu faire", "qui es tu", "presente toi", "présente toi"]):
+            return (
+                f"{intro_name}je suis PharmiGo, ton assistant de sante et d'orientation sur la plateforme. "
+                "Je peux t'aider a chercher un medicament, comprendre une ordonnance, retrouver une pharmacie "
+                "ou t'accompagner avec des conseils generaux prudents selon ta question."
+            ).replace("  ", " ").strip()
+
+        if role == "admin":
+            return (
+                "Je peux vous aider a suivre la plateforme, clarifier un flux PharmiGo, "
+                "et repondre de maniere concise sur les operations ou les usages du systeme."
+            )
+
+        if role == "pharmacy":
+            return (
+                "Je peux vous aider sur la gestion des stocks, les ordonnances, la reponse aux patients "
+                "et les usages de la plateforme cote pharmacie."
+            )
+
+        return (
+            f"{intro_name}je peux vous aider sur PharmiGo, la recherche de medicaments, "
+            "les ordonnances et les questions generales de sante avec une reponse claire et humaine."
+        ).replace("  ", " ").strip()
 
     def _answer_health_question(self, question: str, role: str, context: Dict[str, Any]) -> str:
         if not self._looks_like_health_question(question):

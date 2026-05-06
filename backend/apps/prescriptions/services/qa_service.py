@@ -234,6 +234,26 @@ class QAService:
             if any(marker in question for marker in usage_only_markers):
                 return False
 
+        health_only_markers = [
+            "je me sens mal",
+            "je ne me sens pas bien",
+            "pas bien",
+            "je suis malade",
+            "je suis souffr",
+            "je suis soufr",
+            "souffr",
+            "fatigue",
+            "faible",
+            "douleur",
+            "fievre",
+            "fièvre",
+            "toux",
+            "vomissement",
+            "angoisse",
+        ]
+        if any(marker in question for marker in health_only_markers):
+            return False
+
         request_markers = [
             "où",
             "ou",

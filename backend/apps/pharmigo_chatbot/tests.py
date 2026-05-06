@@ -35,6 +35,8 @@ class ChatbotResponseServiceTests(TestCase):
         self.assertTrue(response)
         self.assertIsInstance(response, str)
         self.assertGreater(len(response), 20)
+        self.assertNotIn("verification d'email", response.lower())
+        self.assertNotIn("vérification d'email", response.lower())
 
     @patch("apps.pharmigo_chatbot.services.GeminiChatService.generate_response")
     def test_greeting_does_not_trigger_medication_lookup(self, mocked_generate):
@@ -68,6 +70,17 @@ class ChatbotResponseServiceTests(TestCase):
 
         self.assertIn("information generale prudente", response)
         self.assertIn("Signaux d'alerte", response)
+
+    def test_colloquial_distress_message_does_not_trigger_medication_lookup(self):
+        service = ChatbotResponseService()
+        service.gemini_chat.available = False
+
+        with patch.object(service, "_answer_medicine_lookup", wraps=service._answer_medicine_lookup) as mocked_lookup:
+            response = service.answer("je suis souffran mon frere", self.user)
+
+        mocked_lookup.assert_not_called()
+        self.assertIn("information generale prudente", response)
+        self.assertNotIn("stocks des pharmacies", response.lower())
 
     def test_admin_role_uses_admin_fallback(self):
         admin_user = User.objects.create_user(
