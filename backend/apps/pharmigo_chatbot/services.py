@@ -1,7 +1,11 @@
+import json
+import logging
 import re
+import time
 from difflib import SequenceMatcher
 from math import atan2, cos, radians, sin, sqrt
 from typing import Any, Dict, List, Optional, Tuple
+from urllib import error, request
 
 try:
     import cv2
@@ -18,6 +22,7 @@ try:
 except ImportError:  # pragma: no cover - environment dependent
     pytesseract = None
 
+from django.conf import settings
 from django.db.models import Q
 
 try:
@@ -27,6 +32,8 @@ except ImportError:  # pragma: no cover - environment dependent
 
 from .models import Pharmacy, PharmacyStock, Medicine, MedicineSynonym
 from .utils import normalize_text
+
+logger = logging.getLogger(__name__)
 
 
 class ImagePreprocessor:
@@ -564,6 +571,170 @@ class ChatbotContextService:
         return context
 
 
+class GeminiChatService:
+    """Gemini-powered conversational layer for PharmiGo chat."""
+
+    def __init__(self):
+        self.api_key = getattr(settings, "GEMINI_API_KEY", "").strip()
+        self.enabled = bool(getattr(settings, "GEMINI_ENABLED", True))
+        self.model = self._normalize_model_name(getattr(settings, "GEMINI_MODEL", "gemini-2.5-flash"))
+        self.available = self.enabled and bool(self.api_key)
+        self.request_timeout_seconds = 25.0
+        self.fallback_models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-flash-lite-latest"]
+
+    def generate_response(
+        self,
+        *,
+        question: str,
+        role: str,
+        internal_answer: str,
+        structured_context: Dict[str, Any],
+        allow_general_fallback: bool,
+        response_kind: str,
+    ) -> str:
+        if not self.available:
+            return ""
+
+        payload = {
+            "contents": [
+                {
+                    "parts": [
+                        {
+                            "text": self._build_prompt(
+                                question=question,
+                                role=role,
+                                internal_answer=internal_answer,
+                                structured_context=structured_context,
+                                allow_general_fallback=allow_general_fallback,
+                                response_kind=response_kind,
+                            )
+                        }
+                    ]
+                }
+            ],
+            "generationConfig": {
+                "temperature": 0.45,
+                "maxOutputTokens": 1024,
+                "thinkingConfig": {
+                    "thinkingBudget": 0,
+                },
+            },
+        }
+
+        started_at = time.perf_counter()
+        try:
+            raw_response, used_model = self._generate_content(payload)
+        except error.HTTPError as exc:
+            body = ""
+            try:
+                body = exc.read().decode("utf-8", errors="ignore")
+            except Exception:
+                body = ""
+            logger.warning("Gemini chatbot HTTP error %s: %s", exc.code, body[:2000] or exc)
+            return ""
+        except Exception as exc:  # pragma: no cover - network dependent
+            logger.warning("Gemini chatbot request failed: %s", exc)
+            return ""
+
+        response_time_ms = int((time.perf_counter() - started_at) * 1000)
+        logger.info(
+            "Gemini chatbot response generated",
+            extra={
+                "gemini_model": used_model,
+                "response_time_ms": response_time_ms,
+                "response_kind": response_kind,
+            },
+        )
+        return self._extract_text_content(raw_response).strip()
+
+    def _build_prompt(
+        self,
+        *,
+        question: str,
+        role: str,
+        internal_answer: str,
+        structured_context: Dict[str, Any],
+        allow_general_fallback: bool,
+        response_kind: str,
+    ) -> str:
+        guidance = {
+            "role": role,
+            "response_kind": response_kind,
+            "allow_general_fallback": allow_general_fallback,
+            "question": question,
+            "internal_answer": internal_answer,
+            "structured_context": structured_context,
+        }
+        return (
+            "Tu es PharmiGo, l'assistant conversationnel officiel de la plateforme PharmiGo.\n\n"
+            "Objectif:\n"
+            "- Repondre de maniere humaine, naturelle, empathique et professionnelle.\n"
+            "- Repondre dans la langue du message de l'utilisateur.\n"
+            "- Utiliser EN PRIORITE les donnees internes PharmiGo fournies ci-dessous.\n"
+            "- Ne jamais inventer un stock, une pharmacie, un prix, une adresse, un numero de telephone ou une disponibilite.\n"
+            "- Si les donnees PharmiGo ne suffisent pas ET si `allow_general_fallback` vaut true, tu peux completer avec une reponse generale, "
+            "mais en distinguant clairement ce qui vient de PharmiGo et ce qui est une information generale.\n"
+            "- Ne donne jamais de diagnostic medical et ne remplace pas un professionnel de sante.\n"
+            "- Si la demande porte sur un medicament, garde le flux existant de PharmiGo: recherche interne d'abord, puis explication claire pour l'utilisateur.\n"
+            "- Sois utile, concret, chaleureux, et evite les formulations robotiques.\n"
+            "- Retourne uniquement la reponse finale a afficher a l'utilisateur, sans JSON ni markdown complexe.\n\n"
+            "DONNEES A RESPECTER:\n"
+            f"{json.dumps(guidance, ensure_ascii=False)}"
+        )
+
+    def _generate_content(self, payload: Dict[str, Any]) -> Tuple[Dict[str, Any], str]:
+        candidate_models = [self.model]
+        for model_name in self.fallback_models:
+            normalized = self._normalize_model_name(model_name)
+            if normalized not in candidate_models:
+                candidate_models.append(normalized)
+
+        last_http_error = None
+        last_generic_error = None
+        for model_name in candidate_models:
+            endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={self.api_key}"
+            req = request.Request(
+                endpoint,
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            try:
+                with request.urlopen(req, timeout=self.request_timeout_seconds) as response:
+                    body = response.read().decode("utf-8")
+                return json.loads(body), model_name
+            except error.HTTPError as exc:
+                last_http_error = exc
+                if exc.code not in {404, 429, 500, 503}:
+                    raise
+            except Exception as exc:  # pragma: no cover - network dependent
+                last_generic_error = exc
+
+        if last_http_error is not None:
+            raise last_http_error
+        if last_generic_error is not None:
+            raise last_generic_error
+        raise RuntimeError("No Gemini model responded.")
+
+    @staticmethod
+    def _extract_text_content(raw_response: Dict[str, Any]) -> str:
+        texts: List[str] = []
+        for candidate in raw_response.get("candidates") or []:
+            content = candidate.get("content") or {}
+            for part in content.get("parts") or []:
+                text = (part.get("text") or "").strip()
+                if text:
+                    texts.append(text)
+        return "\n".join(texts).strip()
+
+    @staticmethod
+    def _normalize_model_name(model_name: str) -> str:
+        value = (model_name or "").strip()
+        if value.startswith("models/"):
+            return value.split("/", 1)[1]
+        return value or "gemini-2.5-flash"
+
+
 class ChatbotResponseService:
     """Réponses intelligentes avec base de connaissances + données réelles."""
 
@@ -586,6 +757,7 @@ class ChatbotResponseService:
 
         self.qa_service = QAService()
         self.context_service = ChatbotContextService()
+        self.gemini_chat = GeminiChatService()
 
     def answer(self, question, user=None):
         from .models import ChatbotKnowledgeBase, ChatbotLearningData
@@ -596,13 +768,37 @@ class ChatbotResponseService:
         lowered_question = cleaned_question.lower()
 
         if "page d'accueil" in lowered_question and "ordonnance" in lowered_question and ("publier" in lowered_question or "puis-je" in lowered_question):
-            return "Oui. Si je suis connecté comme patient, je peux publier mon ordonnance directement depuis la page d’accueil sans aller obligatoirement dans mon dashboard."
+            return self._compose_final_answer(
+                question=cleaned_question,
+                role=role,
+                context=context,
+                user=user,
+                internal_answer="Oui. Si je suis connecté comme patient, je peux publier mon ordonnance directement depuis la page d’accueil sans aller obligatoirement dans mon dashboard.",
+                response_kind="platform_usage",
+                allow_general_fallback=False,
+            )
 
         if "après ma connexion" in lowered_question or "apres ma connexion" in lowered_question:
-            return "Après ma connexion, je suis redirigé vers la page d’accueil. Je peux ensuite surfer sur le site, utiliser le chatbot, consulter les pharmacies, voir les ordonnances publiques ou aller volontairement dans mon dashboard."
+            return self._compose_final_answer(
+                question=cleaned_question,
+                role=role,
+                context=context,
+                user=user,
+                internal_answer="Après ma connexion, je suis redirigé vers la page d’accueil. Je peux ensuite surfer sur le site, utiliser le chatbot, consulter les pharmacies, voir les ordonnances publiques ou aller volontairement dans mon dashboard.",
+                response_kind="platform_usage",
+                allow_general_fallback=False,
+            )
 
         if "comment publier" in lowered_question and "ordonnance" in lowered_question:
-            return "Je peux publier mon ordonnance depuis la page d’accueil ou depuis mon dashboard. Après l’envoi, je vois l’analyse, les médicaments détectés et les pharmacies disponibles."
+            return self._compose_final_answer(
+                question=cleaned_question,
+                role=role,
+                context=context,
+                user=user,
+                internal_answer="Je peux publier mon ordonnance depuis la page d’accueil ou depuis mon dashboard. Après l’envoi, je vois l’analyse, les médicaments détectés et les pharmacies disponibles.",
+                response_kind="platform_usage",
+                allow_general_fallback=False,
+            )
 
         medication_names = self._detect_medicine_names(cleaned_question)
         medication_name = medication_names[0] if medication_names else self._detect_medicine_name(cleaned_question)
@@ -629,7 +825,16 @@ class ChatbotResponseService:
                     confidence_before=0.55,
                     confidence_after=lookup_confidence,
                 )
-                return lookup_answer
+                return self._compose_final_answer(
+                    question=cleaned_question,
+                    role=role,
+                    context=context,
+                    user=user,
+                    internal_answer=lookup_answer,
+                    response_kind="medicine_lookup",
+                    medication_names=medication_names,
+                    allow_general_fallback=True,
+                )
 
         if medication_name and "Je n'ai pas trouvé ce médicament" in qa_answer:
             learned_name = self._find_learned_medicine_name(medication_name) or medication_name
@@ -649,7 +854,16 @@ class ChatbotResponseService:
                 confidence_before=0.3,
                 confidence_after=0.8,
             )
-            return personalized
+            return self._compose_final_answer(
+                question=cleaned_question,
+                role=role,
+                context=context,
+                user=user,
+                internal_answer=personalized,
+                response_kind="medicine_not_found",
+                medication_names=[medication_name],
+                allow_general_fallback=True,
+            )
 
         if self._looks_like_medication_request(cleaned_question):
             self._record_learning(
@@ -663,7 +877,16 @@ class ChatbotResponseService:
                 confidence_before=0.5,
                 confidence_after=0.75,
             )
-            return self._personalize_answer(qa_answer, role, context, medication_name)
+            return self._compose_final_answer(
+                question=cleaned_question,
+                role=role,
+                context=context,
+                user=user,
+                internal_answer=self._personalize_answer(qa_answer, role, context, medication_name),
+                response_kind="medicine_question",
+                medication_names=medication_names or ([medication_name] if medication_name else []),
+                allow_general_fallback=True,
+            )
 
         kb_answer = self._knowledge_answer(ChatbotKnowledgeBase, cleaned_question, role)
         if kb_answer:
@@ -678,9 +901,104 @@ class ChatbotResponseService:
                 confidence_before=0.6,
                 confidence_after=0.9,
             )
-            return self._personalize_answer(kb_answer, role, context, medication_name)
+            return self._compose_final_answer(
+                question=cleaned_question,
+                role=role,
+                context=context,
+                user=user,
+                internal_answer=self._personalize_answer(kb_answer, role, context, medication_name),
+                response_kind="knowledge_base",
+                medication_names=medication_names or ([medication_name] if medication_name else []),
+                allow_general_fallback=False,
+            )
 
-        return self._fallback_answer(role, context)
+        return self._compose_final_answer(
+            question=cleaned_question,
+            role=role,
+            context=context,
+            user=user,
+            internal_answer=self._fallback_answer(role, context),
+            response_kind="general_fallback",
+            medication_names=medication_names or ([medication_name] if medication_name else []),
+            allow_general_fallback=True,
+        )
+
+    def _compose_final_answer(
+        self,
+        *,
+        question: str,
+        role: str,
+        context: Dict[str, Any],
+        user=None,
+        internal_answer: str,
+        response_kind: str,
+        medication_names: Optional[List[str]] = None,
+        allow_general_fallback: bool,
+    ) -> str:
+        medication_name = medication_names[0] if medication_names else ""
+        personalized_answer = self._personalize_answer(internal_answer, role, context, medication_name)
+        structured_context = self._build_gemini_context_payload(
+            role=role,
+            context=context,
+            user=user,
+            medication_names=medication_names or [],
+        )
+        gemini_answer = self.gemini_chat.generate_response(
+            question=question,
+            role=role,
+            internal_answer=personalized_answer,
+            structured_context=structured_context,
+            allow_general_fallback=allow_general_fallback,
+            response_kind=response_kind,
+        )
+        return gemini_answer or personalized_answer
+
+    def _build_gemini_context_payload(
+        self,
+        *,
+        role: str,
+        context: Dict[str, Any],
+        user=None,
+        medication_names: List[str],
+    ) -> Dict[str, Any]:
+        return {
+            "role": role,
+            "username": context.get("username") or "",
+            "address": context.get("address") or "",
+            "medication_names": medication_names[:10],
+            "pending_confirmations_count": len(context.get("pending_confirmations") or []),
+            "recent_notifications": (context.get("recent_notifications") or [])[:4],
+            "recent_prescriptions": (context.get("recent_prescriptions") or [])[:4],
+            "nearby_pharmacies": (context.get("nearby_pharmacies") or [])[:5],
+            "stock_matches": (context.get("stock_matches") or [])[:5],
+            "pharmacy_stock": (context.get("pharmacy_stock") or [])[:8],
+            "public_prescriptions": (context.get("public_prescriptions") or [])[:6],
+            "pharmacy_contacts": (context.get("pharmacy_contacts") or [])[:5],
+            "recent_messages": (context.get("recent_messages") or [])[:5],
+            "recent_chat_history": self._get_recent_chat_history(user),
+        }
+
+    @staticmethod
+    def _get_recent_chat_history(user) -> List[Dict[str, str]]:
+        from .models import ChatMessage
+
+        if not getattr(user, "is_authenticated", False):
+            return []
+
+        recent_rows = (
+            ChatMessage.objects.filter(user=user)
+            .order_by("-created_at")
+            .values("sender", "message", "created_at")[:6]
+        )
+        history = list(reversed(list(recent_rows)))
+        return [
+            {
+                "sender": row["sender"],
+                "message": row["message"][:600],
+                "created_at": row["created_at"].isoformat() if row.get("created_at") else "",
+            }
+            for row in history
+        ]
 
     def _detect_medicine_name(self, question):
         medications = self.qa_service._extract_requested_medications(question.lower())
