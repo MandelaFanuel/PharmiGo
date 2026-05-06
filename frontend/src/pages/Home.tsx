@@ -4958,7 +4958,6 @@ export default function Home() {
         >
             <div className="guardian-popup-head">
               <div>
-                <p className="guardian-popup-kicker">Assistant PharmiGo</p>
                 <h3>Analyse de mon ordonnance en cours...</h3>
               </div>
             </div>

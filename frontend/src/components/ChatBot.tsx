@@ -132,7 +132,10 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
   const labels = {
     fr: {
       welcome:
-        "Bienvenue sur PharmiGo. Je surveille les ordonnances en temps reel. Posez une question sur un medicament ou chargez une ordonnance pour recevoir une reponse exacte sur les pharmacies et leurs adresses.",
+        "Posez votre question sante, demandez un medicament ou envoyez une ordonnance. PharmiGo vous repond avec douceur et des etapes claires.",
+      welcomeTitle: "PharmiGo est pret a vous accompagner",
+      welcomeHint:
+        "Je peux vous guider pour un medicament, une ordonnance, une question sante generale ou un suivi plus delicat.",
       uploadInstruction:
         "Chargez maintenant une image d'ordonnance. Je vais l'analyser immediatement puis vous afficher les pharmacies exactes qui ont les medicaments.",
       uploadSentPrefix: "J'ai envoye l'ordonnance",
@@ -162,7 +165,10 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
     },
     en: {
       welcome:
-        "Welcome to PharmiGo. I monitor prescriptions in real time. Ask about a medicine or upload a prescription to receive an exact answer with matching pharmacies and addresses.",
+        "Ask your health question, request a medicine, or upload a prescription. PharmiGo will respond with calm, clear guidance.",
+      welcomeTitle: "PharmiGo is ready to support you",
+      welcomeHint:
+        "I can help with medicine searches, prescriptions, general health questions, or a more sensitive follow-up conversation.",
       uploadInstruction:
         "Upload the prescription image now. I will analyze it immediately and show you the exact pharmacies that have the medicine.",
       uploadSentPrefix: "I sent the prescription",
@@ -191,7 +197,10 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
     },
     rn: {
       welcome:
-        "Murakaza neza kuri PharmiGo. Nkurikirana ordonnances mu kanya nyako. Baza ikibazo kuri medicament canke ushiremwo ordonnance kugira uronke inyishu itomoye ku mafaranga n'aderesi.",
+        "Baza ikibazo c'ubuzima, usabe umuti canke ushire ordonnance. PharmiGo iragufasha mu buryo bworoshe kandi butekanye.",
+      welcomeTitle: "PharmiGo yiteguye kugufasha",
+      welcomeHint:
+        "Nshobora kugufasha ku miti, ku ma ordonnance, ku bibazo rusangi vy'ubuzima no ku biganiro bikenera uguhumurizwa.",
       uploadInstruction:
         "Shiramwo ubu ifoto y'ordonnance. Nca nyisesangura ningoga maze nkwereke amafarumasi nyayo afise iyo miti.",
       uploadSentPrefix: "Nohereje ordonnance",
@@ -221,7 +230,10 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
     },
     sw: {
       welcome:
-        "Karibu PharmiGo. Ninafuatilia preskripsheni kwa wakati halisi. Uliza kuhusu dawa au pakia preskripsheni ili upate jibu sahihi la maduka ya dawa na anwani zao.",
+        "Uliza swali la afya, tafuta dawa, au pakia preskripsheni. PharmiGo atakuongoza kwa utulivu na hatua zilizo wazi.",
+      welcomeTitle: "PharmiGo yuko tayari kukusikiliza",
+      welcomeHint:
+        "Naweza kusaidia kutafuta dawa, kuchambua preskripsheni, kujibu maswali ya afya ya jumla, au kukuandama kwa mazungumzo ya karibu zaidi.",
       uploadInstruction:
         "Pakia picha ya preskripsheni sasa. Nitachambua mara moja kisha nikuonyeshe maduka sahihi yenye dawa hizo.",
       uploadSentPrefix: "Nimetuma preskripsheni",
@@ -251,7 +263,10 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
     },
     ln: {
       welcome:
-        "Boyei malamu na PharmiGo. Nazali kolanda ba ordonnance na tango ya solo. Tuna motuna na kisi ya monganga to tinda ordonnance mpo ozwa eyano ya sikisiki na ba pharmacie mpe ba adresse na yango.",
+        "Tuna motuna ya sante, luka kisi, to tinda ordonnance. PharmiGo akoyanola malembe malembe mpe polele.",
+      welcomeTitle: "PharmiGo azali pene na yo",
+      welcomeHint:
+        "Nakoki kosunga na kisi, ordonnance, mituna ya sante ya monene, to lisolo ya malamu mpo na koyikisa motema.",
       uploadInstruction:
         "Tinda sikoyo image ya ordonnance. Nakotalela yango mbala moko mpe nakolakisa yo ba pharmacie ya solo oyo bazali na ba kisi yango.",
       uploadSentPrefix: "Natindi ordonnance",
@@ -317,17 +332,8 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
 
     const storedUser = getStoredCurrentUser();
     const localHistory = loadStoredChatHistory(historyStorageKey);
-    const welcomeMessage = [
-      {
-        id: Date.now(),
-        sender: "bot" as const,
-        message: labels.welcome,
-        created_at: new Date().toISOString(),
-      },
-    ];
-
     if (!storedUser) {
-      setMessages(localHistory.length ? localHistory : welcomeMessage);
+      setMessages(localHistory);
       return () => {
         cancelled = true;
       };
@@ -340,11 +346,11 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
         }
 
         const mergedHistory = mergeChatHistories(localHistory, history);
-        setMessages(mergedHistory.length ? mergedHistory : welcomeMessage);
+        setMessages(mergedHistory);
       })
       .catch(() => {
         if (!cancelled) {
-          setMessages(localHistory.length ? localHistory : welcomeMessage);
+          setMessages(localHistory);
         }
       });
 
@@ -394,6 +400,25 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
         created_at: new Date().toISOString(),
       },
     ]);
+  }
+
+  function renderMessage(message: ChatBotMessage, archived = false) {
+    const isBot = message.sender === "bot";
+    return (
+      <div key={message.id} className={`message ${isBot ? "message-bot" : "message-user"}${archived ? " message-archived" : ""}`}>
+        <div className="message-row">
+          {isBot ? (
+            <div className="message-avatar-shell">
+              <img src="/chatbot-guardian.png" alt="" className="message-avatar-image" />
+            </div>
+          ) : null}
+          <div className="message-body">
+            <div className="message-text">{formatMessage(message.message)}</div>
+            <span className="message-time">{formatExactDateTime(message.created_at, language)}</span>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   async function handleSend() {
@@ -538,14 +563,10 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
       ) : null}
       <div className="chatbot-window">
         <div className="chatbot-header">
-          <div className="chatbot-header-info">
-            <img src="/chatbot-guardian.png" alt="Assistant PharmiGo" className="chatbot-avatar-image" />
-            <div>
-              <h3 className="chatbot-title">{labels.title}</h3>
-              <span className="chatbot-status">
-                <span className="status-dot online"></span>
-                {labels.online}
-              </span>
+          <div className="chatbot-header-info minimal">
+            <div className="chatbot-avatar-stage" aria-hidden="true">
+              <span className="chatbot-avatar-stage-ring" />
+              <img src="/chatbot-guardian.png" alt="" className="chatbot-avatar-image" />
             </div>
           </div>
           <div className="chatbot-header-actions">
@@ -578,17 +599,7 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
                 archivedSections.map(([sectionLabel, sectionMessages]) => (
                   <section key={sectionLabel} className="chatbot-archive-section">
                     <header className="chatbot-archive-section-title">{sectionLabel}</header>
-                    {sectionMessages.map((message) => (
-                      <div key={message.id} className={`message ${message.sender === "user" ? "message-user" : "message-bot"} message-archived`}>
-                        <div className="message-content">
-                          {message.sender === "bot" ? (
-                            <img src="/chatbot-guardian.png" alt="" className="message-avatar-image" />
-                          ) : null}
-                          <div className="message-text">{formatMessage(message.message)}</div>
-                          <span className="message-time">{formatExactDateTime(message.created_at, language)}</span>
-                        </div>
-                      </div>
-                    ))}
+                    {sectionMessages.map((message) => renderMessage(message, true))}
                   </section>
                 ))
               ) : (
@@ -597,23 +608,25 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
             </div>
           ) : (
             <>
-              <div className="chatbot-recent-label">{labels.recentTitle}</div>
-
               {recentMessages.length === 0 && archivedMessages.length ? (
                 <div className="chatbot-empty-state">{labels.noRecentConversation}</div>
               ) : null}
 
-              {recentMessages.map((message) => (
-                <div key={message.id} className={`message ${message.sender === "user" ? "message-user" : "message-bot"}`}>
-                  <div className="message-content">
-                    {message.sender === "bot" ? (
-                      <img src="/chatbot-guardian.png" alt="" className="message-avatar-image" />
-                    ) : null}
-                    <div className="message-text">{formatMessage(message.message)}</div>
-                    <span className="message-time">{formatExactDateTime(message.created_at, language)}</span>
+              {recentMessages.length === 0 && archivedMessages.length === 0 ? (
+                <section className="chatbot-empty-state chatbot-empty-state-welcome">
+                  <div className="chatbot-empty-state-hero" aria-hidden="true">
+                    <span className="chatbot-empty-state-ring" />
+                    <img src="/chatbot-guardian.png" alt="" className="chatbot-empty-state-image" />
                   </div>
-                </div>
-              ))}
+                  <div className="chatbot-empty-state-copy">
+                    <strong>{labels.welcomeTitle}</strong>
+                    <p>{labels.welcome}</p>
+                    <p>{labels.welcomeHint}</p>
+                  </div>
+                </section>
+              ) : null}
+
+              {recentMessages.map((message) => renderMessage(message))}
 
               {workflowState === "uploading" ? (
                 <div className="workflow-interface">
@@ -665,12 +678,16 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
 
               {isLoading ? (
                 <div className="message message-bot">
-                  <div className="message-content">
-                    <img src="/chatbot-guardian.png" alt="" className="message-avatar-image" />
-                    <div className="typing-indicator">
-                      <span></span>
-                      <span></span>
-                      <span></span>
+                  <div className="message-row">
+                    <div className="message-avatar-shell">
+                      <img src="/chatbot-guardian.png" alt="" className="message-avatar-image" />
+                    </div>
+                    <div className="message-body">
+                      <div className="typing-indicator">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                      </div>
                     </div>
                   </div>
                 </div>

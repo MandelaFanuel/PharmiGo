@@ -491,6 +491,20 @@ class ChatbotContextService:
                 "chronic_signals": [],
                 "encouragement_style": "standard",
             },
+            "conversation_memory": {
+                "visit_count": 0,
+                "last_visit_at": "",
+                "preferred_tone": "standard",
+                "recurring_topics": [],
+                "recent_user_goals": [],
+                "discussed_medications": [],
+                "continuity_note": "",
+            },
+            "response_style": {
+                "tone": "neutral",
+                "format": "clear",
+                "follow_up_bias": "standard",
+            },
         }
 
         if not getattr(user, "is_authenticated", False):
@@ -576,6 +590,13 @@ class ChatbotContextService:
                     Q(pharmacy=pharmacy) | Q(sender_pharmacy=pharmacy)
                 ).order_by("-created_at").values("id", "sender_name", "message", "created_at")[:10]
             )
+        elif role == "admin":
+            context["recent_messages"] = list(
+                InterPharmacyMessage.objects.order_by("-created_at").values("id", "sender_name", "message", "created_at")[:10]
+            )
+
+        context["conversation_memory"] = self._build_conversation_memory(user, role)
+        context["response_style"] = self._build_response_style(role, context)
 
         return context
 
@@ -615,6 +636,168 @@ class ChatbotContextService:
             "possible_chronic_condition": bool(detected_signals),
             "chronic_signals": detected_signals[:4],
             "encouragement_style": "gentle_follow_up" if detected_signals else "standard",
+        }
+
+    def _build_conversation_memory(self, user, role: str) -> Dict[str, Any]:
+        from .models import ChatbotLearningData, ConversationHistory, ConversationSession
+
+        if not getattr(user, "is_authenticated", False):
+            return {
+                "visit_count": 0,
+                "last_visit_at": "",
+                "preferred_tone": "standard",
+                "recurring_topics": [],
+                "recent_user_goals": [],
+                "discussed_medications": [],
+                "continuity_note": "",
+            }
+
+        sessions = list(
+            ConversationSession.objects.filter(user=user)
+            .order_by("-updated_at")
+            .values("id", "updated_at", "context_snapshot")[:12]
+        )
+        visit_count = len(sessions)
+        last_visit_at = sessions[0]["updated_at"].isoformat() if sessions and sessions[0].get("updated_at") else ""
+
+        history_rows = list(
+            ConversationHistory.objects.filter(session__user=user)
+            .order_by("-created_at")
+            .values("sender", "message", "created_at")[:60]
+        )
+        history_rows.reverse()
+        user_messages = [row for row in history_rows if (row.get("sender") or "").lower() == "user"]
+
+        topic_counts: Dict[str, int] = {
+            "medicine_lookup": 0,
+            "prescription_help": 0,
+            "health_advice": 0,
+            "order_follow_up": 0,
+            "operations": 0,
+        }
+        for row in user_messages:
+            label = self._classify_memory_topic(row.get("message") or "", role)
+            topic_counts[label] = topic_counts.get(label, 0) + 1
+
+        recurring_topics = [
+            topic for topic, count in sorted(topic_counts.items(), key=lambda item: (-item[1], item[0])) if count > 0
+        ][:4]
+
+        recent_user_goals = [
+            (row.get("message") or "")[:160]
+            for row in user_messages[-4:]
+            if (row.get("message") or "").strip()
+        ]
+
+        discussed_medications: List[str] = []
+        seen_meds = set()
+        learning_rows = ChatbotLearningData.objects.filter(user=user).order_by("-created_at").values(
+            "corrected_medicine", "detected_medicine"
+        )[:20]
+        for row in learning_rows:
+            candidate_blob = row.get("corrected_medicine") or row.get("detected_medicine") or ""
+            for candidate in [item.strip() for item in candidate_blob.split(",") if item.strip()]:
+                normalized_candidate = normalize_text(candidate)
+                if normalized_candidate and normalized_candidate not in seen_meds:
+                    seen_meds.add(normalized_candidate)
+                    discussed_medications.append(candidate)
+                if len(discussed_medications) >= 6:
+                    break
+            if len(discussed_medications) >= 6:
+                break
+
+        preferred_tone = self._infer_preferred_tone(role, user_messages)
+        continuity_note = self._build_continuity_note(
+            role=role,
+            visit_count=visit_count,
+            recurring_topics=recurring_topics,
+            discussed_medications=discussed_medications,
+        )
+
+        return {
+            "visit_count": visit_count,
+            "last_visit_at": last_visit_at,
+            "preferred_tone": preferred_tone,
+            "recurring_topics": recurring_topics,
+            "recent_user_goals": recent_user_goals,
+            "discussed_medications": discussed_medications,
+            "continuity_note": continuity_note,
+        }
+
+    @staticmethod
+    def _classify_memory_topic(message: str, role: str) -> str:
+        normalized = normalize_text(message or "")
+        if any(marker in normalized for marker in ["douleur", "fievre", "fièvre", "effet", "enceinte", "grossesse", "symptome", "symptôme"]):
+            return "health_advice"
+        if any(marker in normalized for marker in ["ordonnance", "analyser", "analyse", "photo", "upload"]):
+            return "prescription_help"
+        if any(marker in normalized for marker in ["statut", "livraison", "choix", "reponse", "réponse", "commande"]):
+            return "order_follow_up"
+        if role == "pharmacy" or any(marker in normalized for marker in ["stock", "prix", "quantite", "quantité", "pharmacie"]):
+            return "medicine_lookup"
+        return "operations"
+
+    @staticmethod
+    def _infer_preferred_tone(role: str, user_messages: List[Dict[str, Any]]) -> str:
+        samples = [(row.get("message") or "").strip() for row in user_messages[-8:] if (row.get("message") or "").strip()]
+        if role == "admin":
+            return "executive"
+        if role == "pharmacy":
+            return "operational"
+        if not samples:
+            return "reassuring" if role == "patient" else "standard"
+
+        average_length = sum(len(sample) for sample in samples) / len(samples)
+        stress_markers = ["urgent", "vite", "peur", "grave", "douleur", "help", "aide"]
+        if any(marker in normalize_text(" ".join(samples)) for marker in stress_markers):
+            return "reassuring"
+        if average_length < 45:
+            return "direct"
+        return "guided" if role == "patient" else "standard"
+
+    @staticmethod
+    def _build_continuity_note(
+        *,
+        role: str,
+        visit_count: int,
+        recurring_topics: List[str],
+        discussed_medications: List[str],
+    ) -> str:
+        role_prefix = {
+            "patient": "Le patient revient",
+            "pharmacy": "La pharmacie revient",
+            "admin": "L'administrateur revient",
+        }.get(role, "L'utilisateur revient")
+        topic_fragment = f" sur les sujets {', '.join(recurring_topics[:2])}" if recurring_topics else ""
+        medication_fragment = f" avec un historique autour de {', '.join(discussed_medications[:2])}" if discussed_medications else ""
+        return f"{role_prefix} pour la visite #{max(visit_count, 1)}{topic_fragment}{medication_fragment}."
+
+    @staticmethod
+    def _build_response_style(role: str, context: Dict[str, Any]) -> Dict[str, str]:
+        memory = context.get("conversation_memory") or {}
+        preferred_tone = memory.get("preferred_tone") or "standard"
+        if role == "patient":
+            return {
+                "tone": preferred_tone if preferred_tone in {"reassuring", "guided", "direct"} else "reassuring",
+                "format": "supportive_steps",
+                "follow_up_bias": "safety_first",
+            }
+        if role == "pharmacy":
+            return {
+                "tone": preferred_tone if preferred_tone in {"operational", "direct", "standard"} else "operational",
+                "format": "concise_action",
+                "follow_up_bias": "workflow_next_step",
+            }
+        if role == "admin":
+            return {
+                "tone": "executive",
+                "format": "decision_ready",
+                "follow_up_bias": "risk_and_action",
+            }
+        return {
+            "tone": preferred_tone,
+            "format": "clear",
+            "follow_up_bias": "standard",
         }
 
 
@@ -821,6 +1004,35 @@ class ChatbotResponseService:
         "presente toi",
     ]
 
+    HEALTH_QUESTION_MARKERS = [
+        "douleur",
+        "fievre",
+        "fièvre",
+        "symptome",
+        "symptôme",
+        "enceinte",
+        "grossesse",
+        "allait",
+        "effet secondaire",
+        "effets secondaires",
+        "danger",
+        "grave",
+        "vomissement",
+        "diarrhee",
+        "diarrhée",
+        "toux",
+        "respirer",
+        "respiration",
+        "enfant",
+        "bebe",
+        "bébé",
+        "interaction",
+        "associer",
+        "combiner",
+        "dose",
+        "dosage",
+    ]
+
     def __init__(self):
         from apps.prescriptions.services.qa_service import QAService
 
@@ -833,7 +1045,7 @@ class ChatbotResponseService:
 
         cleaned_question = (question or "").strip()
         context = self.context_service.build_context(user)
-        role = context["role"] if context["role"] in {"patient", "pharmacy"} else "all"
+        role = context["role"] if context["role"] in {"patient", "pharmacy", "admin"} else "all"
         lowered_question = cleaned_question.lower()
 
         if self._looks_like_general_conversation(cleaned_question):
@@ -846,6 +1058,28 @@ class ChatbotResponseService:
                 response_kind="general_conversation",
             )
             return generic_answer or "Je suis PharmiGo, votre assistant de sante. Je peux vous guider dans la plateforme, vous aider a chercher des medicaments et repondre a vos questions."
+
+        health_answer = self._answer_health_question(cleaned_question, role, context)
+        if health_answer:
+            self._record_learning(
+                ChatbotLearningData,
+                user=user,
+                original_text=cleaned_question,
+                detected_intent="health_guidance",
+                corrected_answer=health_answer,
+                source=role if role in {"patient", "pharmacy", "admin"} else "system",
+                confidence_before=0.5,
+                confidence_after=0.8,
+            )
+            return self._compose_final_answer(
+                question=cleaned_question,
+                role=role,
+                context=context,
+                user=user,
+                internal_answer=health_answer,
+                response_kind="health_guidance",
+                allow_general_fallback=True,
+            )
 
         if "page d'accueil" in lowered_question and "ordonnance" in lowered_question and ("publier" in lowered_question or "puis-je" in lowered_question):
             return self._compose_final_answer(
@@ -1063,6 +1297,8 @@ class ChatbotResponseService:
                 recent_chat_history=recent_chat_history,
                 context=context,
             ),
+            "conversation_memory": context.get("conversation_memory") or {},
+            "response_style": context.get("response_style") or {},
             "patient_support_profile": context.get("patient_support_profile") or {},
         }
 
@@ -1189,6 +1425,90 @@ class ChatbotResponseService:
             return False
 
         return any(marker in lowered for marker in self.GENERAL_CONVERSATION_MARKERS)
+
+    def _looks_like_health_question(self, question: str) -> bool:
+        lowered = normalize_text(question or "")
+        if not lowered or self._looks_like_general_conversation(lowered):
+            return False
+        return any(marker in lowered for marker in self.HEALTH_QUESTION_MARKERS)
+
+    def _answer_health_question(self, question: str, role: str, context: Dict[str, Any]) -> str:
+        if not self._looks_like_health_question(question):
+            return ""
+
+        normalized = normalize_text(question)
+        category = "general"
+        if any(marker in normalized for marker in ["enceinte", "grossesse", "allait"]):
+            category = "pregnancy"
+        elif any(marker in normalized for marker in ["enfant", "bebe", "bébé", "nourrisson"]):
+            category = "child"
+        elif any(marker in normalized for marker in ["effet secondaire", "effets secondaires", "reaction", "réaction", "allerg"]):
+            category = "side_effect"
+        elif any(marker in normalized for marker in ["interaction", "associer", "combiner", "avec"]):
+            category = "interaction"
+        elif any(marker in normalized for marker in ["dose", "dosage", "combien", "prise", "prendre"]):
+            category = "dosage"
+        elif any(marker in normalized for marker in ["douleur", "fievre", "fièvre", "respirer", "respiration", "vomissement", "convulsion"]):
+            category = "symptom"
+
+        return self._build_health_guidance_response(category, role, context)
+
+    def _build_health_guidance_response(self, category: str, role: str, context: Dict[str, Any]) -> str:
+        framing = {
+            "patient": "Je peux donner une information generale prudente, mais pas poser un diagnostic.",
+            "pharmacy": "Je peux proposer une reponse d'orientation generale, sans remplacer une evaluation clinique.",
+            "admin": "Je peux fournir un cadrage prudent de sante, sans valeur de diagnostic individuel.",
+        }.get(role, "Je peux donner une information generale prudente, sans diagnostic.")
+
+        guidance_map = {
+            "dosage": (
+                "Pour une question de dose, le plus sur est de verifier l'ordonnance, l'age, le poids, les autres traitements et le terrain medical avant de confirmer une prise."
+            ),
+            "side_effect": (
+                "Un effet secondaire peut etre banal ou important selon le contexte. Il faut surtout noter quand il a commence, sa gravite et s'il y a eu une nouvelle prise ou une association recente."
+            ),
+            "pregnancy": (
+                "Pendant la grossesse ou l'allaitement, il vaut mieux eviter l'automedication et confirmer chaque medicament avec un professionnel de sante ou une pharmacie qualifiee."
+            ),
+            "child": (
+                "Chez l'enfant, la prudence est plus importante car la dose depend souvent de l'age, du poids et de la forme du produit."
+            ),
+            "interaction": (
+                "Pour une possible interaction, il faut verifier les deux produits exacts, leurs doses, la frequence de prise et le contexte medical avant de conclure."
+            ),
+            "symptom": (
+                "Pour des symptomes, l'intensite, la duree, l'age, les traitements en cours et les antecedents changent beaucoup le niveau de risque."
+            ),
+            "general": (
+                "Sans details cliniques complets, la bonne approche est de rester prudent et de faire confirmer les points sensibles par un professionnel."
+            ),
+        }
+        red_flags_map = {
+            "dosage": "Signaux d'alerte: prise excessive suspectee, confusion sur la dose, somnolence importante, vomissements repetes, difficultes a respirer.",
+            "side_effect": "Signaux d'alerte: gonflement du visage, difficulte a respirer, eruption importante, malaise, saignement inhabituel.",
+            "pregnancy": "Signaux d'alerte: douleur abdominale forte, saignement, essoufflement, vomissements incoercibles, baisse des mouvements du bebe si la grossesse est avancee.",
+            "child": "Signaux d'alerte: difficulte a respirer, forte somnolence, convulsion, refus total de boire, dehydration, fievre mal toleree.",
+            "interaction": "Signaux d'alerte: malaise, palpitations, confusion, somnolence extreme, saignement, aggravation rapide apres l'association.",
+            "symptom": "Signaux d'alerte: douleur thoracique, gene respiratoire, convulsion, faiblesse d'un cote, confusion, forte dehydration, aggravation rapide.",
+            "general": "Signaux d'alerte: aggravation rapide, detresse respiratoire, douleur intense, alteration de conscience, saignement important.",
+        }
+        next_step_map = {
+            "patient": "Si vous me donnez le nom exact du medicament, l'age de la personne concernee et le symptome principal, je peux vous aider a formuler une question plus sure pour la pharmacie ou le soignant.",
+            "pharmacy": "Le plus prudent est d'encourager une verification clinique ou pharmaceutique detaillee avant de rassurer ou de valider un usage.",
+            "admin": "Le bon cadre ici est de pousser une orientation vers un professionnel, avec une communication sobre et non prescriptive.",
+        }
+
+        role_memory = context.get("conversation_memory") or {}
+        continuity = role_memory.get("continuity_note") or ""
+        parts = [
+            framing,
+            guidance_map.get(category, guidance_map["general"]),
+            red_flags_map.get(category, red_flags_map["general"]),
+            next_step_map.get(role, next_step_map["patient"]),
+        ]
+        if continuity and role == "patient":
+            parts.append(f"Contexte conserve: {continuity}")
+        return " ".join(part for part in parts if part)
 
     def _answer_medicine_lookup(self, medication_names: List[str], role: str, user=None) -> Tuple[str, float]:
         del role
@@ -1676,6 +1996,8 @@ class ChatbotResponseService:
     def _personalize_answer(self, answer, role, context, medication_name=""):
         answer = answer.strip()
         display_name = (context.get("display_name") or "").strip()
+        response_style = context.get("response_style") or {}
+        preferred_tone = (response_style.get("tone") or "").strip()
         if role == "patient":
             answer = answer.replace("Le patient", "Je").replace("le patient", "je")
             answer = answer.replace("L'utilisateur", "Je").replace("l'utilisateur", "je")
@@ -1687,12 +2009,21 @@ class ChatbotResponseService:
                 answer += " J'ai aussi repéré des médicaments en attente de confirmation dans mon ordonnance."
             if medication_name and "PharmiGo" not in answer and "pharmacie" in answer.lower():
                 answer += f" Je me base sur les pharmacies et les stocks réellement enregistrés pour {medication_name}."
+            if context.get("conversation_memory", {}).get("visit_count", 0) > 1 and "continuity_note" in context.get("conversation_memory", {}):
+                answer += f" {context['conversation_memory']['continuity_note']}"
+            if preferred_tone == "reassuring" and "diagnostic" not in normalize_text(answer):
+                answer += " Si quelque chose vous inquiete ou s'aggrave, il vaut mieux demander un avis medical rapidement."
             if display_name and not answer.lower().startswith(("bonjour", "salut", "bonsoir")):
                 answer = f"{display_name}, {answer[0].lower() + answer[1:]}" if len(answer) > 1 else f"{display_name}, {answer}"
         elif role == "pharmacy":
             answer = answer.replace("Une pharmacie", "Votre pharmacie").replace("La pharmacie", "Votre pharmacie")
             if context["pharmacy_stock"]:
                 answer += " Je tiens compte de votre stock, de vos ordonnances publiques et de vos notifications recentes."
+            if preferred_tone in {"operational", "direct"}:
+                answer += " Je privilegie ici une reponse courte, exploitable et orientee action."
+        elif role == "admin":
+            answer = answer.replace("Vous pouvez", "Vous pouvez").strip()
+            answer = f"{answer} Je garde une vue synthétique: risque, impact et prochaine action."
         else:
             answer = f"Je suis l'assistant PharmiGo. {answer}"
         return answer
@@ -1705,6 +2036,8 @@ class ChatbotResponseService:
             return "Je peux vous aider a publier mon ordonnance, verifier mes medicaments et trouver les pharmacies qui ont ce qu'il me faut."
         if role == "pharmacy":
             return "Je peux vous aider a gerer votre stock, vos ordonnances publiques, vos notifications et vos echanges avec les autres pharmacies."
+        if role == "admin":
+            return "Je peux vous aider a suivre le chatbot, l'activite plateforme, les risques operationnels et les prochaines actions a prioriser."
         return "Je peux expliquer PharmiGo, analyser une ordonnance et rechercher les pharmacies qui disposent des medicaments demandes."
 
     @staticmethod

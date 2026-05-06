@@ -3,7 +3,8 @@ from unittest.mock import patch
 from django.contrib.auth.models import User
 from django.test import TestCase
 
-from apps.pharmigo_chatbot.services import ChatbotResponseService
+from apps.pharmigo_chatbot.models import ConversationHistory, ConversationSession
+from apps.pharmigo_chatbot.services import ChatbotContextService, ChatbotResponseService
 from apps.users.models import UserProfile
 
 
@@ -45,3 +46,40 @@ class ChatbotResponseServiceTests(TestCase):
 
         self.assertEqual(response, "Bonjour, je suis PharmiGo et je peux vous accompagner.")
         mocked_lookup.assert_not_called()
+
+    def test_context_builds_structured_memory_across_visits(self):
+        session = ConversationSession.objects.create(user=self.user, session_key="user-1-default")
+        ConversationHistory.objects.create(session=session, user=self.user, sender="user", message="Je cherche du paracetamol")
+        ConversationHistory.objects.create(session=session, user=self.user, sender="bot", message="Je peux verifier les pharmacies.")
+        ConversationHistory.objects.create(session=session, user=self.user, sender="user", message="J'ai aussi de la fievre depuis hier")
+
+        context = ChatbotContextService().build_context(self.user)
+        memory = context["conversation_memory"]
+
+        self.assertGreaterEqual(memory["visit_count"], 1)
+        self.assertTrue(memory["recurring_topics"])
+        self.assertIn(memory["preferred_tone"], {"reassuring", "guided", "direct", "standard"})
+
+    def test_health_question_returns_prudent_guidance_without_gemini(self):
+        service = ChatbotResponseService()
+        service.gemini_chat.available = False
+
+        response = service.answer("J'ai de la fievre et des vomissements, est-ce grave ?", self.user)
+
+        self.assertIn("information generale prudente", response)
+        self.assertIn("Signaux d'alerte", response)
+
+    def test_admin_role_uses_admin_fallback(self):
+        admin_user = User.objects.create_user(
+            username="admin-chatbot",
+            email="admin-chatbot@example.com",
+            password="testpass123",
+        )
+        UserProfile.objects.create(user=admin_user, role="admin", email_verified=True)
+        service = ChatbotResponseService()
+        service.gemini_chat.available = False
+
+        response = service.answer("Que peux-tu faire pour moi ?", admin_user)
+
+        self.assertIn("plateforme", response.lower())
+        self.assertIn("pharmigo", response.lower())
