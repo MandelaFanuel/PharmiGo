@@ -1468,9 +1468,9 @@ class ChatbotResponseService:
         should_greet = bool(profile.get("should_greet_now"))
 
         if any(marker in normalized for marker in ["bonjour", "salut", "bonsoir", "coucou", "amakuru", "jambo", "habari", "mbote"]):
-            greeting = "Bonjour" if should_greet else "Je suis la"
+            greeting = "Bonjour" if should_greet else "Je suis toujours la pour vous"
             return (
-                f"{greeting} {intro_name}je suis PharmiGo. "
+                f"{greeting}. {intro_name}je suis PharmiGo. "
                 "Je peux t'aider a comprendre la plateforme, chercher des medicaments dans les pharmacies, "
                 "analyser une ordonnance et repondre a des questions generales de sante avec prudence. "
                 "Dis-moi simplement ce dont tu as besoin maintenant."
@@ -1506,6 +1506,8 @@ class ChatbotResponseService:
 
         normalized = normalize_text(question)
         category = "general"
+        if any(marker in normalized for marker in ["souffr", "soufr", "pas bien", "je me sens mal", "je ne me sens pas bien", "fatigue", "faible", "angoisse"]):
+            category = "distress"
         if any(marker in normalized for marker in ["enceinte", "grossesse", "allait"]):
             category = "pregnancy"
         elif any(marker in normalized for marker in ["enfant", "bebe", "bébé", "nourrisson"]):
@@ -1523,12 +1525,15 @@ class ChatbotResponseService:
 
     def _build_health_guidance_response(self, category: str, role: str, context: Dict[str, Any]) -> str:
         framing = {
-            "patient": "Je peux donner une information generale prudente, mais pas poser un diagnostic.",
-            "pharmacy": "Je peux proposer une reponse d'orientation generale, sans remplacer une evaluation clinique.",
+            "patient": "Je suis desole de lire cela. Je peux vous donner une orientation generale prudente, sans poser de diagnostic.",
+            "pharmacy": "Je peux proposer une orientation generale prudente, sans remplacer une evaluation clinique.",
             "admin": "Je peux fournir un cadrage prudent de sante, sans valeur de diagnostic individuel.",
         }.get(role, "Je peux donner une information generale prudente, sans diagnostic.")
 
         guidance_map = {
+            "distress": (
+                "Quand une personne dit qu'elle souffre ou ne se sent pas bien, le plus important est d'identifier ce qui la gene le plus maintenant: douleur, fievre, fatigue importante, difficulte a respirer, vomissements ou autre symptome marquant."
+            ),
             "dosage": (
                 "Pour une question de dose, le plus sur est de verifier l'ordonnance, l'age, le poids, les autres traitements et le terrain medical avant de confirmer une prise."
             ),
@@ -1552,6 +1557,7 @@ class ChatbotResponseService:
             ),
         }
         red_flags_map = {
+            "distress": "Signaux d'alerte: difficulte a respirer, douleur thoracique, confusion, faiblesse extreme, convulsion, saignement important ou aggravation rapide.",
             "dosage": "Signaux d'alerte: prise excessive suspectee, confusion sur la dose, somnolence importante, vomissements repetes, difficultes a respirer.",
             "side_effect": "Signaux d'alerte: gonflement du visage, difficulte a respirer, eruption importante, malaise, saignement inhabituel.",
             "pregnancy": "Signaux d'alerte: douleur abdominale forte, saignement, essoufflement, vomissements incoercibles, baisse des mouvements du bebe si la grossesse est avancee.",
@@ -1561,7 +1567,7 @@ class ChatbotResponseService:
             "general": "Signaux d'alerte: aggravation rapide, detresse respiratoire, douleur intense, alteration de conscience, saignement important.",
         }
         next_step_map = {
-            "patient": "Si vous me donnez le nom exact du medicament, l'age de la personne concernee et le symptome principal, je peux vous aider a formuler une question plus sure pour la pharmacie ou le soignant.",
+            "patient": "Si vous me dites le symptome principal, depuis quand cela dure et l'age de la personne concernee, je peux vous aider a poser la bonne question et voir ensuite s'il faut chercher un medicament ou une pharmacie.",
             "pharmacy": "Le plus prudent est d'encourager une verification clinique ou pharmaceutique detaillee avant de rassurer ou de valider un usage.",
             "admin": "Le bon cadre ici est de pousser une orientation vers un professionnel, avec une communication sobre et non prescriptive.",
         }

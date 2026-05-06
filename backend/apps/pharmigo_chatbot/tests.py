@@ -68,7 +68,7 @@ class ChatbotResponseServiceTests(TestCase):
 
         response = service.answer("J'ai de la fievre et des vomissements, est-ce grave ?", self.user)
 
-        self.assertIn("information generale prudente", response)
+        self.assertIn("orientation generale prudente", response)
         self.assertIn("Signaux d'alerte", response)
 
     def test_colloquial_distress_message_does_not_trigger_medication_lookup(self):
@@ -79,7 +79,7 @@ class ChatbotResponseServiceTests(TestCase):
             response = service.answer("je suis souffran mon frere", self.user)
 
         mocked_lookup.assert_not_called()
-        self.assertIn("information generale prudente", response)
+        self.assertIn("orientation generale prudente", response)
         self.assertNotIn("stocks des pharmacies", response.lower())
 
     def test_admin_role_uses_admin_fallback(self):
