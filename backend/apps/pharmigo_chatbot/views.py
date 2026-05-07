@@ -1,4 +1,5 @@
 import json
+import logging
 
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import transaction
@@ -43,6 +44,9 @@ from .services import (
     ChatbotResponseService,
 )
 from .utils import normalize_text
+
+
+logger = logging.getLogger(__name__)
 
 
 def _get_authenticated_user(request):
@@ -105,6 +109,15 @@ def _get_or_create_conversation_session(user, prescription=None):
     return session
 
 
+def _refresh_session_snapshot(session, user):
+    if session is None or user is None:
+        return
+
+    refreshed_context = _make_json_safe(ChatbotContextService().build_context(user))
+    session.context_snapshot = refreshed_context
+    session.save(update_fields=["context_snapshot", "updated_at"])
+
+
 def _store_chat_exchange(user, session, question, answer, prescription=None):
     if user is not None:
         ChatMessage.objects.create(
@@ -142,6 +155,7 @@ def _store_chat_exchange(user, session, question, answer, prescription=None):
             ),
         ]
     )
+    _refresh_session_snapshot(session, user)
 
 
 class PharmacyViewSet(viewsets.ModelViewSet):
@@ -212,8 +226,8 @@ class ChatbotMessageView(APIView):
         question = str(request.data.get("message") or request.data.get("question") or "").strip()
         if not question:
             return Response({"error": "Message requis."}, status=status.HTTP_400_BAD_REQUEST)
+        user = _get_authenticated_user(request)
         try:
-            user = _get_authenticated_user(request)
             prescription = _resolve_real_prescription(user, request.data.get("prescription_id"))
             answer = ChatbotResponseService().answer(question, user)
             session = _get_or_create_conversation_session(user, prescription)
@@ -228,10 +242,8 @@ class ChatbotMessageView(APIView):
                 status=status.HTTP_200_OK,
             )
         except Exception:
-            fallback = (
-                "Je rencontre un probleme technique temporaire pendant la recherche des stocks pharmacies. "
-                "Veuillez reessayer dans un instant."
-            )
+            logger.exception("ChatbotMessageView failed")
+            fallback = ChatbotResponseService().safe_fallback_answer(question, user)
             return Response({"message": fallback, "answer": fallback, "question": question}, status=status.HTTP_200_OK)
 
 
@@ -523,10 +535,8 @@ def chatbot_message(request):
             }
         )
     except Exception:
-        fallback = (
-            "Je rencontre un probleme technique temporaire pendant la recherche des stocks pharmacies. "
-            "Veuillez reessayer dans un instant."
-        )
+        logger.exception("chatbot_message endpoint failed")
+        fallback = ChatbotResponseService().safe_fallback_answer(user_message, user)
         return Response(
             {
                 "message": fallback,

@@ -999,14 +999,30 @@ class ChatbotResponseService:
         "salut",
         "bonsoir",
         "coucou",
+        "hello",
+        "hi",
+        "comment ca va",
+        "comment ça va",
+        "comment vas tu",
+        "comment allez vous",
         "merci",
+        "merci beaucoup",
+        "je t aime",
+        "je t'aime",
+        "je vous aime",
+        "je t apprecie",
+        "je t'apprécie",
+        "tu m aides",
+        "tu m'aides",
         "qui es tu",
         "que fais tu",
         "que peux tu faire",
         "comment utiliser",
         "comment ca marche",
+        "comment ça marche",
         "aide moi",
         "presente toi",
+        "présente toi",
     ]
 
     FAREWELL_MARKERS = [
@@ -1052,6 +1068,30 @@ class ChatbotResponseService:
         "trop personnel",
         "tres personnel",
         "très personnel",
+        "ma situation",
+        "mon cas",
+        "en discuter plus",
+        "discuter plus",
+        "parler entre nous",
+        "plus de confidentialite",
+        "plus de confidentialité",
+        "parler de quelque chose de plus prive",
+        "parler de quelque chose de plus privé",
+    ]
+
+    CONNECTION_INTENT_MARKERS = [
+        "je vais me connecter",
+        "je vais me reconnecter",
+        "je me connecte",
+        "je vais venir en prive",
+        "je vais venir en privé",
+        "on va parler en prive",
+        "on va parler en privé",
+        "je reviens connecte",
+        "je reviens connecté",
+        "je vais revenir connecte",
+        "je vais revenir connecté",
+        "je vais venir dans mon compte",
     ]
 
     HEALTH_QUESTION_MARKERS = [
@@ -1112,6 +1152,25 @@ class ChatbotResponseService:
         "desespoir",
         "désespoir",
         "tristesse",
+        "diabet",
+        "hypertension",
+        "hypertendu",
+        "asthme",
+        "asthmatique",
+        "sommeil",
+        "insomnie",
+        "manger",
+        "alimentation",
+        "nourriture",
+        "regime",
+        "régime",
+        "sport",
+        "activite physique",
+        "activité physique",
+        "stressé",
+        "stresse",
+        "bien etre",
+        "bien-être",
         "confidentiel",
         "confidentielle",
     ]
@@ -1160,6 +1219,22 @@ class ChatbotResponseService:
                 user=user,
                 internal_answer=privacy_answer,
                 response_kind="privacy_guidance",
+                allow_general_fallback=True,
+            )
+
+        if self._looks_like_connection_intent(cleaned_question):
+            connection_answer = self._build_connection_seed(
+                question=cleaned_question,
+                role=role,
+                context=context,
+            )
+            return self._compose_final_answer(
+                question=cleaned_question,
+                role=role,
+                context=context,
+                user=user,
+                internal_answer=connection_answer,
+                response_kind="connection_intent",
                 allow_general_fallback=True,
             )
 
@@ -1544,6 +1619,8 @@ class ChatbotResponseService:
             return False
         if self._looks_like_privacy_request(lowered):
             return False
+        if self._looks_like_connection_intent(lowered):
+            return False
         if self._looks_like_health_question(lowered):
             return False
         return any(marker in lowered for marker in self.MEDICINE_REQUEST_MARKERS)
@@ -1566,6 +1643,12 @@ class ChatbotResponseService:
         if not lowered:
             return False
         return any(marker in lowered for marker in self.PRIVACY_MARKERS)
+
+    def _looks_like_connection_intent(self, question: str) -> bool:
+        lowered = normalize_text(question or "")
+        if not lowered:
+            return False
+        return any(marker in lowered for marker in self.CONNECTION_INTENT_MARKERS)
 
     def _looks_like_health_question(self, question: str) -> bool:
         lowered = normalize_text(question or "")
@@ -1601,6 +1684,13 @@ class ChatbotResponseService:
             return (
                 f"{intro_name}avec plaisir. Si vous voulez continuer, dites-moi simplement ce qui vous preoccupe, "
                 "ou ce que vous cherchez, et je vous accompagnerai pas a pas."
+            ).replace("  ", " ").strip()
+
+        if any(marker in normalized for marker in ["je t aime", "je t'aime", "je vous aime", "je t apprecie", "je t'apprécie"]):
+            return (
+                f"{intro_name}merci, cela me touche. Je suis la pour vous accompagner avec douceur et serieux autour de votre sante, "
+                "de votre bien-etre et de vos questions sur les medicaments. Si vous voulez, dites-moi ce qui vous preoccupe aujourd'hui "
+                "et nous allons le regarder calmement ensemble."
             ).replace("  ", " ").strip()
 
         if any(marker in normalized for marker in ["que fais tu", "que peux tu faire", "qui es tu", "presente toi", "présente toi"]):
@@ -1665,6 +1755,30 @@ class ChatbotResponseService:
             }
         return lines.get(language, lines["fr"])
 
+    def _build_connection_seed(self, *, question: str, role: str, context: Dict[str, Any]) -> str:
+        del role
+        language = self._detect_language(question)
+        is_authenticated = bool(context.get("is_authenticated"))
+        display_name = (context.get("display_name") or "").strip()
+        name_prefix = f"{display_name}, " if display_name else ""
+        if is_authenticated:
+            lines = {
+                "fr": f"{name_prefix}vous etes deja dans votre espace connecte. Nous pouvons donc continuer plus sereinement et de maniere plus personnelle si vous voulez me parler de votre situation.",
+                "en": f"{name_prefix}you are already in your signed-in space. We can continue more calmly and more personally if you want to talk about your situation.",
+                "sw": f"{name_prefix}tayari uko kwenye nafasi yako ukiwa umeingia. Tunaweza kuendelea kwa utulivu zaidi na kwa undani zaidi ukitaka kuzungumza kuhusu hali yako.",
+                "rn": f"{name_prefix}muri muri konti yanyu yinjiyemwo. Turashobora kubandanya tuvugana neza kurusha no mu buryo bwihariye nimba mushaka kumbwira ibijanye n'ubuzima bwanyu.",
+                "ln": f"{name_prefix}ozali deja na esika na yo ya kokota. Tokoki kokoba malembe mpe na lolenge ya moto na moto soki olingi koyebisa ngai likambo na yo.",
+            }
+        else:
+            lines = {
+                "fr": "Tres bonne idee. Une fois connecte, je pourrai mieux garder le fil de votre situation et vous accompagner de facon plus precise si vous voulez parler d'un sujet personnel ou sensible.",
+                "en": "That is a very good idea. Once you are signed in, I will be able to keep better continuity and support you more precisely if you want to discuss something personal or sensitive.",
+                "sw": "Hilo ni wazo zuri sana. Ukishaingia, nitaweza kufuatilia hali yako vizuri zaidi na kukuongoza kwa usahihi zaidi ikiwa unataka kuzungumza kuhusu jambo la kibinafsi au nyeti.",
+                "rn": "Ni iciyumviro ciza cane. Nimwaba mwinjiye, nzoshobora gukurikira neza uko mwifashe no kubafasha mu buryo bwimbitse nimba mushaka kuganira ku kintu cihariye canke c'ibanga.",
+                "ln": "Ezali likanisi malamu mingi. Soki okoti, nakokoka kolanda malamu makambo na yo mpe kosalisa yo na bosikisiki soki olingi kolobela likambo ya moto na moto to ya sekele.",
+            }
+        return lines.get(language, lines["fr"])
+
     @staticmethod
     def _detect_language(question: str) -> str:
         lowered = normalize_text(question or "")
@@ -1700,6 +1814,12 @@ class ChatbotResponseService:
             category = "interaction"
         elif any(marker in normalized for marker in ["dose", "dosage", "combien", "prise", "prendre"]):
             category = "dosage"
+        elif any(marker in normalized for marker in ["diabet", "hypertension", "hypertendu", "asthme", "asthmatique"]):
+            category = "chronic_lifestyle"
+        elif any(marker in normalized for marker in ["sommeil", "insomnie", "stress", "stressé", "stresse", "anxieux", "anxieuse"]):
+            category = "wellbeing"
+        elif any(marker in normalized for marker in ["manger", "alimentation", "nourriture", "regime", "régime"]):
+            category = "nutrition"
         elif any(marker in normalized for marker in ["douleur", "fievre", "fièvre", "respirer", "respiration", "vomissement", "convulsion"]):
             category = "symptom"
 
@@ -1740,6 +1860,15 @@ class ChatbotResponseService:
             "chronic_support": (
                 "Quand une personne vit avec une maladie chronique ou commence a perdre espoir, le plus important est de garder un suivi regulier, de ne pas interrompre ses traitements sans avis professionnel, et de parler clairement de ce qu'elle ressent aujourd'hui."
             ),
+            "chronic_lifestyle": (
+                "Pour une maladie chronique comme le diabete, l'hypertension ou l'asthme, les habitudes quotidiennes jouent un role important: alimentation adaptee, hydratation, activite physique raisonnable, repos et bonne observance du traitement prescrit."
+            ),
+            "wellbeing": (
+                "Quand le stress, l'insomnie ou la fatigue prennent trop de place, il faut regarder le rythme de sommeil, l'hydratation, les ecrans, les repas, le niveau de tension emotionnelle et les traitements deja pris."
+            ),
+            "nutrition": (
+                "Pour l'alimentation, les conseils changent selon la maladie, l'age et les traitements en cours. Le plus prudent est de donner des repères generaux adaptes a la situation sans remplacer un suivi medical ou nutritionnel."
+            ),
             "general": (
                 "Sans details cliniques complets, la bonne approche est de rester prudent et de faire confirmer les points sensibles par un professionnel."
             ),
@@ -1753,6 +1882,9 @@ class ChatbotResponseService:
             "interaction": "Signaux d'alerte: malaise, palpitations, confusion, somnolence extreme, saignement, aggravation rapide apres l'association.",
             "symptom": "Signaux d'alerte: douleur thoracique, gene respiratoire, convulsion, faiblesse d'un cote, confusion, forte dehydration, aggravation rapide.",
             "chronic_support": "Signaux d'alerte: idee suicidaire, impossibilite de manger ou boire, difficulte a respirer, douleur intense, confusion, aggravation nette de l'etat general.",
+            "chronic_lifestyle": "Signaux d'alerte: essoufflement inhabituel, malaise, forte faiblesse, douleur thoracique, perte de connaissance, symptomes qui s'aggravent rapidement.",
+            "wellbeing": "Signaux d'alerte: pensees suicidaires, angoisse extreme, perte de connaissance, confusion, essoufflement important, douleur thoracique ou impossibilite de fonctionner normalement.",
+            "nutrition": "Signaux d'alerte: amaigrissement important, vomissements repetes, dehydration, malaise, hypoglycemie suspectee, aggravation rapide de l'etat general.",
             "general": "Signaux d'alerte: aggravation rapide, detresse respiratoire, douleur intense, alteration de conscience, saignement important.",
         }
         next_step_map = {
@@ -1774,6 +1906,7 @@ class ChatbotResponseService:
             guidance_map.get(category, guidance_map["general"]),
             red_flags_map.get(category, red_flags_map["general"]),
             next_step_map.get(role, next_step_map["patient"]),
+            "Mes conseils restent informatifs et ne remplacent pas l'avis d'un medecin ou d'un pharmacien.",
         ]
         if category == "chronic_support" and chronic_profile.get("possible_chronic_condition"):
             parts.append(
@@ -2307,13 +2440,54 @@ class ChatbotResponseService:
         if role == "patient":
             pending = len(context["pending_confirmations"])
             if pending:
-                return f"Je peux vous aider a publier votre ordonnance, confirmer vos medicaments et trouver une pharmacie. Vous avez actuellement {pending} verification(s) en attente."
-            return "Je peux vous aider a publier mon ordonnance, verifier mes medicaments et trouver les pharmacies qui ont ce qu'il me faut."
+                return (
+                    f"Je peux vous accompagner pas a pas sur votre sante, votre ordonnance et la recherche de medicaments. "
+                    f"Vous avez actuellement {pending} verification(s) en attente si vous voulez que nous les reprenions ensemble."
+                )
+            return (
+                "Je peux vous accompagner sur vos questions de sante generale, votre bien-etre, vos ordonnances "
+                "et la recherche de pharmacies quand vous avez besoin d'un medicament."
+            )
         if role == "pharmacy":
-            return "Je peux vous aider a gerer votre stock, vos ordonnances publiques, vos notifications et vos echanges avec les autres pharmacies."
+            return "Je peux vous aider a gerer votre stock, vos ordonnances publiques, vos notifications et vos echanges avec les autres pharmacies, tout en restant clair et operationnel."
         if role == "admin":
             return "Je peux vous aider a suivre le chatbot, l'activite plateforme, les risques operationnels et les prochaines actions a prioriser."
-        return "Je peux expliquer PharmiGo, analyser une ordonnance et rechercher les pharmacies qui disposent des medicaments demandes."
+        return (
+            "Je suis PharmiGo. Je peux discuter de bien-etre, de sante generale, d'ordonnances, "
+            "de medicaments et de prevention, tout en restant prudent et sans remplacer un professionnel de sante."
+        )
+
+    def safe_fallback_answer(self, question: str, user=None) -> str:
+        cleaned_question = (question or "").strip()
+        try:
+            context = self.context_service.build_context(user)
+        except Exception:
+            context = {
+                "role": "all",
+                "is_authenticated": bool(getattr(user, "is_authenticated", False)),
+                "display_name": "",
+                "pending_confirmations": [],
+                "conversation_memory": {},
+                "response_style": {},
+                "patient_support_profile": {},
+            }
+
+        role = context["role"] if context.get("role") in {"patient", "pharmacy", "admin"} else "all"
+
+        if self._looks_like_farewell(cleaned_question):
+            return self._build_farewell_seed(question=cleaned_question, role=role, context=context)
+        if self._looks_like_privacy_request(cleaned_question):
+            return self._build_privacy_seed(question=cleaned_question, role=role, context=context)
+        if self._looks_like_connection_intent(cleaned_question):
+            return self._build_connection_seed(question=cleaned_question, role=role, context=context)
+        if self._looks_like_general_conversation(cleaned_question):
+            return self._build_general_conversation_seed(question=cleaned_question, role=role, context=context)
+
+        health_answer = self._answer_health_question(cleaned_question, role, context)
+        if health_answer:
+            return health_answer
+
+        return self._fallback_answer(role, context)
 
     @staticmethod
     def _token_set_ratio(left: str, right: str) -> int:

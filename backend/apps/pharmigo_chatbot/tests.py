@@ -126,3 +126,33 @@ class ChatbotResponseServiceTests(TestCase):
 
         self.assertIn("espace connecte", response.lower())
         self.assertNotIn("stocks des pharmacies", response.lower())
+
+    def test_connection_intent_does_not_trigger_medication_lookup(self):
+        service = ChatbotResponseService()
+        service.gemini_chat.available = False
+
+        with patch.object(service, "_answer_medicine_lookup", wraps=service._answer_medicine_lookup) as mocked_lookup:
+            response = service.answer("Je vais me connecter pour en discuter plus sur ma situation", self.user)
+
+        mocked_lookup.assert_not_called()
+        self.assertIn("espace connecte", response.lower())
+        self.assertNotIn("stocks des pharmacies", response.lower())
+
+    def test_affection_message_stays_conversational(self):
+        service = ChatbotResponseService()
+        service.gemini_chat.available = False
+
+        with patch.object(service, "_answer_medicine_lookup", wraps=service._answer_medicine_lookup) as mocked_lookup:
+            response = service.answer("Je t'aime bien PharmiGo", self.user)
+
+        mocked_lookup.assert_not_called()
+        self.assertIn("merci", response.lower())
+        self.assertNotIn("stocks", response.lower())
+
+    def test_safe_fallback_answer_remains_human_for_greeting(self):
+        service = ChatbotResponseService()
+
+        response = service.safe_fallback_answer("Salut PharmiGo", self.user)
+
+        self.assertTrue(any(term in response.lower() for term in ["salut", "bonjour", "pharmigo"]))
+        self.assertNotIn("probleme technique", response.lower())

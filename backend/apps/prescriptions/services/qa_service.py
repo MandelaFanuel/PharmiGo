@@ -42,6 +42,9 @@ class QAService:
         """
         question_lower = question.lower()
 
+        if self._is_non_medical_conversation(question_lower):
+            return self._get_default_response()
+
         if self._is_about_usage(question_lower):
             return self._get_usage_response()
 
@@ -95,15 +98,43 @@ class QAService:
             "utiliser la plateforme",
             "publier une ordonnance",
             "analyser une ordonnance",
-            "bonjour",
-            "salut",
         ]
         return any(keyword in question for keyword in usage_keywords)
+
+    def _is_non_medical_conversation(self, question: str) -> bool:
+        conversation_markers = [
+            "bonjour",
+            "salut",
+            "bonsoir",
+            "coucou",
+            "hello",
+            "hi",
+            "merci",
+            "je t'aime",
+            "je t aime",
+            "je vous aime",
+            "prive",
+            "privé",
+            "confidentiel",
+            "confidentielle",
+            "me connecter",
+            "connexion",
+            "se connecter",
+            "mon cas",
+            "ma situation",
+            "au revoir",
+            "bye",
+            "goodbye",
+        ]
+        return any(marker in question for marker in conversation_markers)
 
     def _extract_requested_medications(self, question: str):
         found = []
         normalized_question = re.sub(r"[^\w\sàâäéèêëîïôöùûüçµ-]", " ", question.lower())
         tokens = [token.strip() for token in normalized_question.split() if token.strip()]
+
+        if self._is_non_medical_conversation(normalized_question):
+            return found
 
         if self._is_about_usage(normalized_question) and not self._looks_like_medication_request(normalized_question):
             return found
@@ -259,11 +290,9 @@ class QAService:
             "ou",
             "trouver",
             "acheter",
-            "besoin",
             "cherche",
             "recherche",
             "disponible",
-            "alors",
         ]
         return any(marker in question for marker in request_markers)
 
@@ -401,9 +430,8 @@ class QAService:
     
     def _get_default_response(self) -> str:
         """Get default response when question is not understood"""
-        return "Je suis l'assistant PharmiGo. Je peux vous aider avec :\n" \
-               "• Informations sur les pharmacies\n" \
-               "• Vos ordonnances\n" \
-               "• Disponibilité des médicaments\n" \
-               "• Votre compte\n\n" \
-               "Comment puis-je vous aider ?"
+        return (
+            "Je suis PharmiGo. Je peux vous accompagner sur vos questions de sante, "
+            "de bien-etre, d'ordonnances, de pharmacies et de medicaments, "
+            "avec des reponses prudentes et humaines. Comment puis-je vous aider aujourd'hui ?"
+        )
