@@ -1713,7 +1713,7 @@ class ChatbotResponseService:
             "patient": f"{name_prefix}je suis desole de lire cela. Je peux vous donner une orientation generale prudente, sans poser de diagnostic.",
             "pharmacy": "Je peux proposer une orientation generale prudente, sans remplacer une evaluation clinique.",
             "admin": "Je peux fournir un cadrage prudent de sante, sans valeur de diagnostic individuel.",
-        }.get(role, "Je peux donner une information generale prudente, sans diagnostic.")
+        }.get(role, f"{name_prefix}je suis desole de lire cela. Je peux vous donner une orientation generale prudente, sans poser de diagnostic.")
 
         guidance_map = {
             "distress": (
@@ -2300,7 +2300,7 @@ class ChatbotResponseService:
             answer = answer.replace("Vous pouvez", "Vous pouvez").strip()
             answer = f"{answer} Je garde une vue synthétique: risque, impact et prochaine action."
         else:
-            answer = f"Je suis l'assistant PharmiGo. {answer}"
+            answer = answer.strip()
         return answer
 
     def _fallback_answer(self, role, context):
