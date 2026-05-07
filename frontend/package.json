@@ -11,6 +11,7 @@
     "preview": "vite preview --host 0.0.0.0 --port 3001"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "axios": "^1.7.2",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",

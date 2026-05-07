@@ -1,4 +1,5 @@
-const STATIC_CACHE = "pharmigo-static-v3";
+const APP_VERSION = new URL(self.location.href).searchParams.get("v") || "v1";
+const STATIC_CACHE = `pharmigo-static-${APP_VERSION}`;
 const IS_LOCAL_DEV_HOST = ["localhost", "127.0.0.1"].includes(self.location.hostname);
 const APP_SHELL = [
   "/",
@@ -58,6 +59,12 @@ self.addEventListener("activate", (event) => {
       )
     ).then(() => self.clients.claim())
   );
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
 });
 
 async function cacheFirst(request) {

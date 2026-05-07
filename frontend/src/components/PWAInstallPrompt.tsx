@@ -7,9 +7,7 @@ type InstallPromptEvent = Event & {
   userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
 };
 
-const INSTALL_SNOOZE_KEY = "pharmigo.installPromptSnoozeUntil";
-const INSTALL_ACCEPTED_KEY = "pharmigo.installPromptAccepted";
-const SNOOZE_DURATION_MS = 12 * 60 * 60 * 1000;
+type UpdateRegistration = ServiceWorkerRegistration | null;
 
 function isStandalone() {
   return window.matchMedia("(display-mode: standalone)").matches || (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
@@ -19,35 +17,54 @@ function isIos() {
   return /iphone|ipad|ipod/i.test(window.navigator.userAgent);
 }
 
+function isMobileInstallTarget() {
+  return /android|iphone|ipad|ipod/i.test(window.navigator.userAgent) || window.matchMedia("(pointer: coarse)").matches;
+}
+
 export default function PWAInstallPrompt() {
   const [deferredPrompt, setDeferredPrompt] = useState<InstallPromptEvent | null>(null);
-  const [visible, setVisible] = useState(false);
+  const [showInstallGate, setShowInstallGate] = useState(false);
   const [installing, setInstalling] = useState(false);
+  const [updateRegistration, setUpdateRegistration] = useState<UpdateRegistration>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [iosInstallChecked, setIosInstallChecked] = useState(false);
 
   const needsManualInstall = useMemo(() => isIos() && !isStandalone(), []);
+  const shouldRequireInstall = useMemo(() => isMobileInstallTarget() && !isStandalone(), []);
+  const isUpdateBlocking = Boolean(updateRegistration);
 
   useEffect(() => {
-    if (isStandalone() || localStorage.getItem(INSTALL_ACCEPTED_KEY) === "true") {
+    if (typeof document === "undefined") {
       return;
     }
 
-    const snoozeUntil = Number(localStorage.getItem(INSTALL_SNOOZE_KEY) || "0");
-    if (Number.isFinite(snoozeUntil) && snoozeUntil > Date.now()) {
+    const previousOverflow = document.body.style.overflow;
+    if (showInstallGate || isUpdateBlocking) {
+      document.body.style.overflow = "hidden";
+    }
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isUpdateBlocking, showInstallGate]);
+
+  useEffect(() => {
+    if (!shouldRequireInstall) {
       return;
     }
 
-    const timer = window.setTimeout(() => setVisible(true), 900);
+    const timer = window.setTimeout(() => setShowInstallGate(true), 700);
 
     const handleBeforeInstallPrompt = (event: Event) => {
       event.preventDefault();
       setDeferredPrompt(event as InstallPromptEvent);
-      setVisible(true);
+      setShowInstallGate(true);
     };
 
     const handleInstalled = () => {
-      localStorage.setItem(INSTALL_ACCEPTED_KEY, "true");
-      setVisible(false);
+      setShowInstallGate(false);
       setDeferredPrompt(null);
+      setIosInstallChecked(false);
     };
 
     window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
@@ -56,6 +73,18 @@ export default function PWAInstallPrompt() {
       window.clearTimeout(timer);
       window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
       window.removeEventListener("appinstalled", handleInstalled);
+    };
+  }, [shouldRequireInstall]);
+
+  useEffect(() => {
+    const handleUpdateAvailable = (event: Event) => {
+      const customEvent = event as CustomEvent<ServiceWorkerRegistration>;
+      setUpdateRegistration(customEvent.detail || null);
+    };
+
+    window.addEventListener("pharmigo:sw-update-available", handleUpdateAvailable);
+    return () => {
+      window.removeEventListener("pharmigo:sw-update-available", handleUpdateAvailable);
     };
   }, []);
 
@@ -69,8 +98,7 @@ export default function PWAInstallPrompt() {
       await deferredPrompt.prompt();
       const choice = await deferredPrompt.userChoice;
       if (choice.outcome === "accepted") {
-        localStorage.setItem(INSTALL_ACCEPTED_KEY, "true");
-        setVisible(false);
+        setShowInstallGate(false);
       }
     } finally {
       setDeferredPrompt(null);
@@ -78,65 +106,117 @@ export default function PWAInstallPrompt() {
     }
   }
 
-  function handleContinueWeb() {
-    localStorage.setItem(INSTALL_SNOOZE_KEY, String(Date.now() + SNOOZE_DURATION_MS));
-    setVisible(false);
+  function handleIosInstallCheck() {
+    if (isStandalone()) {
+      setShowInstallGate(false);
+      setIosInstallChecked(false);
+      return;
+    }
+    setIosInstallChecked(true);
   }
 
-  if (!visible || isStandalone()) {
+  function handleForceUpdate() {
+    setIsRefreshing(true);
+    if (updateRegistration?.waiting) {
+      updateRegistration.waiting.postMessage({ type: "SKIP_WAITING" });
+      return;
+    }
+    window.location.reload();
+  }
+
+  if (isUpdateBlocking) {
+    return (
+      <ModalTransition overlayClassName="pharmigo-modal-overlay" panelClassName="landing-modal-card install-prompt-card install-prompt-card-critical" ariaLabel="Mise a jour obligatoire">
+        <div className="landing-modal-head install-prompt-head">
+          <div>
+            <span className="landing-section-kicker">Mise a jour requise</span>
+            <h2>Une nouvelle version de PharmiGo est disponible</h2>
+            <p>
+              Pour continuer a utiliser l'application en toute securite, vous devez charger la derniere version maintenant.
+            </p>
+          </div>
+        </div>
+
+        <div className="install-prompt-body install-prompt-body-single">
+          <div className="install-prompt-panel highlight">
+            <strong>Pourquoi cette action est obligatoire ?</strong>
+            <ul>
+              <li>Synchroniser les ecrans avec le backend et les dashboards.</li>
+              <li>Eviter d'utiliser une ancienne version qui pourrait devenir instable.</li>
+              <li>Garantir la compatibilite Android, iPhone et iPad sur le meme build.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div className="install-prompt-actions install-prompt-actions-stack">
+          <button type="button" className="pharmigo-primary-btn" onClick={handleForceUpdate} disabled={isRefreshing}>
+            {isRefreshing ? "Mise a jour en cours..." : "Mettre a jour maintenant"}
+          </button>
+        </div>
+      </ModalTransition>
+    );
+  }
+
+  if (!showInstallGate || !shouldRequireInstall) {
     return null;
   }
 
   return (
     <ModalTransition overlayClassName="pharmigo-modal-overlay" panelClassName="landing-modal-card install-prompt-card" ariaLabel="Installer PharmiGo">
-        <div className="landing-modal-head install-prompt-head">
-          <div>
-            <span className="landing-section-kicker">Installation recommandee</span>
-            <h2>Installez d'abord PharmiGo sur votre appareil</h2>
-            <p>
-              Pour une utilisation plus stable, plus rapide et plus proche d'une vraie application mobile, PharmiGo recommande fortement
-              l'installation avant la connexion.
-            </p>
-          </div>
+      <div className="landing-modal-head install-prompt-head">
+        <div>
+          <span className="landing-section-kicker">Installation obligatoire sur mobile</span>
+          <h2>Installez PharmiGo avant de continuer</h2>
+          <p>
+            Sur Android et iPhone, PharmiGo doit etre installee comme une vraie application pour garantir une experience stable, rapide
+            et bien mise a jour.
+          </p>
+        </div>
+      </div>
+
+      <div className="install-prompt-body">
+        <div className="install-prompt-panel highlight">
+          <strong>Ce que vous gagnez</strong>
+          <ul>
+            <li>Ouverture plein ecran et navigation plus fiable.</li>
+            <li>Mises a jour plus claires et plus faciles a appliquer.</li>
+            <li>Comportement plus proche d'une application native sur Android et iOS.</li>
+          </ul>
         </div>
 
-        <div className="install-prompt-body">
-          <div className="install-prompt-panel highlight">
-            <strong>Pourquoi installer ?</strong>
-            <ul>
-              <li>Ouverture plus rapide et plus fiable.</li>
-              <li>Experience plein ecran proche d'une application native.</li>
-              <li>Acces plus pratique aux notifications et aux ordonnances.</li>
-            </ul>
-          </div>
-
-          <div className="install-prompt-panel">
-            <strong>Suite recommandee</strong>
-            <p>
-              Installez l'application, puis connectez-vous pour commencer a utiliser PharmiGo dans de bonnes conditions.
-            </p>
-            {needsManualInstall ? (
+        <div className="install-prompt-panel">
+          <strong>Etape suivante</strong>
+          {needsManualInstall ? (
+            <>
               <p>
-                Sur iPhone/iPad, ouvrez le menu de partage de Safari puis choisissez <strong>Ajouter a l'ecran d'accueil</strong>.
+                Sur iPhone ou iPad, ouvrez le menu de partage Safari puis choisissez <strong>Ajouter a l'ecran d'accueil</strong>, et
+                relancez PharmiGo depuis l'icone installee.
               </p>
-            ) : deferredPrompt ? (
-              <p>Votre navigateur est pret a installer PharmiGo maintenant.</p>
-            ) : (
-              <p>Si le bouton d'installation n'apparait pas encore, continuez quelques instants sur le web puis relancez l'installation.</p>
-            )}
-          </div>
+              <p className="install-prompt-note">
+                Tant que l'application n'est pas ouverte depuis l'ecran d'accueil, l'acces reste bloque.
+              </p>
+              {iosInstallChecked ? <p className="install-prompt-error">Installation non detectee. Ouvrez maintenant PharmiGo depuis l'icone installee.</p> : null}
+            </>
+          ) : deferredPrompt ? (
+            <p>Votre appareil est pret. Lancez maintenant l'installation pour continuer.</p>
+          ) : (
+            <p>Preparation de l'installation... si le bouton n'apparait pas tout de suite, laissez la page ouverte quelques instants.</p>
+          )}
         </div>
+      </div>
 
-        <div className="install-prompt-actions">
-          {deferredPrompt ? (
-            <button type="button" className="pharmigo-primary-btn" onClick={() => void handleInstall()} disabled={installing}>
-              {installing ? "Installation..." : "Installer PharmiGo"}
-            </button>
-          ) : null}
-          <button type="button" className="pharmigo-secondary-btn" onClick={handleContinueWeb}>
-            Continuer sur le web
+      <div className="install-prompt-actions install-prompt-actions-stack">
+        {deferredPrompt ? (
+          <button type="button" className="pharmigo-primary-btn" onClick={() => void handleInstall()} disabled={installing}>
+            {installing ? "Installation..." : "Installer PharmiGo"}
           </button>
-        </div>
+        ) : null}
+        {needsManualInstall ? (
+          <button type="button" className="pharmigo-secondary-btn" onClick={handleIosInstallCheck}>
+            J'ai installe l'application
+          </button>
+        ) : null}
+      </div>
     </ModalTransition>
   );
 }

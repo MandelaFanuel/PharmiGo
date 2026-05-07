@@ -24,6 +24,10 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   </React.StrictMode>
 );
 
+function notifyServiceWorkerUpdate(registration: ServiceWorkerRegistration) {
+  window.dispatchEvent(new CustomEvent("pharmigo:sw-update-available", { detail: registration }));
+}
+
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     const hostname = window.location.hostname;
@@ -46,6 +50,37 @@ if ("serviceWorker" in navigator) {
       return;
     }
 
-    navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+    let hasPendingReload = false;
+
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (hasPendingReload) {
+        return;
+      }
+      hasPendingReload = true;
+      window.location.reload();
+    });
+
+    navigator.serviceWorker.register(`/sw.js?v=${encodeURIComponent(__APP_VERSION__)}`).then((registration) => {
+      if (registration.waiting) {
+        notifyServiceWorkerUpdate(registration);
+      }
+
+      registration.addEventListener("updatefound", () => {
+        const installingWorker = registration.installing;
+        if (!installingWorker) {
+          return;
+        }
+
+        installingWorker.addEventListener("statechange", () => {
+          if (installingWorker.state === "installed" && navigator.serviceWorker.controller) {
+            notifyServiceWorkerUpdate(registration);
+          }
+        });
+      });
+
+      window.setInterval(() => {
+        registration.update().catch(() => undefined);
+      }, 5 * 60 * 1000);
+    }).catch(() => undefined);
   });
 }

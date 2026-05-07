@@ -1,4 +1,4 @@
-import { Children, useState, type ReactNode } from "react";
+import { Children, useEffect, useState, type ReactNode } from "react";
 
 type DashboardNavItem = {
   id: string;
@@ -119,10 +119,34 @@ export default function DashboardScaffold({
   const heroActionItems = heroActions ? Children.toArray(heroActions).filter(Boolean) : [];
   const heroActionClassName = heroActionItems.length > 1 ? "dashboard-actions dashboard-actions-paired" : "dashboard-actions dashboard-actions-single";
 
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    const previousTouchAction = document.body.style.touchAction;
+
+    if (isMobileNavOpen) {
+      document.body.style.overflow = "hidden";
+      document.body.style.touchAction = "none";
+    }
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.body.style.touchAction = previousTouchAction;
+    };
+  }, [isMobileNavOpen]);
+
   return (
     <div className="dashboard-frame">
       <aside className={isMobileNavOpen ? "dashboard-sidebar mobile-open" : "dashboard-sidebar"}>
-        <div className="dashboard-sidebar-brand">{brand}</div>
+        <div className="dashboard-sidebar-head">
+          <div className="dashboard-sidebar-brand">{brand}</div>
+          <button type="button" className="dashboard-sidebar-close" onClick={() => setIsMobileNavOpen(false)} aria-label="Fermer le menu">
+            ×
+          </button>
+        </div>
         <div className="dashboard-sidebar-sections">
           {navSections.map((section) => (
             <section key={section.title} className="dashboard-sidebar-group">
@@ -167,6 +191,7 @@ export default function DashboardScaffold({
                 className="dashboard-mobile-toggle"
                 onClick={() => setIsMobileNavOpen((current) => !current)}
                 aria-label="Ouvrir le menu"
+                aria-expanded={isMobileNavOpen}
               >
                 <span />
                 <span />

@@ -56,6 +56,31 @@
   color: #f8fafc;
 }
 
+.dashboard-sidebar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.85rem;
+}
+
+.dashboard-sidebar-close {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  min-width: 2.5rem;
+  height: 2.5rem;
+  min-height: 2.5rem;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, rgba(255, 255, 255, 0.16) 78%, transparent 22%);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface) 16%, transparent 84%);
+  color: rgba(241, 245, 249, 0.94);
+  font-size: 1.45rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
 .dashboard-sidebar-sections {
   display: grid;
   gap: 1.25rem;
@@ -3265,21 +3290,55 @@ canvas {
 
   .dashboard-sidebar {
     position: absolute !important;
-    top: 0.75rem;
-    left: 0.75rem;
-    bottom: 0.75rem;
+    top: 0.5rem;
+    left: 0.5rem;
+    bottom: 0.5rem;
     z-index: 70;
-    width: min(84vw, 320px);
-    max-width: calc(100% - 1.5rem);
+    width: min(86vw, 340px);
+    max-width: calc(100% - 1rem);
+    min-height: min(78vh, 720px);
+    max-height: calc(100dvh - 1rem);
     transform: translateX(-108%);
     transition: transform 180ms ease;
     box-shadow: 0 24px 80px rgba(2, 6, 23, 0.42);
     border: 1px solid color-mix(in srgb, var(--line) 76%, transparent 24%);
-    border-radius: 24px;
+    border-radius: 26px;
+    padding: 1.15rem 0.95rem calc(1rem + env(safe-area-inset-bottom, 0px));
+    gap: 1rem;
   }
 
   .dashboard-sidebar.mobile-open {
     transform: translateX(0);
+  }
+
+  .dashboard-sidebar-close {
+    display: inline-flex;
+  }
+
+  .dashboard-sidebar-sections {
+    flex: 1 1 auto;
+    align-content: start;
+    overflow-y: auto;
+    padding-right: 0.15rem;
+  }
+
+  .dashboard-sidebar-group {
+    gap: 0.85rem;
+  }
+
+  .dashboard-sidebar-title {
+    padding-inline: 0.5rem;
+  }
+
+  .dashboard-sidebar-links {
+    gap: 0.45rem;
+  }
+
+  .dashboard-sidebar-link {
+    min-height: 3.15rem;
+    padding: 0.95rem 1rem;
+    border-radius: 16px;
+    font-size: 0.96rem;
   }
 
   .dashboard-mobile-backdrop {
@@ -3529,6 +3588,15 @@ canvas {
 }
 
 @media (max-width: 560px) {
+  .dashboard-sidebar {
+    width: min(88vw, 360px) !important;
+    min-height: min(80vh, 760px) !important;
+    max-height: calc(100dvh - 0.75rem) !important;
+    top: 0.375rem !important;
+    left: 0.375rem !important;
+    bottom: 0.375rem !important;
+  }
+
   .dashboard-topbar-summary {
     grid-template-columns: minmax(0, 1fr) max-content !important;
     gap: 0.6rem !important;
