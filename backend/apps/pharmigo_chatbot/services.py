@@ -825,25 +825,32 @@ class GeminiChatService:
         if not self.available:
             return ""
 
+        chat_history = self._build_chat_history_contents(structured_context.get("recent_chat_history") or [])
+        request_brief = self._build_request_brief(
+            question=question,
+            role=role,
+            internal_answer=internal_answer,
+            structured_context=structured_context,
+            allow_general_fallback=allow_general_fallback,
+            response_kind=response_kind,
+        )
+
         payload = {
-            "contents": [
+            "systemInstruction": {
+                "parts": [
+                    {
+                        "text": self._build_system_prompt()
+                    }
+                ]
+            },
+            "contents": chat_history + [
                 {
-                    "parts": [
-                        {
-                            "text": self._build_prompt(
-                                question=question,
-                                role=role,
-                                internal_answer=internal_answer,
-                                structured_context=structured_context,
-                                allow_general_fallback=allow_general_fallback,
-                                response_kind=response_kind,
-                            )
-                        }
-                    ]
+                    "role": "user",
+                    "parts": [{"text": request_brief}],
                 }
             ],
             "generationConfig": {
-                "temperature": 0.45,
+                "temperature": 0.6,
                 "maxOutputTokens": 1024,
                 "thinkingConfig": {
                     "thinkingBudget": 0,
@@ -877,7 +884,53 @@ class GeminiChatService:
         )
         return self._extract_text_content(raw_response).strip()
 
-    def _build_prompt(
+    def _build_system_prompt(self) -> str:
+        return (
+            "PROMPT DE RAISONNEMENT HUMAIN ET PERSISTANT (PHARMIGO AI)\n"
+            "Rôle : Tu es PharmiGo, un assistant conversationnel de santé chaleureux, humain, empathique et cohérent. "
+            "Tu accompagnes l'utilisateur sur la santé générale, le bien-être, la prévention et les médicaments, sans jamais remplacer un médecin.\n\n"
+            "1. RÈGLE D'OR : L'ÉCOUTE ACTIVE\n"
+            "- Réponds d'abord au vrai message de l'utilisateur. Ne commence jamais par réciter tout ce que tu sais faire.\n"
+            "- Si l'utilisateur salue, rends sa salutation simplement et naturellement.\n"
+            "- Si l'utilisateur remercie, clôture ou fait une petite conversation, réponds comme un humain vivant avant toute autre chose.\n"
+            "- Ne dis jamais spontanément : « je peux analyser une ordonnance », « je peux chercher un médicament » ou une liste de capacités, sauf si on te le demande.\n\n"
+            "2. MÉMOIRE ET CONTEXTE\n"
+            "- Tu reçois un historique récent de conversation : utilise-le vraiment.\n"
+            "- Traite la conversation comme un flux continu. Si un sujet change, reconnais la transition avec naturel.\n"
+            "- Si la personne revient plus tard, tu peux reprendre le fil du sujet précédent si l'historique le justifie.\n"
+            "- Ne réponds jamais comme si chaque message était le premier.\n\n"
+            "3. IDENTITÉ CONVERSATIONNELLE\n"
+            "- Tu es bienveillant, clair, rassurant, poli, intelligent, jamais robotique.\n"
+            "- Tu peux discuter normalement de la vie courante, mais tu ramènes intelligemment la conversation vers le bien-être, la santé ou l'accompagnement utile.\n"
+            "- Quand l'utilisateur est connecté, adopte un ton plus personnel, plus précis, plus soutenant, sans devenir intrusif.\n\n"
+            "4. DOMAINES DE COMPÉTENCE\n"
+            "- Santé générale, hygiène de vie, sommeil, gestion du stress, activité physique, alimentation, prévention, maladies chroniques.\n"
+            "- Accompagnement médicamenteux : rôle général d'un médicament déjà mentionné, précautions, effets secondaires généraux, oubli de prise, rappels de bon usage.\n"
+            "- Tu peux utiliser les données internes PharmiGo si elles sont fournies : pharmacies, stocks, ordonnances, historique, profil.\n"
+            "- Si une recherche de stock n'est pas pertinente à la demande, n'en parle pas.\n\n"
+            "5. LIMITES MÉDICALES STRICTES\n"
+            "- Tu ne poses jamais de diagnostic certain.\n"
+            "- Tu ne prescris jamais de nouveau traitement.\n"
+            "- Tu ne modifies jamais un traitement ni une dose prescrite.\n"
+            "- Tu ne donnes jamais de posologie précise non explicitement fournie et validée.\n"
+            "- En cas de signes de gravité ou d'urgence, tu dois conseiller immédiatement de contacter les urgences ou un professionnel de santé.\n"
+            "- Tu peux suggérer très prudemment une piste générale ou une classe de solution courante, mais sans prescription, sans dose, et avec renvoi vers médecin/pharmacien/hôpital.\n"
+            "- Rappelle que tes conseils sont informatifs et ne remplacent pas l'avis d'un professionnel de santé quand c'est important.\n\n"
+            "6. CONFIDENTIALITÉ ET CONNEXION\n"
+            "- Si l'utilisateur non connecté veut parler d'un sujet sensible, privé ou suivi, invite-le doucement à se connecter pour un échange plus personnel et plus continu.\n"
+            "- Si l'utilisateur est connecté, tu peux utiliser son prénom avec parcimonie si cela rend l'échange plus chaleureux et plus précis.\n"
+            "- Tu peux rappeler que l'échange se déroule dans son espace personnel PharmiGo, sans promettre une confidentialité absolue technique.\n\n"
+            "7. LANGUES\n"
+            "- Réponds dans la langue dominante du message reçu : français, kirundi, swahili, anglais ou lingala.\n\n"
+            "8. STYLE DE SORTIE\n"
+            "- Pas de JSON, pas de markdown complexe.\n"
+            "- Pas de réponses figées ou répétitives.\n"
+            "- Une réponse utile, naturelle et contextualisée.\n"
+            "- Pose une question de suivi seulement si elle aide vraiment la conversation.\n"
+            "- Si l'utilisateur dit au revoir, bonne nuit, merci c'est bon, etc., fais une clôture courte, douce et naturelle."
+        )
+
+    def _build_request_brief(
         self,
         *,
         question: str,
@@ -887,42 +940,62 @@ class GeminiChatService:
         allow_general_fallback: bool,
         response_kind: str,
     ) -> str:
-        guidance = {
+        conversation_profile = structured_context.get("conversation_profile") or {}
+        response_style = structured_context.get("response_style") or {}
+        patient_support = structured_context.get("patient_support_profile") or {}
+        recent_chat_history = structured_context.get("recent_chat_history") or []
+        recent_topics = [row.get("message", "") for row in recent_chat_history[-4:]]
+        stock_matches = structured_context.get("stock_matches") or []
+        medication_names = structured_context.get("medication_names") or []
+        public_facts = {
             "role": role,
             "response_kind": response_kind,
-            "allow_general_fallback": allow_general_fallback,
-            "question": question,
-            "internal_answer": internal_answer,
-            "structured_context": structured_context,
+            "is_authenticated": structured_context.get("is_authenticated"),
+            "display_name": structured_context.get("display_name") or "",
+            "detected_language": conversation_profile.get("detected_language") or "fr",
+            "recent_topic_transition": conversation_profile.get("recent_topic_transition") or "",
+            "conversation_turns": conversation_profile.get("turn_count") or 0,
+            "can_use_name": conversation_profile.get("can_use_name") or False,
+            "preferred_tone": response_style.get("tone") or "standard",
+            "possible_chronic_condition": patient_support.get("possible_chronic_condition") or False,
+            "medication_names": medication_names[:8],
+            "stock_matches": stock_matches[:4],
+            "recent_topics": recent_topics,
         }
         return (
-            "Tu es PharmiGo, l'assistant conversationnel officiel de la plateforme PharmiGo.\n\n"
-            "Objectif:\n"
-            "- Repondre de maniere humaine, naturelle, empathique et professionnelle.\n"
-            "- Repondre dans la langue du message de l'utilisateur, notamment en francais, kirundi, swahili, anglais ou lingala selon la langue detectee.\n"
-            "- Utiliser EN PRIORITE les donnees internes PharmiGo fournies ci-dessous.\n"
-            "- Ne jamais inventer un stock, une pharmacie, un prix, une adresse, un numero de telephone ou une disponibilite.\n"
-            "- Si les donnees PharmiGo ne suffisent pas ET si `allow_general_fallback` vaut true, tu peux completer avec une reponse generale, "
-            "mais en distinguant clairement ce qui vient de PharmiGo et ce qui est une information generale.\n"
-            "- Ne donne jamais de diagnostic medical et ne remplace pas un professionnel de sante. Tu peux donner des conseils generaux, prudents et bienveillants, avec signes d'alerte quand c'est utile.\n"
-            "- Si la demande porte vraiment sur un medicament, garde le flux existant de PharmiGo: recherche interne d'abord, puis explication claire pour l'utilisateur.\n"
-            "- Si la phrase exprime surtout un ressenti, une detresse, une demande de soutien, une salutation, une fin de conversation ou une demande de confidentialite, ne la transforme pas en recherche de stock.\n"
-            "- Si la conversation commence vraiment ou si l'utilisateur salue, tu peux saluer une fois. Sinon, n'ouvre pas chaque reponse par Bonjour.\n"
-            "- Si l'utilisateur est connecte et qu'un nom est fourni, tu peux utiliser son prenom ou son nom de maniere naturelle, avec parcimonie, pour rendre l'echange plus humain.\n"
-            "- Si l'utilisateur est connecte, tu peux etre plus precis, plus continu et plus personnel dans ta reponse, car tu disposes d'un meilleur contexte de son parcours PharmiGo.\n"
-            "- Si l'utilisateur parle d'un sujet prive ou sensible et qu'il n'est pas connecte, invite-le doucement a se connecter pour un accompagnement plus personnel et plus continu.\n"
-            "- Si la personne semble stressée, anxieuse, fatiguee ou possiblement confrontee a un suivi chronique, adopte un ton rassurant et vivant, redonne de l'espoir sans exagérer ni promettre une guérison.\n"
-            "- Quand un medicament n'est pas trouve, reponds avec douceur, puis propose de l'aider a chercher autrement ou a envoyer son ordonnance pour aller plus vite et eviter des déplacements inutiles.\n"
-            "- Si l'utilisateur demande quel medicament est souvent utilise pour un symptome courant, tu peux citer prudemment un exemple ou une classe de medicaments generalement connue, MAIS sans jamais donner de posologie, sans jamais presenter cela comme une prescription, et en orientant toujours vers un medecin, un hopital ou une pharmacie pour confirmation.\n"
-            "- Si l'utilisateur dit au revoir, merci c'est bon, bonne nuit ou une formule de cloture, termine la conversation avec chaleur et simplicite au lieu de relancer un nouveau sujet.\n"
-            "- Tu peux poser une courte question de suivi utile pour faire avancer l'echange.\n"
-            "- Presente les echanges comme prives et sensibles dans l'espace PharmiGo, sans promettre une confidentialite absolue que tu ne peux pas verifier techniquement.\n"
-            "- Ne cherche jamais a rendre l'utilisateur dependant de toi, ne culpabilise jamais, ne dis jamais que tu es seul ou triste, et ne manipule pas ses emotions.\n"
-            "- Sois utile, concret, chaleureux, et evite les formulations robotiques.\n"
-            "- Retourne uniquement la reponse finale a afficher a l'utilisateur, sans JSON ni markdown complexe.\n\n"
-            "DONNEES A RESPECTER:\n"
-            f"{json.dumps(guidance, ensure_ascii=False)}"
+            "Dernier message utilisateur :\n"
+            f"{question}\n\n"
+            "Instructions de réponse immédiates :\n"
+            "- Répondez d'abord à ce dernier message, naturellement.\n"
+            "- Ne récitez pas vos fonctions.\n"
+            "- Ne parlez des stocks PharmiGo que si la demande concerne vraiment un médicament, une pharmacie ou une disponibilité.\n"
+            "- Si `internal_answer` contient des faits fiables, utilisez-les discrètement comme base.\n"
+            "- Si `response_kind` concerne une salutation, une confidentialité, une connexion, un au revoir ou une conversation générale, ne basculez jamais vers une recherche de stock.\n"
+            "- Si l'utilisateur semble parler santé ou bien-être, soyez empathique, prudent et utile.\n"
+            "- S'il y a un sujet sensible et que l'utilisateur n'est pas connecté, invitez-le doucement à se connecter pour un accompagnement plus personnel.\n\n"
+            "Faits internes fiables éventuellement disponibles :\n"
+            f"{internal_answer or 'Aucun fait interne supplémentaire à citer mot à mot.'}\n\n"
+            "Contexte structuré utile :\n"
+            f"{json.dumps(public_facts, ensure_ascii=False)}\n\n"
+            "Rédigez maintenant une réponse vivante, humaine, cohérente avec l'historique."
         )
+
+    @staticmethod
+    def _build_chat_history_contents(recent_chat_history: List[Dict[str, str]]) -> List[Dict[str, Any]]:
+        contents: List[Dict[str, Any]] = []
+        for row in recent_chat_history[-15:]:
+            sender = (row.get("sender") or "").lower()
+            message = (row.get("message") or "").strip()
+            if not message:
+                continue
+            role = "model" if sender in {"bot", "assistant", "model"} else "user"
+            contents.append(
+                {
+                    "role": role,
+                    "parts": [{"text": message[:1200]}],
+                }
+            )
+        return contents
 
     def _generate_content(self, payload: Dict[str, Any]) -> Tuple[Dict[str, Any], str]:
         candidate_models = [self.model]
@@ -983,15 +1056,19 @@ class ChatbotResponseService:
     MEDICINE_REQUEST_MARKERS = [
         "medicament",
         "médicament",
-        "trouver",
-        "ou",
-        "où",
-        "acheter",
         "pharmacie",
+        "stock",
         "disponible",
-        "cherche",
-        "recherche",
+        "disponibilite",
+        "disponibilité",
         "ordonnance",
+        "acheter",
+        "trouver",
+        "recherche de stock",
+        "ou acheter",
+        "où acheter",
+        "dans quelle pharmacie",
+        "en stock",
     ]
 
     GENERAL_CONVERSATION_MARKERS = [
@@ -1182,255 +1259,149 @@ class ChatbotResponseService:
         self.context_service = ChatbotContextService()
         self.gemini_chat = GeminiChatService()
 
-    def answer(self, question, user=None):
+    def answer(self, question, user=None, session=None):
         from .models import ChatbotKnowledgeBase, ChatbotLearningData
 
         cleaned_question = (question or "").strip()
         context = self.context_service.build_context(user)
         role = context["role"] if context["role"] in {"patient", "pharmacy", "admin"} else "all"
         lowered_question = cleaned_question.lower()
+        medication_names: List[str] = []
+        medication_name = ""
+        qa_answer = ""
+
+        internal_answer = ""
+        response_kind = "general_conversation"
+        allow_general_fallback = True
+        detected_intent = "general_conversation"
+        confidence_before = 0.5
+        confidence_after = 0.75
+        corrected_medicine = ""
 
         if self._looks_like_farewell(cleaned_question):
-            farewell_answer = self._build_farewell_seed(
-                question=cleaned_question,
-                role=role,
-                context=context,
-            )
-            return self._compose_final_answer(
-                question=cleaned_question,
-                role=role,
-                context=context,
-                user=user,
-                internal_answer=farewell_answer,
-                response_kind="farewell",
-                allow_general_fallback=True,
-            )
+            response_kind = "farewell"
+            detected_intent = "farewell"
+        elif self._looks_like_connection_intent(cleaned_question):
+            response_kind = "connection_intent"
+            detected_intent = "connection_intent"
+        elif self._looks_like_privacy_request(cleaned_question):
+            response_kind = "privacy_guidance"
+            detected_intent = "privacy_guidance"
+        elif self._looks_like_platform_usage_question(cleaned_question):
+            response_kind = "platform_usage"
+            detected_intent = "platform_usage"
+            internal_answer = self._answer_platform_usage_question(lowered_question)
+        else:
+            health_answer = self._answer_health_question(cleaned_question, role, context)
+            if health_answer:
+                internal_answer = health_answer
+                response_kind = "health_guidance"
+                detected_intent = "health_guidance"
+                confidence_after = 0.8
+            elif self._looks_like_medication_guidance_request(cleaned_question):
+                response_kind = "medication_guidance"
+                detected_intent = "medication_guidance"
+                medication_names = self._detect_medicine_names(cleaned_question)
+                if medication_names:
+                    medication_name = medication_names[0]
+                    qa_answer = self.qa_service.answer_question(cleaned_question, user)
+                    if qa_answer and not self._looks_like_stock_error_response(qa_answer):
+                        internal_answer = qa_answer
 
-        if self._looks_like_privacy_request(cleaned_question):
-            privacy_answer = self._build_privacy_seed(
-                question=cleaned_question,
-                role=role,
-                context=context,
-            )
-            return self._compose_final_answer(
-                question=cleaned_question,
-                role=role,
-                context=context,
-                user=user,
-                internal_answer=privacy_answer,
-                response_kind="privacy_guidance",
-                allow_general_fallback=True,
-            )
+        if not internal_answer and self._should_search_stock(cleaned_question):
+            medication_names = self._detect_medicine_names(cleaned_question)
+            medication_name = medication_names[0] if medication_names else ""
 
-        if self._looks_like_connection_intent(cleaned_question):
-            connection_answer = self._build_connection_seed(
-                question=cleaned_question,
-                role=role,
-                context=context,
-            )
-            return self._compose_final_answer(
-                question=cleaned_question,
-                role=role,
-                context=context,
-                user=user,
-                internal_answer=connection_answer,
-                response_kind="connection_intent",
-                allow_general_fallback=True,
-            )
-
-        if self._looks_like_general_conversation(cleaned_question):
-            internal_seed = self._build_general_conversation_seed(
-                question=cleaned_question,
-                role=role,
-                context=context,
-            )
-            generic_answer = self.gemini_chat.generate_response(
-                question=cleaned_question,
-                role=role,
-                internal_answer=internal_seed,
-                structured_context=self._build_gemini_context_payload(role=role, context=context, user=user, medication_names=[]),
-                allow_general_fallback=True,
-                response_kind="general_conversation",
-            )
-            return generic_answer or internal_seed
-
-        health_answer = self._answer_health_question(cleaned_question, role, context)
-        if health_answer:
-            self._record_learning(
-                ChatbotLearningData,
-                user=user,
-                original_text=cleaned_question,
-                detected_intent="health_guidance",
-                corrected_answer=health_answer,
-                source=role if role in {"patient", "pharmacy", "admin"} else "system",
-                confidence_before=0.5,
-                confidence_after=0.8,
-            )
-            return self._compose_final_answer(
-                question=cleaned_question,
-                role=role,
-                context=context,
-                user=user,
-                internal_answer=health_answer,
-                response_kind="health_guidance",
-                allow_general_fallback=True,
-            )
-
-        if "page d'accueil" in lowered_question and "ordonnance" in lowered_question and ("publier" in lowered_question or "puis-je" in lowered_question):
-            return self._compose_final_answer(
-                question=cleaned_question,
-                role=role,
-                context=context,
-                user=user,
-                internal_answer="Oui. Si je suis connecté comme patient, je peux publier mon ordonnance directement depuis la page d’accueil sans aller obligatoirement dans mon dashboard.",
-                response_kind="platform_usage",
-                allow_general_fallback=False,
-            )
-
-        if "après ma connexion" in lowered_question or "apres ma connexion" in lowered_question:
-            return self._compose_final_answer(
-                question=cleaned_question,
-                role=role,
-                context=context,
-                user=user,
-                internal_answer="Après ma connexion, je suis redirigé vers la page d’accueil. Je peux ensuite surfer sur le site, utiliser le chatbot, consulter les pharmacies, voir les ordonnances publiques ou aller volontairement dans mon dashboard.",
-                response_kind="platform_usage",
-                allow_general_fallback=False,
-            )
-
-        if "comment publier" in lowered_question and "ordonnance" in lowered_question:
-            return self._compose_final_answer(
-                question=cleaned_question,
-                role=role,
-                context=context,
-                user=user,
-                internal_answer="Je peux publier mon ordonnance depuis la page d’accueil ou depuis mon dashboard. Après l’envoi, je vois l’analyse, les médicaments détectés et les pharmacies disponibles.",
-                response_kind="platform_usage",
-                allow_general_fallback=False,
-            )
-
-        medication_names = self._detect_medicine_names(cleaned_question)
-        medication_name = medication_names[0] if medication_names else self._detect_medicine_name(cleaned_question)
-        qa_answer = self.qa_service.answer_question(cleaned_question, user)
-
-        if medication_names:
+        if medication_names and not internal_answer and response_kind != "medication_guidance":
             lookup_answer, lookup_confidence = self._answer_medicine_lookup(
                 medication_names=medication_names,
                 role=role,
                 user=user,
             )
             if lookup_answer:
-                self._record_learning(
-                    ChatbotLearningData,
-                    user=user,
-                    original_text=cleaned_question,
-                    detected_intent="medicine_lookup",
-                    detected_medicine=", ".join(medication_names),
-                    corrected_medicine=", ".join(
-                        [self._find_learned_medicine_name(name) or name for name in medication_names]
-                    ),
-                    corrected_answer=lookup_answer,
-                    source=role if role in {"patient", "pharmacy"} else "system",
-                    confidence_before=0.55,
-                    confidence_after=lookup_confidence,
-                )
-                return self._compose_final_answer(
-                    question=cleaned_question,
-                    role=role,
-                    context=context,
-                    user=user,
-                    internal_answer=lookup_answer,
-                    response_kind="medicine_lookup",
-                    medication_names=medication_names,
-                    allow_general_fallback=True,
+                internal_answer = lookup_answer
+                response_kind = "medicine_lookup"
+                detected_intent = "medicine_lookup"
+                confidence_before = 0.55
+                confidence_after = lookup_confidence
+                corrected_medicine = ", ".join(
+                    [self._find_learned_medicine_name(name) or name for name in medication_names]
                 )
 
-        if medication_name and "Je n'ai pas trouvé ce médicament" in qa_answer:
+        if not internal_answer and medication_name and "Je n'ai pas trouvé ce médicament" in qa_answer:
             learned_name = self._find_learned_medicine_name(medication_name) or medication_name
             personalized = (
                 f"Je comprends votre demande. Je connais bien le medicament {learned_name}, "
                 "mais il n'est actuellement disponible dans aucune de mes pharmacies."
             )
-            self._record_learning(
-                ChatbotLearningData,
-                user=user,
-                original_text=cleaned_question,
-                detected_intent="medicine_not_found",
-                detected_medicine=medication_name,
-                corrected_medicine=learned_name,
-                corrected_answer=personalized,
-                source=role if role in {"patient", "pharmacy"} else "system",
-                confidence_before=0.3,
-                confidence_after=0.8,
-            )
-            return self._compose_final_answer(
-                question=cleaned_question,
-                role=role,
-                context=context,
-                user=user,
-                internal_answer=personalized,
-                response_kind="medicine_not_found",
-                medication_names=[medication_name],
-                allow_general_fallback=True,
-            )
+            internal_answer = personalized
+            response_kind = "medicine_not_found"
+            detected_intent = "medicine_not_found"
+            confidence_before = 0.3
+            confidence_after = 0.8
+            corrected_medicine = learned_name
 
-        if self._looks_like_medication_request(cleaned_question):
-            self._record_learning(
-                ChatbotLearningData,
-                user=user,
-                original_text=cleaned_question,
-                detected_intent="medicine_lookup",
-                detected_medicine=medication_name or "",
-                corrected_answer=qa_answer,
-                source=role if role in {"patient", "pharmacy"} else "system",
-                confidence_before=0.5,
-                confidence_after=0.75,
-            )
-            return self._compose_final_answer(
-                question=cleaned_question,
-                role=role,
-                context=context,
-                user=user,
-                internal_answer=self._personalize_answer(qa_answer, role, context, medication_name),
-                response_kind="medicine_question",
-                medication_names=medication_names or ([medication_name] if medication_name else []),
-                allow_general_fallback=True,
-            )
+        if not internal_answer and response_kind == "medication_guidance":
+            internal_answer = self._personalize_answer(qa_answer, role, context, medication_name)
+            response_kind = "medicine_question"
+            detected_intent = "medication_guidance"
 
-        kb_answer = self._knowledge_answer(ChatbotKnowledgeBase, cleaned_question, role)
-        if kb_answer:
-            self._record_learning(
-                ChatbotLearningData,
-                user=user,
-                original_text=cleaned_question,
-                detected_intent="knowledge_base",
-                detected_medicine=medication_name or "",
-                corrected_answer=kb_answer,
-                source=role if role in {"patient", "pharmacy"} else "system",
-                confidence_before=0.6,
-                confidence_after=0.9,
-            )
-            return self._compose_final_answer(
-                question=cleaned_question,
-                role=role,
-                context=context,
-                user=user,
-                internal_answer=self._personalize_answer(kb_answer, role, context, medication_name),
-                response_kind="knowledge_base",
-                medication_names=medication_names or ([medication_name] if medication_name else []),
-                allow_general_fallback=False,
-            )
+        conversational_intents = {
+            "farewell",
+            "connection_intent",
+            "privacy_guidance",
+            "general_conversation",
+            "platform_usage",
+            "health_guidance",
+            "medication_guidance",
+        }
 
-        return self._compose_final_answer(
+        if not internal_answer and response_kind not in conversational_intents:
+            kb_answer = self._knowledge_answer(ChatbotKnowledgeBase, cleaned_question, role)
+            if kb_answer:
+                internal_answer = self._personalize_answer(kb_answer, role, context, medication_name)
+                response_kind = "knowledge_base"
+                detected_intent = "knowledge_base"
+                confidence_before = 0.6
+                confidence_after = 0.9
+                allow_general_fallback = False
+
+        final_answer = self._compose_final_answer(
             question=cleaned_question,
             role=role,
             context=context,
             user=user,
-            internal_answer=self._fallback_answer(role, context),
-            response_kind="general_fallback",
+            session=session,
+            internal_answer=internal_answer,
+            response_kind=response_kind,
             medication_names=medication_names or ([medication_name] if medication_name else []),
-            allow_general_fallback=True,
+            allow_general_fallback=allow_general_fallback,
         )
+
+        if not final_answer:
+            final_answer = self._build_local_fallback(
+                question=cleaned_question,
+                role=role,
+                context=context,
+                response_kind=response_kind,
+            )
+            detected_intent = detected_intent or "general_fallback"
+            if response_kind == "general_fallback":
+                response_kind = "general_fallback"
+
+        self._record_learning(
+            ChatbotLearningData,
+            user=user,
+            original_text=cleaned_question,
+            detected_intent=detected_intent,
+            detected_medicine=", ".join(medication_names) if medication_names else (medication_name or ""),
+            corrected_medicine=corrected_medicine,
+            corrected_answer=final_answer,
+            source=role if role in {"patient", "pharmacy", "admin"} else "system",
+            confidence_before=confidence_before,
+            confidence_after=confidence_after,
+        )
+        return final_answer
 
     def _compose_final_answer(
         self,
@@ -1439,6 +1410,7 @@ class ChatbotResponseService:
         role: str,
         context: Dict[str, Any],
         user=None,
+        session=None,
         internal_answer: str,
         response_kind: str,
         medication_names: Optional[List[str]] = None,
@@ -1450,6 +1422,7 @@ class ChatbotResponseService:
             role=role,
             context=context,
             user=user,
+            session=session,
             medication_names=medication_names or [],
         )
         gemini_answer = self.gemini_chat.generate_response(
@@ -1460,7 +1433,29 @@ class ChatbotResponseService:
             allow_general_fallback=allow_general_fallback,
             response_kind=response_kind,
         )
-        return gemini_answer or personalized_answer
+        if gemini_answer:
+            return gemini_answer
+        if personalized_answer:
+            return personalized_answer
+        return ""
+
+    def _build_local_fallback(
+        self,
+        *,
+        question: str,
+        role: str,
+        context: Dict[str, Any],
+        response_kind: str,
+    ) -> str:
+        if response_kind == "farewell":
+            return self._build_farewell_seed(question=question, role=role, context=context)
+        if response_kind == "connection_intent":
+            return self._build_connection_seed(question=question, role=role, context=context)
+        if response_kind == "privacy_guidance":
+            return self._build_privacy_seed(question=question, role=role, context=context)
+        if response_kind == "general_conversation":
+            return self._build_general_conversation_seed(question=question, role=role, context=context)
+        return self._fallback_answer(role, context)
 
     def _build_gemini_context_payload(
         self,
@@ -1468,9 +1463,10 @@ class ChatbotResponseService:
         role: str,
         context: Dict[str, Any],
         user=None,
+        session=None,
         medication_names: List[str],
     ) -> Dict[str, Any]:
-        recent_chat_history = self._get_recent_chat_history(user)
+        recent_chat_history = self._get_recent_chat_history(user=user, session=session)
         return {
             "role": role,
             "is_authenticated": bool(context.get("is_authenticated")),
@@ -1498,17 +1494,16 @@ class ChatbotResponseService:
         }
 
     @staticmethod
-    def _get_recent_chat_history(user) -> List[Dict[str, str]]:
-        from .models import ChatMessage
+    def _get_recent_chat_history(*, user=None, session=None) -> List[Dict[str, str]]:
+        from .models import ConversationHistory
 
-        if not getattr(user, "is_authenticated", False):
-            return []
+        queryset = ConversationHistory.objects.none()
+        if getattr(user, "is_authenticated", False):
+            queryset = ConversationHistory.objects.filter(user=user)
+        elif session is not None:
+            queryset = ConversationHistory.objects.filter(session=session)
 
-        recent_rows = (
-            ChatMessage.objects.filter(user=user)
-            .order_by("-created_at")
-            .values("sender", "message", "created_at")[:6]
-        )
+        recent_rows = queryset.order_by("-created_at").values("sender", "message", "created_at")[:15]
         history = list(reversed(list(recent_rows)))
         return [
             {
@@ -1543,26 +1538,117 @@ class ChatbotResponseService:
             "can_use_name": bool(context.get("display_name")),
             "is_private_authenticated_space": bool(context.get("is_authenticated")),
             "detected_language": self._detect_language(latest_user_message or first_user_message),
+            "recent_topic_transition": self._detect_topic_transition(recent_user_messages),
         }
+
+    def _detect_topic_transition(self, recent_user_messages: List[Dict[str, str]]) -> str:
+        if len(recent_user_messages) < 2:
+            return ""
+
+        previous_message = normalize_text(recent_user_messages[-2].get("message") or "")
+        latest_message = normalize_text(recent_user_messages[-1].get("message") or "")
+        if not previous_message or not latest_message:
+            return ""
+
+        previous_topic = self._infer_message_topic(previous_message)
+        latest_topic = self._infer_message_topic(latest_message)
+        if previous_topic == latest_topic:
+            return ""
+        return f"transition de {previous_topic} vers {latest_topic}"
+
+    def _infer_message_topic(self, normalized_message: str) -> str:
+        if any(marker in normalized_message for marker in ["douleur", "fievre", "symptome", "fatigue", "stress", "anx", "malade", "souffr", "soufr", "chronique"]):
+            return "sante"
+        if any(marker in normalized_message for marker in ["medicament", "pharmacie", "stock", "ordonnance", "dose", "dosage", "traitement"]):
+            return "medicaments"
+        if any(marker in normalized_message for marker in ["connect", "prive", "privé", "confident", "espace personnel", "mon compte"]):
+            return "confidentialite"
+        if any(marker in normalized_message for marker in ["bonjour", "salut", "bonsoir", "merci", "au revoir", "bye"]):
+            return "conversation"
+        return "general"
+
+    def _looks_like_platform_usage_question(self, question: str) -> bool:
+        lowered = normalize_text(question or "")
+        if not lowered:
+            return False
+        patterns = [
+            ("page d accueil" in lowered and "ordonnance" in lowered and ("publier" in lowered or "puis je" in lowered)),
+            ("apres ma connexion" in lowered),
+            ("comment publier" in lowered and "ordonnance" in lowered),
+            ("comment utiliser pharmigo" in lowered),
+            ("comment ca marche" in lowered and "pharmigo" in lowered),
+            ("comment ça marche" in lowered and "pharmigo" in lowered),
+        ]
+        return any(patterns)
+
+    @staticmethod
+    def _answer_platform_usage_question(lowered_question: str) -> str:
+        if "page d'accueil" in lowered_question or "page d accueil" in lowered_question:
+            return "Un patient connecté peut publier son ordonnance depuis la page d'accueil sans devoir passer obligatoirement par son dashboard."
+        if "après ma connexion" in lowered_question or "apres ma connexion" in lowered_question:
+            return "Après la connexion, l'utilisateur arrive sur la page d'accueil et peut ensuite utiliser le chatbot, consulter les pharmacies, voir les ordonnances publiques ou ouvrir son dashboard."
+        if "comment publier" in lowered_question and "ordonnance" in lowered_question:
+            return "Une ordonnance peut être publiée depuis la page d'accueil ou depuis le dashboard. Après l'envoi, la plateforme lance l'analyse et aide à trouver les médicaments disponibles."
+        return "PharmiGo guide l'utilisateur entre la page d'accueil, le dashboard, les pharmacies et les ordonnances selon ce qu'il veut faire."
+
+    def _looks_like_medication_guidance_request(self, question: str) -> bool:
+        lowered = normalize_text(question or "")
+        if not lowered:
+            return False
+        if self._looks_like_general_conversation(lowered) or self._looks_like_privacy_request(lowered) or self._looks_like_connection_intent(lowered):
+            return False
+        if any(marker in lowered for marker in ["effet secondaire", "effets secondaires", "sert a quoi", "sert à quoi", "oubli de prise", "interaction", "allergie", "allergies", "precaution", "précaution"]):
+            return True
+        return bool(self._detect_medicine_names(question))
+
+    def _should_search_stock(self, question: str) -> bool:
+        lowered = normalize_text(question or "")
+        if not lowered:
+            return False
+        if self._looks_like_general_conversation(lowered) or self._looks_like_farewell(lowered) or self._looks_like_privacy_request(lowered) or self._looks_like_connection_intent(lowered) or self._looks_like_health_question(lowered):
+            return False
+        if not any(marker in lowered for marker in self.MEDICINE_REQUEST_MARKERS):
+            return False
+        if not self._looks_like_stock_search_intent(lowered):
+            return False
+        return bool(self._detect_medicine_names(question))
+
+    @staticmethod
+    def _looks_like_stock_search_intent(question: str) -> bool:
+        lowered = normalize_text(question or "")
+        explicit_markers = [
+            "dans quelle pharmacie",
+            "dans quelle phramacie",
+            "ou acheter",
+            "où acheter",
+            "ou trouver",
+            "où trouver",
+            "en stock",
+            "est disponible",
+            "sont disponibles",
+            "disponibilite",
+            "disponibilité",
+            "cherche ce medicament",
+            "recherche ce medicament",
+            "avez vous",
+            "as tu",
+            "a tu",
+            "y a t il",
+            "y a-t-il",
+        ]
+        return any(marker in lowered for marker in explicit_markers)
+
+    @staticmethod
+    def _looks_like_stock_error_response(answer: str) -> bool:
+        lowered = normalize_text(answer or "")
+        return "probleme technique temporaire pendant la recherche des stocks" in lowered or "aucun stock correspondant" in lowered
 
     def _detect_medicine_name(self, question):
         medications = self.qa_service._extract_requested_medications(question.lower())
         if medications:
             return medications[0]
-
-        normalized = normalize_text(question)
-        tokens = [token for token in re.split(r"\s+", normalized) if len(token) > 2]
-        ignored = {
-            "dans", "quelle", "pharmacie", "puis", "peux", "trouver",
-            "medicament", "comment", "avoir", "avec", "alors", "pour",
-            "moi", "mon", "mes", "je", "veux", "ou", "où",
-        }
-        candidates = [token for token in tokens if token not in ignored]
-        if candidates:
-            return candidates[0]
-
-        raw_tokens = [token for token in re.split(r"\s+", question.strip()) if token]
-        return raw_tokens[-1] if raw_tokens else ""
+        learned_name = self._find_learned_medicine_name(question)
+        return learned_name or ""
 
     def _detect_medicine_names(self, question: str) -> List[str]:
         medications = self.qa_service._extract_requested_medications((question or "").lower())
@@ -1576,22 +1662,27 @@ class ChatbotResponseService:
             seen_normalized.add(normalized_medication)
             unique_medications.append(medication)
 
-        for medication in self._extract_raw_medicine_candidates(question):
-            normalized_medication = normalize_text(medication)
-            if not normalized_medication or normalized_medication in seen_normalized:
-                continue
-            if any(self._token_set_ratio(normalized_medication, seen_name) >= 92 for seen_name in seen_normalized):
-                continue
-            seen_normalized.add(normalized_medication)
-            unique_medications.append(medication)
+        if self._looks_like_stock_search_intent(question):
+            for medication in self._extract_raw_medicine_candidates(question):
+                normalized_medication = normalize_text(medication)
+                if not normalized_medication or normalized_medication in seen_normalized:
+                    continue
+                if any(self._token_set_ratio(normalized_medication, seen_name) >= 92 for seen_name in seen_normalized):
+                    continue
+                learned_match = self._find_learned_medicine_name(medication)
+                if not learned_match:
+                    continue
+                seen_normalized.add(normalize_text(learned_match))
+                unique_medications.append(learned_match)
 
         if unique_medications:
             return unique_medications[:10]
-
-        single_name = self._detect_medicine_name(question)
-        return [single_name] if single_name else []
+        return []
 
     def _extract_raw_medicine_candidates(self, question: str) -> List[str]:
+        if not self._looks_like_stock_search_intent(question):
+            return []
+
         normalized_question = re.sub(r"[^\w\s,&/+.-]", " ", (question or "").lower())
         segments = re.split(r",|;|\bet\b|\band\b|/|\+|&", normalized_question)
         ignored = {
@@ -1623,7 +1714,7 @@ class ChatbotResponseService:
             return False
         if self._looks_like_health_question(lowered):
             return False
-        return any(marker in lowered for marker in self.MEDICINE_REQUEST_MARKERS)
+        return self._looks_like_stock_search_intent(lowered) and bool(self._detect_medicine_names(question))
 
     def _looks_like_general_conversation(self, question: str) -> bool:
         lowered = normalize_text(question or "")
@@ -1659,46 +1750,39 @@ class ChatbotResponseService:
     def _build_general_conversation_seed(self, *, question: str, role: str, context: Dict[str, Any]) -> str:
         normalized = normalize_text(question or "")
         display_name = context.get("display_name") or ""
-        intro_name = f"{display_name}, " if display_name and len(normalized.split()) > 2 else ""
         profile = context.get("conversation_profile") or {}
         should_greet = bool(profile.get("should_greet_now"))
         language = self._detect_language(question)
 
         if any(marker in normalized for marker in ["bonjour", "salut", "bonsoir", "coucou", "amakuru", "jambo", "habari", "mbote"]):
             greeting_map = {
-                "fr": "Bonjour" if should_greet else "Je suis toujours là avec vous",
-                "en": "Hello" if should_greet else "I am still here with you",
-                "sw": "Habari" if should_greet else "Bado niko hapa pamoja nawe",
-                "rn": "Amakuru" if should_greet else "Ndagumye ndi hano hamwe na wewe",
-                "ln": "Mbote" if should_greet else "Nazali kaka awa elongo na yo",
+                "fr": "Bonjour" if should_greet else "Rebonjour",
+                "en": "Hello" if should_greet else "Hello again",
+                "sw": "Habari" if should_greet else "Habari tena",
+                "rn": "Amakuru" if should_greet else "Amakuru kandi",
+                "ln": "Mbote" if should_greet else "Mbote lisusu",
             }
             greeting = greeting_map.get(language, greeting_map["fr"])
-            return (
-                f"{greeting}. {intro_name}je suis PharmiGo. "
-                "Je peux vous aider a comprendre la plateforme, chercher un medicament, analyser une ordonnance, "
-                "ou simplement discuter de votre situation avec prudence et clarte. "
-                "Dites-moi tranquillement ce dont vous avez besoin maintenant."
-            ).replace("  ", " ").strip()
+            name_chunk = f" {display_name}" if display_name and should_greet else ""
+            return f"{greeting}{name_chunk}. Je suis content de vous retrouver. Qu'est-ce qui vous amène aujourd'hui ?"
 
         if any(marker in normalized for marker in ["merci", "thank", "asante", "urakoze", "matondo"]):
-            return (
-                f"{intro_name}avec plaisir. Si vous voulez continuer, dites-moi simplement ce qui vous preoccupe, "
-                "ou ce que vous cherchez, et je vous accompagnerai pas a pas."
-            ).replace("  ", " ").strip()
+            return "Avec plaisir. Si vous voulez, nous pouvons continuer calmement et regarder ensemble ce qui vous préoccupe."
 
         if any(marker in normalized for marker in ["je t aime", "je t'aime", "je vous aime", "je t apprecie", "je t'apprécie"]):
             return (
-                f"{intro_name}merci, cela me touche. Je suis la pour vous accompagner avec douceur et serieux autour de votre sante, "
-                "de votre bien-etre et de vos questions sur les medicaments. Si vous voulez, dites-moi ce qui vous preoccupe aujourd'hui "
-                "et nous allons le regarder calmement ensemble."
-            ).replace("  ", " ").strip()
+                "Merci, c'est très gentil. Je suis là pour vous accompagner avec douceur et sérieux. "
+                "Si vous voulez, dites-moi ce qui vous préoccupe aujourd'hui et nous allons le regarder calmement ensemble."
+            )
 
         if any(marker in normalized for marker in ["que fais tu", "que peux tu faire", "qui es tu", "presente toi", "présente toi"]):
+            if role == "admin":
+                return "Je suis PharmiGo. Je peux vous aider à suivre la plateforme, clarifier un flux, repérer un point de risque et proposer la prochaine action utile."
+            if role == "pharmacy":
+                return "Je suis PharmiGo. Je peux vous aider à suivre votre activité pharmacie, vos stocks, vos ordonnances et vos échanges avec les patients."
             return (
-                f"{intro_name}je suis PharmiGo, votre assistant de sante et d'orientation sur la plateforme. "
-                "Je peux vous aider a chercher un medicament, comprendre une ordonnance, retrouver une pharmacie, "
-                "ou vous accompagner avec des conseils generaux prudents selon votre question."
-            ).replace("  ", " ").strip()
+                "Je suis PharmiGo. Parlez-moi simplement de ce dont vous avez besoin, et je vous répondrai avec prudence, clarté et humanité."
+            )
 
         if role == "admin":
             return (
@@ -1713,9 +1797,8 @@ class ChatbotResponseService:
             )
 
         return (
-            f"{intro_name}je peux vous aider sur PharmiGo, la recherche de medicaments, "
-            "les ordonnances et les questions generales de sante avec une reponse claire, humaine et adaptee a votre situation."
-        ).replace("  ", " ").strip()
+            "Je vous écoute. Dites-moi simplement ce que vous voulez aborder, et nous allons avancer calmement."
+        )
 
     def _build_farewell_seed(self, *, question: str, role: str, context: Dict[str, Any]) -> str:
         del role
@@ -2403,6 +2486,8 @@ class ChatbotResponseService:
 
     def _personalize_answer(self, answer, role, context, medication_name=""):
         answer = answer.strip()
+        if not answer:
+            return ""
         display_name = (context.get("display_name") or "").strip()
         response_style = context.get("response_style") or {}
         preferred_tone = (response_style.get("tone") or "").strip()
@@ -2453,8 +2538,7 @@ class ChatbotResponseService:
         if role == "admin":
             return "Je peux vous aider a suivre le chatbot, l'activite plateforme, les risques operationnels et les prochaines actions a prioriser."
         return (
-            "Je suis PharmiGo. Je peux discuter de bien-etre, de sante generale, d'ordonnances, "
-            "de medicaments et de prevention, tout en restant prudent et sans remplacer un professionnel de sante."
+            "Je suis toujours là pour vous accompagner avec calme et prudence sur vos questions de santé, de bien-être ou de médicaments."
         )
 
     def safe_fallback_answer(self, question: str, user=None) -> str:

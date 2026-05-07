@@ -37,6 +37,7 @@ class ChatbotResponseServiceTests(TestCase):
         self.assertGreater(len(response), 20)
         self.assertNotIn("verification d'email", response.lower())
         self.assertNotIn("vérification d'email", response.lower())
+        self.assertNotIn("analyser une ordonnance", response.lower())
 
     @patch("apps.pharmigo_chatbot.services.GeminiChatService.generate_response")
     def test_greeting_does_not_trigger_medication_lookup(self, mocked_generate):
@@ -48,6 +49,39 @@ class ChatbotResponseServiceTests(TestCase):
 
         self.assertEqual(response, "Bonjour, je suis PharmiGo et je peux vous accompagner.")
         mocked_lookup.assert_not_called()
+
+    @patch("apps.pharmigo_chatbot.services.GeminiChatService.generate_response")
+    def test_gemini_receives_recent_history_buffer(self, mocked_generate):
+        mocked_generate.return_value = "Je me souviens du contexte et je vous réponds naturellement."
+        session = ConversationSession.objects.create(user=self.user, session_key="user-1-default")
+        for index in range(10):
+            ConversationHistory.objects.create(session=session, user=self.user, sender="user", message=f"message patient {index}")
+            ConversationHistory.objects.create(session=session, user=self.user, sender="bot", message=f"message bot {index}")
+
+        service = ChatbotResponseService()
+        response = service.answer("Je reviens, on reprend ?", self.user)
+
+        self.assertEqual(response, "Je me souviens du contexte et je vous réponds naturellement.")
+        kwargs = mocked_generate.call_args.kwargs
+        recent_history = kwargs["structured_context"]["recent_chat_history"]
+        self.assertGreaterEqual(len(recent_history), 10)
+        self.assertLessEqual(len(recent_history), 15)
+        self.assertTrue(any("message patient 9" in row["message"] for row in recent_history))
+
+    @patch("apps.pharmigo_chatbot.services.GeminiChatService.generate_response")
+    def test_guest_session_history_is_sent_to_gemini(self, mocked_generate):
+        mocked_generate.return_value = "Je me souviens aussi des échanges invités."
+        session = ConversationSession.objects.create(user=None, session_key="guest-demo")
+        ConversationHistory.objects.create(session=session, user=None, sender="user", message="salut")
+        ConversationHistory.objects.create(session=session, user=None, sender="bot", message="bonjour, comment puis-je vous aider ?")
+        ConversationHistory.objects.create(session=session, user=None, sender="user", message="je suis stressé")
+
+        response = ChatbotResponseService().answer("je reviens pour continuer", None, session=session)
+
+        self.assertEqual(response, "Je me souviens aussi des échanges invités.")
+        recent_history = mocked_generate.call_args.kwargs["structured_context"]["recent_chat_history"]
+        self.assertEqual(len(recent_history), 3)
+        self.assertEqual(recent_history[0]["message"], "salut")
 
     def test_context_builds_structured_memory_across_visits(self):
         session = ConversationSession.objects.create(user=self.user, session_key="user-1-default")
@@ -138,6 +172,33 @@ class ChatbotResponseServiceTests(TestCase):
         self.assertIn("espace connecte", response.lower())
         self.assertNotIn("stocks des pharmacies", response.lower())
 
+    @patch("apps.pharmigo_chatbot.services.GeminiChatService.generate_response")
+    def test_connection_phrase_is_sent_to_gemini_as_connection_intent_not_stock_lookup(self, mocked_generate):
+        mocked_generate.return_value = "Oui, vous pouvez vous connecter pour que nous parlions plus personnellement."
+        service = ChatbotResponseService()
+
+        with patch.object(service, "_answer_medicine_lookup", wraps=service._answer_medicine_lookup) as mocked_lookup:
+            response = service.answer("Je vais me connecter pour en discuter plus sur ma situation", self.user)
+
+        self.assertEqual(response, "Oui, vous pouvez vous connecter pour que nous parlions plus personnellement.")
+        mocked_lookup.assert_not_called()
+        self.assertEqual(mocked_generate.call_args.kwargs["response_kind"], "connection_intent")
+
+    @patch("apps.pharmigo_chatbot.services.GeminiChatService.generate_response")
+    def test_meta_sentence_does_not_trigger_stock_lookup(self, mocked_generate):
+        mocked_generate.return_value = "D'accord cher frère, je vous écoute d'abord. Dites-moi ce qui vous préoccupe."
+        service = ChatbotResponseService()
+
+        with patch.object(service, "_answer_medicine_lookup", wraps=service._answer_medicine_lookup) as mocked_lookup:
+            response = service.answer(
+                "je veux que tu me reponde d'abord cher frere, je sais ce que tu fais mais j'ai un sujet pertinent auquel j'ai besoin que tu me conseil",
+                self.user,
+            )
+
+        self.assertEqual(response, "D'accord cher frère, je vous écoute d'abord. Dites-moi ce qui vous préoccupe.")
+        mocked_lookup.assert_not_called()
+        self.assertEqual(mocked_generate.call_args.kwargs["response_kind"], "general_conversation")
+
     def test_affection_message_stays_conversational(self):
         service = ChatbotResponseService()
         service.gemini_chat.available = False
@@ -156,3 +217,11 @@ class ChatbotResponseServiceTests(TestCase):
 
         self.assertTrue(any(term in response.lower() for term in ["salut", "bonjour", "pharmigo"]))
         self.assertNotIn("probleme technique", response.lower())
+
+    def test_safe_fallback_for_greeting_does_not_repeat_capabilities(self):
+        service = ChatbotResponseService()
+
+        response = service.safe_fallback_answer("bonjour cher PharmiGo", self.user)
+
+        self.assertNotIn("analyser une ordonnance", response.lower())
+        self.assertNotIn("chercher un medicament", response.lower())

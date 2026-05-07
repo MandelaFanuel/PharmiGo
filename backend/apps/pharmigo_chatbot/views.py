@@ -70,17 +70,20 @@ def _make_json_safe(value):
     return json.loads(json.dumps(value, cls=DjangoJSONEncoder))
 
 
-def _get_or_create_conversation_session(user, prescription=None):
-    if user is None:
-        return None
-
-    profile = getattr(user, "profile", None)
+def _get_or_create_conversation_session(request, user, prescription=None):
+    profile = getattr(user, "profile", None) if user is not None else None
     pharmacy = getattr(profile, "pharmacy", None) if profile is not None else None
-    session_key = f"user-{user.id}"
-    if prescription is not None:
-        session_key = f"{session_key}-prescription-{prescription.id}"
+
+    if user is not None:
+        session_key = f"user-{user.id}"
+        if prescription is not None:
+            session_key = f"{session_key}-prescription-{prescription.id}"
+        else:
+            session_key = f"{session_key}-default"
     else:
-        session_key = f"{session_key}-default"
+        if not request.session.session_key:
+            request.session.save()
+        session_key = f"guest-{request.session.session_key}"
 
     context_snapshot = _make_json_safe(ChatbotContextService().build_context(user))
     session, created = ConversationSession.objects.get_or_create(
@@ -229,8 +232,8 @@ class ChatbotMessageView(APIView):
         user = _get_authenticated_user(request)
         try:
             prescription = _resolve_real_prescription(user, request.data.get("prescription_id"))
-            answer = ChatbotResponseService().answer(question, user)
-            session = _get_or_create_conversation_session(user, prescription)
+            session = _get_or_create_conversation_session(request, user, prescription)
+            answer = ChatbotResponseService().answer(question, user, session=session)
             _store_chat_exchange(user, session, question, answer, prescription)
             return Response(
                 {
@@ -492,7 +495,7 @@ def chatbot_welcome(request):
             f"puis chercher les pharmacies qui possèdent vos médicaments."
         )
 
-    session = _get_or_create_conversation_session(user)
+    session = _get_or_create_conversation_session(request, user)
     if session is not None and not session.messages.exists():
         ConversationHistory.objects.create(
             session=session,
@@ -524,7 +527,7 @@ def chatbot_message(request):
     try:
         prescription = _resolve_real_prescription(user, prescription_id)
         bot_response = ChatbotResponseService().answer(user_message, user)
-        session = _get_or_create_conversation_session(user, prescription)
+        session = _get_or_create_conversation_session(request, user, prescription)
         _store_chat_exchange(user, session, user_message, bot_response, prescription)
 
         return Response(
