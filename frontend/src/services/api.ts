@@ -950,9 +950,13 @@ export async function sendChatMessage(payload: ChatBotPayload): Promise<ChatBotR
   return data;
 }
 
-export async function askChatbotQuestion(question: string): Promise<{ question: string; answer: string }> {
+export async function askChatbotQuestion(
+  question: string,
+  language?: "fr" | "en" | "rn" | "sw" | "ln"
+): Promise<{ question: string; answer: string }> {
   const data = await sendChatMessage({
     message: question,
+    language,
   });
   return {
     question,

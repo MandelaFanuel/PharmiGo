@@ -70,6 +70,7 @@ export interface ChatBotMessage {
 export interface ChatBotPayload {
   message: string;
   prescription_id?: string;
+  language?: "fr" | "en" | "rn" | "sw" | "ln";
 }
 
 export interface ChatBotResponse {

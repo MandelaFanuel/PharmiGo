@@ -149,6 +149,9 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
       selectionFailed: "Je n'ai pas pu transmettre votre choix a la pharmacie. Reessayez dans quelques secondes.",
       uploadHint: "Je reponds ensuite avec les pharmacies exactes et leurs adresses.",
       uploadTitle: "Chargez votre ordonnance ici",
+      uploadBody: "Ajoutez une photo ou un PDF pour lancer l'analyse, confirmer les medicaments detectes et voir les pharmacies qui les ont vraiment en stock.",
+      uploadAction: "Choisir un fichier ordonnance",
+      uploadFormats: "Formats acceptes : image ou PDF",
       recentTitle: "Conversation recente",
       archiveTitle: "Voir les conversations passees",
       archiveHide: "Masquer les archives",
@@ -181,6 +184,9 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
       selectionFailed: "I could not send your choice to the pharmacy. Please try again in a few seconds.",
       uploadHint: "I will then reply with the exact pharmacies and their addresses.",
       uploadTitle: "Upload your prescription here",
+      uploadBody: "Add a photo or PDF to start the analysis, confirm detected medicines, and see the pharmacies that truly have them in stock.",
+      uploadAction: "Choose a prescription file",
+      uploadFormats: "Accepted formats: image or PDF",
       recentTitle: "Recent conversation",
       archiveTitle: "View past conversations",
       archiveHide: "Hide archives",
@@ -214,6 +220,9 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
       selectionFailed: "Sinashoboye kurungikira farumasi amahitamwo yawe. Ongera ugerageze mu kanya.",
       uploadHint: "Nca nguha amafarumasi nyayo n'aderesi zayo.",
       uploadTitle: "Shiramwo ordonnance yawe hano",
+      uploadBody: "Shiramwo ifoto canke PDF kugira dutangure isesengura, twemeze imiti yabonetse, hanyuma tubereke amafarumasi ayifise mu stock.",
+      uploadAction: "Hitamwo fichier y'ordonnance",
+      uploadFormats: "Formats zemerewe: image canke PDF",
       recentTitle: "Ikiganiro giheruka",
       archiveTitle: "Raba ibiganiro vya kera",
       archiveHide: "Hisha archives",
@@ -247,6 +256,9 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
       selectionFailed: "Sikuweza kutuma chaguo lako kwa duka la dawa. Jaribu tena baada ya muda mfupi.",
       uploadHint: "Kisha nitajibu kwa maduka sahihi na anwani zao.",
       uploadTitle: "Pakia preskripsheni yako hapa",
+      uploadBody: "Ongeza picha au PDF ili kuanza uchambuzi, kuthibitisha dawa zilizotambuliwa, na kuona maduka ya dawa yenye stock halisi.",
+      uploadAction: "Chagua faili ya preskripsheni",
+      uploadFormats: "Faili zinazokubalika: picha au PDF",
       recentTitle: "Mazungumzo ya hivi karibuni",
       archiveTitle: "Tazama mazungumzo ya zamani",
       archiveHide: "Ficha kumbukumbu",
@@ -280,6 +292,9 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
       selectionFailed: "Nakokaki te kotindela pharmacie maponi na yo. Meka lisusu mwa moke.",
       uploadHint: "Na nsima nakopesa yo ba pharmacie ya solo mpe ba adresse na yango.",
       uploadTitle: "Tinda ordonnance na yo awa",
+      uploadBody: "Tinda image to PDF mpo na kobanda analyse, kondima bankisi oyo emonani, mpe komona ba pharmacie oyo bazali na yango solo na stock.",
+      uploadAction: "Pona fichier ya ordonnance",
+      uploadFormats: "Format oyo endimami: image to PDF",
       recentTitle: "Lisolo ya sika",
       archiveTitle: "Tala masolo ya kala",
       archiveHide: "Bomba archives",
@@ -436,7 +451,7 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
         setWorkflowState("uploading");
         addBotMessage(labels.uploadInstruction);
       } else {
-        const data = await askChatbotQuestion(question);
+        const data = await askChatbotQuestion(question, language);
         addBotMessage(data.answer);
       }
     } catch (error) {
@@ -643,9 +658,19 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
                       }}
                     />
                     <div className="upload-content">
-                      <img src="/chatbot-guardian.png" alt="" className="upload-guardian-image" />
-                      <p>{labels.uploadTitle}</p>
-                      <p className="upload-hint">{labels.uploadHint}</p>
+                      <div className="upload-visual">
+                        <img src="/chatbot-guardian.png" alt="" className="upload-guardian-image" />
+                        <span className="upload-badge">OCR + Stock</span>
+                      </div>
+                      <div className="upload-copy">
+                        <strong>{labels.uploadTitle}</strong>
+                        <p>{labels.uploadBody}</p>
+                        <span className="upload-hint">{labels.uploadHint}</span>
+                      </div>
+                      <div className="upload-action-row">
+                        <span className="upload-action-pill">{labels.uploadAction}</span>
+                        <span className="upload-formats">{labels.uploadFormats}</span>
+                      </div>
                     </div>
                   </label>
                 </div>

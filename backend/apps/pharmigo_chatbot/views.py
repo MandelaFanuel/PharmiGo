@@ -227,13 +227,19 @@ class ChatbotMessageView(APIView):
 
     def post(self, request):
         question = str(request.data.get("message") or request.data.get("question") or "").strip()
+        preferred_language = str(request.data.get("language") or "").strip().lower()
         if not question:
             return Response({"error": "Message requis."}, status=status.HTTP_400_BAD_REQUEST)
         user = _get_authenticated_user(request)
         try:
             prescription = _resolve_real_prescription(user, request.data.get("prescription_id"))
             session = _get_or_create_conversation_session(request, user, prescription)
-            answer = ChatbotResponseService().answer(question, user, session=session)
+            answer = ChatbotResponseService().answer(
+                question,
+                user,
+                session=session,
+                preferred_language=preferred_language,
+            )
             _store_chat_exchange(user, session, question, answer, prescription)
             return Response(
                 {
@@ -246,7 +252,11 @@ class ChatbotMessageView(APIView):
             )
         except Exception:
             logger.exception("ChatbotMessageView failed")
-            fallback = ChatbotResponseService().safe_fallback_answer(question, user)
+            fallback = ChatbotResponseService().safe_fallback_answer(
+                question,
+                user,
+                preferred_language=preferred_language,
+            )
             return Response({"message": fallback, "answer": fallback, "question": question}, status=status.HTTP_200_OK)
 
 

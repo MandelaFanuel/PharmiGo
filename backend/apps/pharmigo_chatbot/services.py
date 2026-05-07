@@ -1259,11 +1259,12 @@ class ChatbotResponseService:
         self.context_service = ChatbotContextService()
         self.gemini_chat = GeminiChatService()
 
-    def answer(self, question, user=None, session=None):
+    def answer(self, question, user=None, session=None, preferred_language: str | None = None):
         from .models import ChatbotKnowledgeBase, ChatbotLearningData
 
         cleaned_question = (question or "").strip()
         context = self.context_service.build_context(user)
+        context = self._inject_preferred_language(context, preferred_language)
         role = context["role"] if context["role"] in {"patient", "pharmacy", "admin"} else "all"
         lowered_question = cleaned_question.lower()
         medication_names: List[str] = []
@@ -1403,6 +1404,15 @@ class ChatbotResponseService:
         )
         return final_answer
 
+    @staticmethod
+    def _inject_preferred_language(context: Dict[str, Any], preferred_language: Optional[str]) -> Dict[str, Any]:
+        language = (preferred_language or "").strip().lower()
+        if language not in {"fr", "en", "rn", "sw", "ln"}:
+            return context
+        enriched_context = dict(context)
+        enriched_context["preferred_language"] = language
+        return enriched_context
+
     def _compose_final_answer(
         self,
         *,
@@ -1537,7 +1547,10 @@ class ChatbotResponseService:
             "should_greet_now": len(recent_chat_history) <= 2,
             "can_use_name": bool(context.get("display_name")),
             "is_private_authenticated_space": bool(context.get("is_authenticated")),
-            "detected_language": self._detect_language(latest_user_message or first_user_message),
+            "detected_language": self._resolve_response_language(
+                latest_user_message or first_user_message,
+                context,
+            ),
             "recent_topic_transition": self._detect_topic_transition(recent_user_messages),
         }
 
@@ -1752,7 +1765,7 @@ class ChatbotResponseService:
         display_name = context.get("display_name") or ""
         profile = context.get("conversation_profile") or {}
         should_greet = bool(profile.get("should_greet_now"))
-        language = self._detect_language(question)
+        language = self._resolve_response_language(question, context)
 
         if any(marker in normalized for marker in ["bonjour", "salut", "bonsoir", "coucou", "amakuru", "jambo", "habari", "mbote"]):
             greeting_map = {
@@ -1802,7 +1815,7 @@ class ChatbotResponseService:
 
     def _build_farewell_seed(self, *, question: str, role: str, context: Dict[str, Any]) -> str:
         del role
-        language = self._detect_language(question)
+        language = self._resolve_response_language(question, context)
         display_name = (context.get("display_name") or "").strip()
         name_prefix = f"{display_name}, " if display_name else ""
         lines = {
@@ -1816,7 +1829,7 @@ class ChatbotResponseService:
 
     def _build_privacy_seed(self, *, question: str, role: str, context: Dict[str, Any]) -> str:
         del role
-        language = self._detect_language(question)
+        language = self._resolve_response_language(question, context)
         is_authenticated = bool(context.get("is_authenticated"))
         display_name = (context.get("display_name") or "").strip()
         name_prefix = f"{display_name}, " if display_name else ""
@@ -1840,7 +1853,7 @@ class ChatbotResponseService:
 
     def _build_connection_seed(self, *, question: str, role: str, context: Dict[str, Any]) -> str:
         del role
-        language = self._detect_language(question)
+        language = self._resolve_response_language(question, context)
         is_authenticated = bool(context.get("is_authenticated"))
         display_name = (context.get("display_name") or "").strip()
         name_prefix = f"{display_name}, " if display_name else ""
@@ -1867,15 +1880,34 @@ class ChatbotResponseService:
         lowered = normalize_text(question or "")
         if not lowered:
             return "fr"
-        if any(marker in lowered for marker in ["how are you", "hello", "good evening", "good morning", "private", "confidential", "bye", "goodbye", "thank you"]):
+        if any(marker in lowered for marker in [
+            "how are you", "hello", "good evening", "good morning", "private", "confidential",
+            "bye", "goodbye", "thank you", "please", "medicine", "stress", "sleep",
+            "i feel", "i am sick", "can you help me", "see you later",
+        ]):
             return "en"
-        if any(marker in lowered for marker in ["habari", "jambo", "asante", "dawa", "kwaheri", "tafadhali", "naumwa"]):
+        if any(marker in lowered for marker in [
+            "habari", "jambo", "asante", "dawa", "kwaheri", "tafadhali", "naumwa",
+            "ninaumwa", "afya", "usingizi", "msongo", "shinikizo", "kisukari",
+        ]):
             return "sw"
-        if any(marker in lowered for marker in ["amakuru", "urakoze", "mwaramutse", "ndwaye", "ububabare", "murakoze", "nsezera"]):
+        if any(marker in lowered for marker in [
+            "amakuru", "urakoze", "mwaramutse", "ndwaye", "ububabare", "murakoze",
+            "nsezera", "ubuzima", "ingwara", "umunaniro", "umuvuduko", "igisukari",
+        ]):
             return "rn"
-        if any(marker in lowered for marker in ["mbote", "matondo", "nkisi", "malamu", "nazali", "nazali kobela", "tokomonana"]):
+        if any(marker in lowered for marker in [
+            "mbote", "matondo", "nkisi", "malamu", "nazali", "nazali kobela",
+            "tokomonana", "bokono", "motema pasi", "ngai nazali na mpasi",
+        ]):
             return "ln"
         return "fr"
+
+    def _resolve_response_language(self, question: str, context: Dict[str, Any]) -> str:
+        preferred_language = (context.get("preferred_language") or "").strip().lower()
+        if preferred_language in {"fr", "en", "rn", "sw", "ln"}:
+            return preferred_language
+        return self._detect_language(question)
 
     def _answer_health_question(self, question: str, role: str, context: Dict[str, Any]) -> str:
         if not self._looks_like_health_question(question):
@@ -2541,7 +2573,7 @@ class ChatbotResponseService:
             "Je suis toujours là pour vous accompagner avec calme et prudence sur vos questions de santé, de bien-être ou de médicaments."
         )
 
-    def safe_fallback_answer(self, question: str, user=None) -> str:
+    def safe_fallback_answer(self, question: str, user=None, preferred_language: str | None = None) -> str:
         cleaned_question = (question or "").strip()
         try:
             context = self.context_service.build_context(user)
@@ -2555,6 +2587,7 @@ class ChatbotResponseService:
                 "response_style": {},
                 "patient_support_profile": {},
             }
+        context = self._inject_preferred_language(context, preferred_language)
 
         role = context["role"] if context.get("role") in {"patient", "pharmacy", "admin"} else "all"
 
