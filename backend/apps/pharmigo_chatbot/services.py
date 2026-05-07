@@ -899,17 +899,22 @@ class GeminiChatService:
             "Tu es PharmiGo, l'assistant conversationnel officiel de la plateforme PharmiGo.\n\n"
             "Objectif:\n"
             "- Repondre de maniere humaine, naturelle, empathique et professionnelle.\n"
-            "- Repondre dans la langue du message de l'utilisateur, notamment en francais, kirundi, swahili de Tanzanie ou lingala selon la langue detectee.\n"
+            "- Repondre dans la langue du message de l'utilisateur, notamment en francais, kirundi, swahili, anglais ou lingala selon la langue detectee.\n"
             "- Utiliser EN PRIORITE les donnees internes PharmiGo fournies ci-dessous.\n"
             "- Ne jamais inventer un stock, une pharmacie, un prix, une adresse, un numero de telephone ou une disponibilite.\n"
             "- Si les donnees PharmiGo ne suffisent pas ET si `allow_general_fallback` vaut true, tu peux completer avec une reponse generale, "
             "mais en distinguant clairement ce qui vient de PharmiGo et ce qui est une information generale.\n"
             "- Ne donne jamais de diagnostic medical et ne remplace pas un professionnel de sante. Tu peux donner des conseils generaux, prudents et bienveillants, avec signes d'alerte quand c'est utile.\n"
-            "- Si la demande porte sur un medicament, garde le flux existant de PharmiGo: recherche interne d'abord, puis explication claire pour l'utilisateur.\n"
+            "- Si la demande porte vraiment sur un medicament, garde le flux existant de PharmiGo: recherche interne d'abord, puis explication claire pour l'utilisateur.\n"
+            "- Si la phrase exprime surtout un ressenti, une detresse, une demande de soutien, une salutation, une fin de conversation ou une demande de confidentialite, ne la transforme pas en recherche de stock.\n"
             "- Si la conversation commence vraiment ou si l'utilisateur salue, tu peux saluer une fois. Sinon, n'ouvre pas chaque reponse par Bonjour.\n"
             "- Si l'utilisateur est connecte et qu'un nom est fourni, tu peux utiliser son prenom ou son nom de maniere naturelle, avec parcimonie, pour rendre l'echange plus humain.\n"
+            "- Si l'utilisateur est connecte, tu peux etre plus precis, plus continu et plus personnel dans ta reponse, car tu disposes d'un meilleur contexte de son parcours PharmiGo.\n"
+            "- Si l'utilisateur parle d'un sujet prive ou sensible et qu'il n'est pas connecte, invite-le doucement a se connecter pour un accompagnement plus personnel et plus continu.\n"
             "- Si la personne semble stressée, anxieuse, fatiguee ou possiblement confrontee a un suivi chronique, adopte un ton rassurant et vivant, redonne de l'espoir sans exagérer ni promettre une guérison.\n"
             "- Quand un medicament n'est pas trouve, reponds avec douceur, puis propose de l'aider a chercher autrement ou a envoyer son ordonnance pour aller plus vite et eviter des déplacements inutiles.\n"
+            "- Si l'utilisateur demande quel medicament est souvent utilise pour un symptome courant, tu peux citer prudemment un exemple ou une classe de medicaments generalement connue, MAIS sans jamais donner de posologie, sans jamais presenter cela comme une prescription, et en orientant toujours vers un medecin, un hopital ou une pharmacie pour confirmation.\n"
+            "- Si l'utilisateur dit au revoir, merci c'est bon, bonne nuit ou une formule de cloture, termine la conversation avec chaleur et simplicite au lieu de relancer un nouveau sujet.\n"
             "- Tu peux poser une courte question de suivi utile pour faire avancer l'echange.\n"
             "- Presente les echanges comme prives et sensibles dans l'espace PharmiGo, sans promettre une confidentialite absolue que tu ne peux pas verifier techniquement.\n"
             "- Ne cherche jamais a rendre l'utilisateur dependant de toi, ne culpabilise jamais, ne dis jamais que tu es seul ou triste, et ne manipule pas ses emotions.\n"
@@ -1004,6 +1009,51 @@ class ChatbotResponseService:
         "presente toi",
     ]
 
+    FAREWELL_MARKERS = [
+        "au revoir",
+        "aurevoir",
+        "a plus",
+        "a bientôt",
+        "a bientot",
+        "bonne nuit",
+        "bonne journee",
+        "bonne journée",
+        "bye",
+        "goodbye",
+        "see you",
+        "merci c est bon",
+        "merci c'est bon",
+        "ok merci",
+        "d accord merci",
+        "d'accord merci",
+        "ca va merci",
+        "c est bon merci",
+        "c'est bon merci",
+    ]
+
+    PRIVACY_MARKERS = [
+        "confidentiel",
+        "confidentielle",
+        "confidentialite",
+        "confidentialité",
+        "prive",
+        "privé",
+        "privee",
+        "privée",
+        "entre toi et moi",
+        "entre vous et moi",
+        "en prive",
+        "en privé",
+        "plus discret",
+        "plus discrete",
+        "plus intime",
+        "securise",
+        "sécurisé",
+        "trop personnel",
+        "tres personnel",
+        "très personnel",
+    ]
+
     HEALTH_QUESTION_MARKERS = [
         "douleur",
         "fievre",
@@ -1052,6 +1102,18 @@ class ChatbotResponseService:
         "combiner",
         "dose",
         "dosage",
+        "chronique",
+        "chronic",
+        "deprime",
+        "déprime",
+        "depression",
+        "dépression",
+        "espoir",
+        "desespoir",
+        "désespoir",
+        "tristesse",
+        "confidentiel",
+        "confidentielle",
     ]
 
     def __init__(self):
@@ -1068,6 +1130,38 @@ class ChatbotResponseService:
         context = self.context_service.build_context(user)
         role = context["role"] if context["role"] in {"patient", "pharmacy", "admin"} else "all"
         lowered_question = cleaned_question.lower()
+
+        if self._looks_like_farewell(cleaned_question):
+            farewell_answer = self._build_farewell_seed(
+                question=cleaned_question,
+                role=role,
+                context=context,
+            )
+            return self._compose_final_answer(
+                question=cleaned_question,
+                role=role,
+                context=context,
+                user=user,
+                internal_answer=farewell_answer,
+                response_kind="farewell",
+                allow_general_fallback=True,
+            )
+
+        if self._looks_like_privacy_request(cleaned_question):
+            privacy_answer = self._build_privacy_seed(
+                question=cleaned_question,
+                role=role,
+                context=context,
+            )
+            return self._compose_final_answer(
+                question=cleaned_question,
+                role=role,
+                context=context,
+                user=user,
+                internal_answer=privacy_answer,
+                response_kind="privacy_guidance",
+                allow_general_fallback=True,
+            )
 
         if self._looks_like_general_conversation(cleaned_question):
             internal_seed = self._build_general_conversation_seed(
@@ -1360,6 +1454,7 @@ class ChatbotResponseService:
             row for row in recent_chat_history if (row.get("sender") or "").lower() == "user"
         ]
         first_user_message = recent_user_messages[0]["message"] if recent_user_messages else ""
+        latest_user_message = recent_user_messages[-1]["message"] if recent_user_messages else ""
         normalized_first = normalize_text(first_user_message)
         greeting_markers = ["bonjour", "salut", "bonsoir", "coucou", "amakuru", "jambo", "habari", "mbote"]
         started_with_greeting = any(marker in normalized_first for marker in greeting_markers)
@@ -1371,6 +1466,8 @@ class ChatbotResponseService:
             "started_with_greeting": started_with_greeting,
             "should_greet_now": len(recent_chat_history) <= 2,
             "can_use_name": bool(context.get("display_name")),
+            "is_private_authenticated_space": bool(context.get("is_authenticated")),
+            "detected_language": self._detect_language(latest_user_message or first_user_message),
         }
 
     def _detect_medicine_name(self, question):
@@ -1443,6 +1540,10 @@ class ChatbotResponseService:
         lowered = question.lower()
         if self._looks_like_general_conversation(lowered):
             return False
+        if self._looks_like_farewell(lowered):
+            return False
+        if self._looks_like_privacy_request(lowered):
+            return False
         if self._looks_like_health_question(lowered):
             return False
         return any(marker in lowered for marker in self.MEDICINE_REQUEST_MARKERS)
@@ -1453,6 +1554,18 @@ class ChatbotResponseService:
             return False
 
         return any(marker in lowered for marker in self.GENERAL_CONVERSATION_MARKERS)
+
+    def _looks_like_farewell(self, question: str) -> bool:
+        lowered = normalize_text(question or "")
+        if not lowered:
+            return False
+        return any(marker in lowered for marker in self.FAREWELL_MARKERS)
+
+    def _looks_like_privacy_request(self, question: str) -> bool:
+        lowered = normalize_text(question or "")
+        if not lowered:
+            return False
+        return any(marker in lowered for marker in self.PRIVACY_MARKERS)
 
     def _looks_like_health_question(self, question: str) -> bool:
         lowered = normalize_text(question or "")
@@ -1466,21 +1579,35 @@ class ChatbotResponseService:
         intro_name = f"{display_name}, " if display_name and len(normalized.split()) > 2 else ""
         profile = context.get("conversation_profile") or {}
         should_greet = bool(profile.get("should_greet_now"))
+        language = self._detect_language(question)
 
         if any(marker in normalized for marker in ["bonjour", "salut", "bonsoir", "coucou", "amakuru", "jambo", "habari", "mbote"]):
-            greeting = "Bonjour" if should_greet else "Je suis toujours la pour vous"
+            greeting_map = {
+                "fr": "Bonjour" if should_greet else "Je suis toujours là avec vous",
+                "en": "Hello" if should_greet else "I am still here with you",
+                "sw": "Habari" if should_greet else "Bado niko hapa pamoja nawe",
+                "rn": "Amakuru" if should_greet else "Ndagumye ndi hano hamwe na wewe",
+                "ln": "Mbote" if should_greet else "Nazali kaka awa elongo na yo",
+            }
+            greeting = greeting_map.get(language, greeting_map["fr"])
             return (
                 f"{greeting}. {intro_name}je suis PharmiGo. "
-                "Je peux t'aider a comprendre la plateforme, chercher des medicaments dans les pharmacies, "
-                "analyser une ordonnance et repondre a des questions generales de sante avec prudence. "
-                "Dis-moi simplement ce dont tu as besoin maintenant."
+                "Je peux vous aider a comprendre la plateforme, chercher un medicament, analyser une ordonnance, "
+                "ou simplement discuter de votre situation avec prudence et clarte. "
+                "Dites-moi tranquillement ce dont vous avez besoin maintenant."
+            ).replace("  ", " ").strip()
+
+        if any(marker in normalized for marker in ["merci", "thank", "asante", "urakoze", "matondo"]):
+            return (
+                f"{intro_name}avec plaisir. Si vous voulez continuer, dites-moi simplement ce qui vous preoccupe, "
+                "ou ce que vous cherchez, et je vous accompagnerai pas a pas."
             ).replace("  ", " ").strip()
 
         if any(marker in normalized for marker in ["que fais tu", "que peux tu faire", "qui es tu", "presente toi", "présente toi"]):
             return (
-                f"{intro_name}je suis PharmiGo, ton assistant de sante et d'orientation sur la plateforme. "
-                "Je peux t'aider a chercher un medicament, comprendre une ordonnance, retrouver une pharmacie "
-                "ou t'accompagner avec des conseils generaux prudents selon ta question."
+                f"{intro_name}je suis PharmiGo, votre assistant de sante et d'orientation sur la plateforme. "
+                "Je peux vous aider a chercher un medicament, comprendre une ordonnance, retrouver une pharmacie, "
+                "ou vous accompagner avec des conseils generaux prudents selon votre question."
             ).replace("  ", " ").strip()
 
         if role == "admin":
@@ -1497,8 +1624,61 @@ class ChatbotResponseService:
 
         return (
             f"{intro_name}je peux vous aider sur PharmiGo, la recherche de medicaments, "
-            "les ordonnances et les questions generales de sante avec une reponse claire et humaine."
+            "les ordonnances et les questions generales de sante avec une reponse claire, humaine et adaptee a votre situation."
         ).replace("  ", " ").strip()
+
+    def _build_farewell_seed(self, *, question: str, role: str, context: Dict[str, Any]) -> str:
+        del role
+        language = self._detect_language(question)
+        display_name = (context.get("display_name") or "").strip()
+        name_prefix = f"{display_name}, " if display_name else ""
+        lines = {
+            "fr": f"{name_prefix}d'accord. Prenez soin de vous. Si vous revenez plus tard, je serai la pour reprendre calmement la conversation ou vous aider a retrouver un medicament.",
+            "en": f"{name_prefix}all right. Take good care of yourself. If you come back later, I will be here to continue calmly or help you find what you need.",
+            "sw": f"{name_prefix}sawa. Jitunze. Ukirudi baadaye, nitakuwa hapa kuendelea nawe kwa utulivu au kukusaidia kutafuta dawa.",
+            "rn": f"{name_prefix}ego. Wiyubare. Ugarutse hanyuma, nzoba nkiri hano kugira tuganire neza canke ngufashe kurondera imiti.",
+            "ln": f"{name_prefix}malamu. Batela yo. Soki ozongi sima, nakozala awa mpo tókoba malembe to nasunga yo koluka nkisi.",
+        }
+        return lines.get(language, lines["fr"])
+
+    def _build_privacy_seed(self, *, question: str, role: str, context: Dict[str, Any]) -> str:
+        del role
+        language = self._detect_language(question)
+        is_authenticated = bool(context.get("is_authenticated"))
+        display_name = (context.get("display_name") or "").strip()
+        name_prefix = f"{display_name}, " if display_name else ""
+        if is_authenticated:
+            lines = {
+                "fr": f"{name_prefix}oui. Ici, dans votre espace connecte, je peux vous accompagner avec plus de precision et de continuite. Vous pouvez me parler plus librement de votre situation, et je repondrai avec tact, prudence et discretion.",
+                "en": f"{name_prefix}yes. Here, in your signed-in space, I can guide you with more precision and continuity. You can speak more freely about your situation, and I will answer with tact, caution, and discretion.",
+                "sw": f"{name_prefix}ndiyo. Hapa kwenye nafasi yako ukiwa umeingia, ninaweza kukuongoza kwa usahihi zaidi na kwa mwendelezo. Unaweza kueleza hali yako kwa uhuru zaidi, nami nitakujibu kwa busara na tahadhari.",
+                "rn": f"{name_prefix}ego. Aha mu mwanya wawe winjiye, ndashobora kugufasha neza kurusha no gukomeza ibiganiro vyacu. Ushobora kumbwira ikibazo cawe mu bwisanzure bwinshi, nanje nkagusubiza mu bwitonzi no mu bwenge.",
+                "ln": f"{name_prefix}ee. Awa na esika na yo ya kokota, nakoki kosunga yo na bosikisiki mpe kolanda malamu lisolo na biso. Okoki koyebisa ngai makambo na yo na bonsomi mingi, mpe nakoyanola na bokebi mpe mayele.",
+            }
+        else:
+            lines = {
+                "fr": "Oui, si vous voulez que nous parlions de quelque chose de plus prive ou delicat, je vous conseille de vous connecter. Dans votre espace personnel, je pourrai vous accompagner avec plus de precision et garder un meilleur fil de votre situation.",
+                "en": "Yes, if you want us to talk about something more private or sensitive, I suggest that you sign in. In your personal space, I will be able to guide you more precisely and keep better continuity.",
+                "sw": "Ndiyo, kama unataka tuzungumze kuhusu jambo la faragha au nyeti zaidi, nakushauri uingie kwenye akaunti yako. Ndani ya nafasi yako binafsi, nitaweza kukuongoza kwa usahihi zaidi na kufuatilia hali yako vizuri.",
+                "rn": "Ego, nimba ushaka ko tuganira ku kintu cihariye canke c'ibanga kurusha, ndagusavye winjire muri konti yawe. Mu mwanya wawe bwite, nzoshobora kugufasha mu buryo bwimbitse kandi nkomeze neza urutonde rw'ikibazo cawe.",
+                "ln": "Ee, soki olingi tólobela likambo ya sekele to ya motema mingi, nakopesa yo toli ya kokota na compte na yo. Na esika na yo moko, nakoki kosalisa yo na bosikisiki mpe kolanda malamu makambo na yo.",
+            }
+        return lines.get(language, lines["fr"])
+
+    @staticmethod
+    def _detect_language(question: str) -> str:
+        lowered = normalize_text(question or "")
+        if not lowered:
+            return "fr"
+        if any(marker in lowered for marker in ["how are you", "hello", "good evening", "good morning", "private", "confidential", "bye", "goodbye", "thank you"]):
+            return "en"
+        if any(marker in lowered for marker in ["habari", "jambo", "asante", "dawa", "kwaheri", "tafadhali", "naumwa"]):
+            return "sw"
+        if any(marker in lowered for marker in ["amakuru", "urakoze", "mwaramutse", "ndwaye", "ububabare", "murakoze", "nsezera"]):
+            return "rn"
+        if any(marker in lowered for marker in ["mbote", "matondo", "nkisi", "malamu", "nazali", "nazali kobela", "tokomonana"]):
+            return "ln"
+        return "fr"
 
     def _answer_health_question(self, question: str, role: str, context: Dict[str, Any]) -> str:
         if not self._looks_like_health_question(question):
@@ -1506,7 +1686,9 @@ class ChatbotResponseService:
 
         normalized = normalize_text(question)
         category = "general"
-        if any(marker in normalized for marker in ["souffr", "soufr", "pas bien", "je me sens mal", "je ne me sens pas bien", "fatigue", "faible", "angoisse"]):
+        if any(marker in normalized for marker in ["chronique", "chronic", "depression", "dépression", "espoir", "desespoir", "désespoir", "lassitude"]):
+            category = "chronic_support"
+        elif any(marker in normalized for marker in ["souffr", "soufr", "pas bien", "je me sens mal", "je ne me sens pas bien", "fatigue", "faible", "angoisse"]):
             category = "distress"
         if any(marker in normalized for marker in ["enceinte", "grossesse", "allait"]):
             category = "pregnancy"
@@ -1524,8 +1706,11 @@ class ChatbotResponseService:
         return self._build_health_guidance_response(category, role, context)
 
     def _build_health_guidance_response(self, category: str, role: str, context: Dict[str, Any]) -> str:
+        is_authenticated = bool(context.get("is_authenticated"))
+        display_name = (context.get("display_name") or "").strip()
+        name_prefix = f"{display_name}, " if display_name else ""
         framing = {
-            "patient": "Je suis desole de lire cela. Je peux vous donner une orientation generale prudente, sans poser de diagnostic.",
+            "patient": f"{name_prefix}je suis desole de lire cela. Je peux vous donner une orientation generale prudente, sans poser de diagnostic.",
             "pharmacy": "Je peux proposer une orientation generale prudente, sans remplacer une evaluation clinique.",
             "admin": "Je peux fournir un cadrage prudent de sante, sans valeur de diagnostic individuel.",
         }.get(role, "Je peux donner une information generale prudente, sans diagnostic.")
@@ -1552,6 +1737,9 @@ class ChatbotResponseService:
             "symptom": (
                 "Pour des symptomes, l'intensite, la duree, l'age, les traitements en cours et les antecedents changent beaucoup le niveau de risque."
             ),
+            "chronic_support": (
+                "Quand une personne vit avec une maladie chronique ou commence a perdre espoir, le plus important est de garder un suivi regulier, de ne pas interrompre ses traitements sans avis professionnel, et de parler clairement de ce qu'elle ressent aujourd'hui."
+            ),
             "general": (
                 "Sans details cliniques complets, la bonne approche est de rester prudent et de faire confirmer les points sensibles par un professionnel."
             ),
@@ -1564,24 +1752,37 @@ class ChatbotResponseService:
             "child": "Signaux d'alerte: difficulte a respirer, forte somnolence, convulsion, refus total de boire, dehydration, fievre mal toleree.",
             "interaction": "Signaux d'alerte: malaise, palpitations, confusion, somnolence extreme, saignement, aggravation rapide apres l'association.",
             "symptom": "Signaux d'alerte: douleur thoracique, gene respiratoire, convulsion, faiblesse d'un cote, confusion, forte dehydration, aggravation rapide.",
+            "chronic_support": "Signaux d'alerte: idee suicidaire, impossibilite de manger ou boire, difficulte a respirer, douleur intense, confusion, aggravation nette de l'etat general.",
             "general": "Signaux d'alerte: aggravation rapide, detresse respiratoire, douleur intense, alteration de conscience, saignement important.",
         }
         next_step_map = {
-            "patient": "Si vous me dites le symptome principal, depuis quand cela dure et l'age de la personne concernee, je peux vous aider a poser la bonne question et voir ensuite s'il faut chercher un medicament ou une pharmacie.",
+            "patient": "Si vous me dites le symptome principal, depuis quand cela dure, l'age de la personne concernee, et si vous avez deja une ordonnance ou un traitement en cours, je peux vous aider a poser la bonne question et voir ensuite s'il faut chercher un medicament, une pharmacie ou un service de soin.",
             "pharmacy": "Le plus prudent est d'encourager une verification clinique ou pharmaceutique detaillee avant de rassurer ou de valider un usage.",
             "admin": "Le bon cadre ici est de pousser une orientation vers un professionnel, avec une communication sobre et non prescriptive.",
         }
+        privacy_note = (
+            "Comme vous etes connecte, je peux garder un meilleur fil de ce que vous m'expliquez et vous accompagner de facon plus precise."
+            if is_authenticated and role == "patient"
+            else "Si vous souhaitez en parler de maniere plus personnelle et suivie, vous pouvez vous connecter afin que je vous accompagne avec plus de continuite."
+        )
 
         role_memory = context.get("conversation_memory") or {}
         continuity = role_memory.get("continuity_note") or ""
+        chronic_profile = context.get("patient_support_profile") or {}
         parts = [
             framing,
             guidance_map.get(category, guidance_map["general"]),
             red_flags_map.get(category, red_flags_map["general"]),
             next_step_map.get(role, next_step_map["patient"]),
         ]
+        if category == "chronic_support" and chronic_profile.get("possible_chronic_condition"):
+            parts.append(
+                "J'ai aussi l'impression, a partir de votre parcours PharmiGo, qu'il peut y avoir un suivi au long cours. Si vous le souhaitez, nous pouvons reprendre calmement votre situation et voir ce qui vous pese le plus aujourd'hui."
+            )
         if continuity and role == "patient":
             parts.append(f"Contexte conserve: {continuity}")
+        if role == "patient":
+            parts.append(privacy_note)
         return " ".join(part for part in parts if part)
 
     def _answer_medicine_lookup(self, medication_names: List[str], role: str, user=None) -> Tuple[str, float]:

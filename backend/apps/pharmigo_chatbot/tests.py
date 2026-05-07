@@ -96,3 +96,33 @@ class ChatbotResponseServiceTests(TestCase):
 
         self.assertIn("plateforme", response.lower())
         self.assertIn("pharmigo", response.lower())
+
+    def test_farewell_does_not_trigger_medication_lookup(self):
+        service = ChatbotResponseService()
+        service.gemini_chat.available = False
+
+        with patch.object(service, "_answer_medicine_lookup", wraps=service._answer_medicine_lookup) as mocked_lookup:
+            response = service.answer("au revoir mon frère", self.user)
+
+        mocked_lookup.assert_not_called()
+        self.assertNotIn("stocks des pharmacies", response.lower())
+        self.assertTrue(any(term in response.lower() for term in ["prenez soin", "revenez", "reviens", "wiyubare"]))
+
+    def test_privacy_request_invites_guest_to_login(self):
+        guest_user = type("GuestUser", (), {"is_authenticated": False})()
+        service = ChatbotResponseService()
+        service.gemini_chat.available = False
+
+        response = service.answer("si je veux parler de quelque chose de plus confidentiel, que dois-je faire ?", guest_user)
+
+        self.assertIn("connect", response.lower())
+        self.assertNotIn("stocks des pharmacies", response.lower())
+
+    def test_authenticated_privacy_request_is_more_precise(self):
+        service = ChatbotResponseService()
+        service.gemini_chat.available = False
+
+        response = service.answer("je veux te parler de quelque chose de prive", self.user)
+
+        self.assertIn("espace connecte", response.lower())
+        self.assertNotIn("stocks des pharmacies", response.lower())
