@@ -1,10 +1,14 @@
 from unittest.mock import patch
+from datetime import timedelta
 
 from django.contrib.auth.models import User
 from django.test import TestCase
+from django.utils import timezone
 
 from apps.pharmigo_chatbot.models import ConversationHistory, ConversationSession
 from apps.pharmigo_chatbot.services import ChatbotContextService, ChatbotResponseService
+from apps.pharmacies.models import Pharmacy as RealPharmacy, PharmacySubscription
+from apps.prescriptions.models import PharmacyStock as RealPharmacyStock
 from apps.users.models import UserProfile
 
 
@@ -225,3 +229,115 @@ class ChatbotResponseServiceTests(TestCase):
 
         self.assertNotIn("analyser une ordonnance", response.lower())
         self.assertNotIn("chercher un medicament", response.lower())
+
+    def test_medicine_lookup_only_surfaces_certified_or_trial_partners(self):
+        verified_partner = RealPharmacy.objects.create(
+            name="Pharmacie Certifiee",
+            city="Bujumbura",
+            address="Rohero",
+            phone_number="+25761000001",
+            is_verified=True,
+        )
+        PharmacySubscription.objects.create(
+            pharmacy=verified_partner,
+            subscription_status="active",
+            is_trial_active=False,
+            trial_end_date=timezone.now(),
+        )
+        RealPharmacyStock.objects.create(
+            pharmacy=verified_partner,
+            medication_name="Paracetamol",
+            dosage="500mg",
+            quantity=12,
+            unit="comprimés",
+            is_available=True,
+        )
+
+        hidden_partner = RealPharmacy.objects.create(
+            name="Pharmacie Cachee",
+            city="Bujumbura",
+            address="Kinindo",
+            phone_number="+25761000002",
+            is_verified=False,
+        )
+        PharmacySubscription.objects.create(
+            pharmacy=hidden_partner,
+            subscription_status="active",
+            is_trial_active=False,
+            trial_end_date=timezone.now(),
+        )
+        RealPharmacyStock.objects.create(
+            pharmacy=hidden_partner,
+            medication_name="Paracetamol",
+            dosage="500mg",
+            quantity=30,
+            unit="comprimés",
+            is_available=True,
+        )
+
+        service = ChatbotResponseService()
+        answer, confidence = service._answer_medicine_lookup(["paracetamol"], "patient", self.user)
+
+        self.assertIn("Pharmacie Certifiee", answer)
+        self.assertIn("Partenaire Certifie PharmiGo", answer)
+        self.assertNotIn("Pharmacie Cachee", answer)
+        self.assertGreater(confidence, 0.85)
+
+    def test_trial_partner_is_visible_in_stock_lookup(self):
+        trial_partner = RealPharmacy.objects.create(
+            name="Pharmacie Trial",
+            city="Bujumbura",
+            address="Bwiza",
+            phone_number="+25761000003",
+            is_verified=False,
+        )
+        PharmacySubscription.objects.create(
+            pharmacy=trial_partner,
+            subscription_status="trial",
+            is_trial_active=True,
+            trial_end_date=timezone.now() + timedelta(days=5),
+        )
+        RealPharmacyStock.objects.create(
+            pharmacy=trial_partner,
+            medication_name="Ibuprofene",
+            dosage="400mg",
+            quantity=8,
+            unit="comprimés",
+            is_available=True,
+        )
+
+        service = ChatbotResponseService()
+        answer, _confidence = service._answer_medicine_lookup(["ibuprofene"], "patient", self.user)
+
+        self.assertIn("Pharmacie Trial", answer)
+        self.assertIn("Partenaire Certifie PharmiGo", answer)
+
+    def test_when_no_eligible_partner_exists_response_mentions_certified_partner_unavailable(self):
+        expired_partner = RealPharmacy.objects.create(
+            name="Pharmacie Expiree",
+            city="Bujumbura",
+            address="Kamenge",
+            phone_number="+25761000004",
+            is_verified=True,
+        )
+        PharmacySubscription.objects.create(
+            pharmacy=expired_partner,
+            subscription_status="expired",
+            is_trial_active=False,
+            trial_end_date=timezone.now() - timedelta(days=1),
+        )
+        RealPharmacyStock.objects.create(
+            pharmacy=expired_partner,
+            medication_name="Amoxicilline",
+            dosage="500mg",
+            quantity=15,
+            unit="gélules",
+            is_available=True,
+        )
+
+        service = ChatbotResponseService()
+        answer, confidence = service._answer_medicine_lookup(["amoxicilline"], "patient", self.user)
+
+        self.assertIn("partenaire certifie", answer.lower())
+        self.assertNotIn("Pharmacie Expiree", answer)
+        self.assertGreaterEqual(confidence, 0.75)

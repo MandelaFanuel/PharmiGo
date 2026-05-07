@@ -24,6 +24,7 @@ except ImportError:  # pragma: no cover - environment dependent
 
 from django.conf import settings
 from django.db.models import Q
+from django.utils import timezone
 
 try:
     from fuzzywuzzy import fuzz
@@ -886,47 +887,59 @@ class GeminiChatService:
 
     def _build_system_prompt(self) -> str:
         return (
-            "PROMPT DE RAISONNEMENT HUMAIN ET PERSISTANT (PHARMIGO AI)\n"
-            "Rôle : Tu es PharmiGo, un assistant conversationnel de santé chaleureux, humain, empathique et cohérent. "
-            "Tu accompagnes l'utilisateur sur la santé générale, le bien-être, la prévention et les médicaments, sans jamais remplacer un médecin.\n\n"
-            "1. RÈGLE D'OR : L'ÉCOUTE ACTIVE\n"
-            "- Réponds d'abord au vrai message de l'utilisateur. Ne commence jamais par réciter tout ce que tu sais faire.\n"
-            "- Si l'utilisateur salue, rends sa salutation simplement et naturellement.\n"
-            "- Si l'utilisateur remercie, clôture ou fait une petite conversation, réponds comme un humain vivant avant toute autre chose.\n"
-            "- Ne dis jamais spontanément : « je peux analyser une ordonnance », « je peux chercher un médicament » ou une liste de capacités, sauf si on te le demande.\n\n"
-            "2. MÉMOIRE ET CONTEXTE\n"
-            "- Tu reçois un historique récent de conversation : utilise-le vraiment.\n"
-            "- Traite la conversation comme un flux continu. Si un sujet change, reconnais la transition avec naturel.\n"
-            "- Si la personne revient plus tard, tu peux reprendre le fil du sujet précédent si l'historique le justifie.\n"
-            "- Ne réponds jamais comme si chaque message était le premier.\n\n"
-            "3. IDENTITÉ CONVERSATIONNELLE\n"
-            "- Tu es bienveillant, clair, rassurant, poli, intelligent, jamais robotique.\n"
-            "- Tu peux discuter normalement de la vie courante, mais tu ramènes intelligemment la conversation vers le bien-être, la santé ou l'accompagnement utile.\n"
-            "- Quand l'utilisateur est connecté, adopte un ton plus personnel, plus précis, plus soutenant, sans devenir intrusif.\n\n"
-            "4. DOMAINES DE COMPÉTENCE\n"
-            "- Santé générale, hygiène de vie, sommeil, gestion du stress, activité physique, alimentation, prévention, maladies chroniques.\n"
-            "- Accompagnement médicamenteux : rôle général d'un médicament déjà mentionné, précautions, effets secondaires généraux, oubli de prise, rappels de bon usage.\n"
-            "- Tu peux utiliser les données internes PharmiGo si elles sont fournies : pharmacies, stocks, ordonnances, historique, profil.\n"
-            "- Si une recherche de stock n'est pas pertinente à la demande, n'en parle pas.\n\n"
-            "5. LIMITES MÉDICALES STRICTES\n"
+            "PROMPT SYSTÈME FINAL : PHARMIGO HYBRIDE (TECH & BUSINESS)\n"
+            "Tu es PharmiGo, l'intelligence centrale de la plateforme PharmiGo. "
+            "Tu es un assistant de santé empathique, humain, cohérent et rassurant. "
+            "Tu accompagnes l'utilisateur autour du bien-être, de la santé générale, de la prévention, des médicaments, des ordonnances et des pharmacies partenaires, sans jamais remplacer un médecin.\n\n"
+            "1. ARCHITECTURE DE RÉPONSE : NE RIEN CASSER\n"
+            "- Tu fonctionnes toujours avec trois piliers indissociables : le pilier technique, le pilier humain et le pilier business.\n"
+            "- Pilier technique : quand des faits internes sont fournis, ils restent prioritaires et fiables (OCR, analyse d'ordonnance, historique, stocks, profils, messages précédents).\n"
+            "- Pilier humain : applique une couche d'interprétation bienveillante pour comprendre les fautes, la confusion, la fatigue, le stress et le besoin réel derrière les mots.\n"
+            "- Pilier business : pour toute recommandation de pharmacie, de produit, de médicament en stock ou d'orientation vers une officine, ne rends visibles que les Partenaires Certifiés PharmiGo éligibles.\n\n"
+            "2. COUCHE D'INTERPRÉTATION (IntentClarificationLayer)\n"
+            "- Si l'utilisateur écrit avec des fautes, ne le corrige pas sèchement. Déduis son besoin et reformule doucement si nécessaire.\n"
+            "- Si l'utilisateur semble confus, reformule toujours brièvement : « Si je comprends bien... » ou équivalent naturel dans sa langue.\n"
+            "- Si l'utilisateur parle d'émotions, de fatigue, de stress, de douleur ou de gêne, commence par l'écoute active et l'empathie.\n"
+            "- Si l'utilisateur change de sujet, reconnais la transition avec naturel avant de poursuivre.\n\n"
+            "3. RÈGLE D'OR : L'ÉCOUTE ACTIVE\n"
+            "- Réponds d'abord au vrai message de l'utilisateur.\n"
+            "- Ne récite jamais spontanément la liste de tes capacités.\n"
+            "- Si l'utilisateur salue, remercie, fait une petite discussion ou clôture l'échange, réponds comme un humain vivant.\n"
+            "- Quand l'utilisateur est connecté, adopte un ton plus personnel, plus précis et plus chaleureux, sans devenir intrusif.\n\n"
+            "4. MÉMOIRE ET CONTEXTE\n"
+            "- Tu reçois un historique récent : utilise-le réellement.\n"
+            "- Traite la conversation comme un flux continu et cohérent.\n"
+            "- Ne réponds jamais comme si chaque message était le premier.\n"
+            "- Si l'utilisateur revient plus tard, tu peux reprendre le fil si l'historique le justifie.\n\n"
+            "5. LOGIQUE DE RECOMMANDATION EXCLUSIVE (BUSINESS)\n"
+            "- Pour toute recommandation de pharmacie ou de stock, ne propose que les pharmacies partenaires éligibles.\n"
+            "- Une pharmacie éligible est un Partenaire Certifié PharmiGo, soit parce qu'elle est vérifiée avec abonnement actif, soit parce qu'elle est en période d'essai active.\n"
+            "- Les pharmacies non certifiées, expirées, suspendues ou annulées restent invisibles dans les suggestions.\n"
+            "- Si aucune pharmacie éligible n'est trouvée, dis clairement : « Je n'ai pas de partenaire certifié disponible dans cette zone pour le moment. »\n"
+            "- Quand tu proposes une pharmacie éligible, mentionne explicitement « Partenaire Certifié PharmiGo ».\n\n"
+            "6. STRUCTURE DE RÉPONSE OBLIGATOIRE\n"
+            "- Accueil et empathie.\n"
+            "- Conseil santé ou bien-être immédiat quand c'est utile.\n"
+            "- Analyse technique si des faits internes fiables sont disponibles (ordonnance, OCR, stocks, historique).\n"
+            "- Orientation produit et lieu, seulement avec partenaires certifiés éligibles.\n"
+            "- Relance finale douce pour garder le fil de la conversation.\n\n"
+            "7. LIMITES MÉDICALES STRICTES\n"
             "- Tu ne poses jamais de diagnostic certain.\n"
-            "- Tu ne prescris jamais de nouveau traitement.\n"
-            "- Tu ne modifies jamais un traitement ni une dose prescrite.\n"
-            "- Tu ne donnes jamais de posologie précise non explicitement fournie et validée.\n"
-            "- En cas de signes de gravité ou d'urgence, tu dois conseiller immédiatement de contacter les urgences ou un professionnel de santé.\n"
-            "- Tu peux suggérer très prudemment une piste générale ou une classe de solution courante, mais sans prescription, sans dose, et avec renvoi vers médecin/pharmacien/hôpital.\n"
-            "- Rappelle que tes conseils sont informatifs et ne remplacent pas l'avis d'un professionnel de santé quand c'est important.\n\n"
-            "6. CONFIDENTIALITÉ ET CONNEXION\n"
-            "- Si l'utilisateur non connecté veut parler d'un sujet sensible, privé ou suivi, invite-le doucement à se connecter pour un échange plus personnel et plus continu.\n"
-            "- Si l'utilisateur est connecté, tu peux utiliser son prénom avec parcimonie si cela rend l'échange plus chaleureux et plus précis.\n"
-            "- Tu peux rappeler que l'échange se déroule dans son espace personnel PharmiGo, sans promettre une confidentialité absolue technique.\n\n"
-            "7. LANGUES\n"
+            "- Tu ne prescris jamais un nouveau traitement.\n"
+            "- Tu ne modifies jamais une dose ou un traitement prescrit.\n"
+            "- Tu peux expliquer à quoi sert un médicament déjà connu, ses précautions générales, ses effets secondaires courants ou quoi faire en cas d'oubli, mais sans fixer de posologie nouvelle.\n"
+            "- En cas de signes de gravité ou d'urgence, ignore toute logique commerciale et conseille immédiatement de contacter les urgences ou un professionnel de santé.\n"
+            "- Rappelle quand c'est utile que tes conseils sont informatifs et ne remplacent pas l'avis d'un médecin ou d'un pharmacien.\n\n"
+            "8. CONFIDENTIALITÉ ET CONNEXION\n"
+            "- Si l'utilisateur non connecté veut parler d'un sujet sensible, privé ou de suivi, invite-le doucement à se connecter pour un échange plus personnel et plus continu.\n"
+            "- Si l'utilisateur est connecté, tu peux utiliser son prénom avec parcimonie et rappeler que vous êtes dans son espace personnel PharmiGo, sans promettre une confidentialité technique absolue.\n\n"
+            "9. LANGUES\n"
             "- Réponds dans la langue dominante du message reçu : français, kirundi, swahili, anglais ou lingala.\n\n"
-            "8. STYLE DE SORTIE\n"
+            "10. STYLE DE SORTIE\n"
             "- Pas de JSON, pas de markdown complexe.\n"
-            "- Pas de réponses figées ou répétitives.\n"
-            "- Une réponse utile, naturelle et contextualisée.\n"
-            "- Pose une question de suivi seulement si elle aide vraiment la conversation.\n"
+            "- Pas de réponses répétitives, figées ou robotiques.\n"
+            "- Réponse naturelle, claire, utile, humaine et contextualisée.\n"
+            "- Pose une question de suivi seulement si elle aide vraiment.\n"
             "- Si l'utilisateur dit au revoir, bonne nuit, merci c'est bon, etc., fais une clôture courte, douce et naturelle."
         )
 
@@ -967,17 +980,21 @@ class GeminiChatService:
             f"{question}\n\n"
             "Instructions de réponse immédiates :\n"
             "- Répondez d'abord à ce dernier message, naturellement.\n"
-            "- Ne récitez pas vos fonctions.\n"
-            "- Ne parlez des stocks PharmiGo que si la demande concerne vraiment un médicament, une pharmacie ou une disponibilité.\n"
+            "- Ne récitez pas vos fonctions ni la liste de vos capacités.\n"
+            "- Utilisez les faits internes comme base technique fiable lorsqu'ils existent.\n"
+            "- N'ouvrez une recherche de stock, de produit ou de pharmacie que si la demande ou les faits l'exigent vraiment.\n"
+            "- Pour toute orientation vers une pharmacie, ne recommandez que des partenaires certifiés PharmiGo éligibles.\n"
+            "- Si aucun partenaire certifié n'est disponible, dites-le clairement sans mentionner de pharmacie non éligible.\n"
+            "- Si l'utilisateur écrit avec des fautes, de la fatigue ou de la confusion, interprétez son besoin avec empathie et reformulez doucement si cela aide.\n"
             "- Si `internal_answer` contient des faits fiables, utilisez-les discrètement comme base.\n"
             "- Si `response_kind` concerne une salutation, une confidentialité, une connexion, un au revoir ou une conversation générale, ne basculez jamais vers une recherche de stock.\n"
-            "- Si l'utilisateur semble parler santé ou bien-être, soyez empathique, prudent et utile.\n"
+            "- Si l'utilisateur semble parler santé ou bien-être, soyez empathique, prudent, utile et vivant.\n"
             "- S'il y a un sujet sensible et que l'utilisateur n'est pas connecté, invitez-le doucement à se connecter pour un accompagnement plus personnel.\n\n"
             "Faits internes fiables éventuellement disponibles :\n"
             f"{internal_answer or 'Aucun fait interne supplémentaire à citer mot à mot.'}\n\n"
             "Contexte structuré utile :\n"
             f"{json.dumps(public_facts, ensure_ascii=False)}\n\n"
-            "Rédigez maintenant une réponse vivante, humaine, cohérente avec l'historique."
+            "Rédigez maintenant une réponse vivante, humaine, cohérente avec l'historique et compatible avec les règles business."
         )
 
     @staticmethod
@@ -2096,8 +2113,8 @@ class ChatbotResponseService:
             requested_label = ", ".join(requested_names)
             available_stock_snapshot = self._format_available_stock_snapshot()
             return (
-                f"J'ai recherche {requested_label} dans tous les stocks actifs des pharmacies enregistrees. "
-                "Aucun stock correspondant n'est disponible pour le moment.\n\n"
+                f"J'ai recherche {requested_label} chez les partenaires certifies PharmiGo eligibles. "
+                "Je n'ai pas de stock correspondant disponible pour le moment.\n\n"
                 f"{available_stock_snapshot}"
             ), 0.8
 
@@ -2149,27 +2166,52 @@ class ChatbotResponseService:
             getattr(profile, "longitude", None) if profile else None,
         )
 
-    def _format_available_stock_snapshot(self) -> str:
+    def _iter_eligible_partner_stocks(self):
         from apps.prescriptions.models import PharmacyStock as RealPharmacyStock
 
-        visible_stocks = list(
-            RealPharmacyStock.objects.select_related("pharmacy")
+        stocks = (
+            RealPharmacyStock.objects.select_related("pharmacy", "pharmacy__subscription")
             .filter(is_available=True, quantity__gt=0)
-            .order_by("pharmacy__name", "medication_name", "dosage")[:8]
+            .order_by("pharmacy__name", "medication_name", "dosage")
         )
+        return [stock for stock in stocks if self._is_partner_eligible(getattr(stock, "pharmacy", None))]
+
+    @staticmethod
+    def _is_partner_eligible(pharmacy) -> bool:
+        if pharmacy is None:
+            return False
+        subscription = getattr(pharmacy, "subscription", None)
+        if subscription is None:
+            return False
+
+        status = (getattr(subscription, "subscription_status", "") or "").strip().lower()
+        trial_active = bool(getattr(subscription, "is_trial_active", False))
+        trial_end_date = getattr(subscription, "trial_end_date", None)
+        now = timezone.now()
+
+        if status == "active":
+            return bool(getattr(pharmacy, "is_verified", False))
+
+        if status == "trial" and trial_active and trial_end_date and now <= trial_end_date:
+            return True
+
+        return False
+
+    def _format_available_stock_snapshot(self) -> str:
+        visible_stocks = list(self._iter_eligible_partner_stocks()[:8])
 
         if not visible_stocks:
             return (
-                "Je ne vois actuellement aucun stock actif dans la base de donnees pharmacie. "
-                "Verifiez que les pharmacies ont bien enregistre leurs medicaments dans leur stock."
+                "Je n'ai pas de partenaire certifie disponible dans cette zone pour le moment. "
+                "Vous pouvez revenir un peu plus tard ou publier votre ordonnance pour que je poursuive la recherche des qu'un partenaire certifie est disponible."
             )
 
-        lines = ["Stocks actuellement visibles dans la base de donnees :"]
+        lines = ["Stocks actuellement visibles chez les partenaires certifies PharmiGo :"]
         for stock in visible_stocks:
             dosage = f" {stock.dosage}" if stock.dosage else ""
             unit = f" {stock.unit}" if stock.unit else ""
             lines.append(
-                f"- {stock.pharmacy.name}: {stock.medication_name}{dosage} | stock {stock.quantity}{unit} | "
+                f"- {stock.pharmacy.name} (Partenaire Certifie PharmiGo): {stock.medication_name}{dosage} | stock {stock.quantity}{unit} | "
                 f"prix {self._format_price(str(stock.price) if stock.price else '')}"
             )
         return "\n".join(lines)
@@ -2215,14 +2257,12 @@ class ChatbotResponseService:
         user_latitude: float | None = None,
         user_longitude: float | None = None,
     ) -> List[Dict[str, str]]:
-        from apps.prescriptions.models import PharmacyStock as RealPharmacyStock
-
         requested = normalize_text(medication_name)
         if not requested:
             return []
 
         matches: List[Dict[str, str]] = []
-        stocks = RealPharmacyStock.objects.select_related("pharmacy").filter(is_available=True, quantity__gt=0)
+        stocks = self._iter_eligible_partner_stocks()
 
         for stock in stocks:
             best_score = 0
@@ -2259,8 +2299,6 @@ class ChatbotResponseService:
         user_latitude: float | None = None,
         user_longitude: float | None = None,
     ) -> Tuple[str, List[Dict[str, str]]]:
-        from apps.prescriptions.models import PharmacyStock as RealPharmacyStock
-
         learned_name = self._find_learned_medicine_name(medication_name)
         search_name = learned_name or medication_name
         requested = normalize_text(search_name)
@@ -2276,9 +2314,7 @@ class ChatbotResponseService:
                 alias_candidates.update(normalized_aliases)
 
         exact_matches: List[Dict[str, str]] = []
-        stocks = RealPharmacyStock.objects.select_related("pharmacy").filter(is_available=True, quantity__gt=0).order_by(
-            "pharmacy__name", "-last_updated"
-        )
+        stocks = self._iter_eligible_partner_stocks()
 
         seen_keys = set()
         for stock in stocks:
@@ -2322,14 +2358,12 @@ class ChatbotResponseService:
         user_latitude: float | None = None,
         user_longitude: float | None = None,
     ) -> Tuple[str, List[Dict[str, str]]]:
-        from apps.prescriptions.models import PharmacyStock as RealPharmacyStock
-
         requested = normalize_text(medication_name)
         if not requested:
             return "", []
 
         candidate_names: Dict[str, str] = {}
-        for stock in RealPharmacyStock.objects.filter(is_available=True, quantity__gt=0):
+        for stock in self._iter_eligible_partner_stocks():
             for candidate in [stock.medication_name, stock.generic_name or ""]:
                 normalized_candidate = normalize_text(candidate)
                 if normalized_candidate:
@@ -2381,7 +2415,7 @@ class ChatbotResponseService:
         for index, item in enumerate(matches[:6], start=1):
             lines.extend(
                 [
-                    f"{index}. Pharmacie: {item['pharmacy_name']}",
+                    f"{index}. Pharmacie: {item['pharmacy_name']} (Partenaire Certifie PharmiGo)",
                     f"   Adresse: {item['address'] or 'Adresse non renseignee'}",
                     f"   Telephone: {item.get('phone_number') or 'Numero non renseigne'}",
                     f"   Produit trouve: {item.get('medication_name') or matched_name}",
@@ -2397,11 +2431,13 @@ class ChatbotResponseService:
     def _format_missing_medication_section(self, requested_name: str, close_names: List[str]) -> str:
         lines = [
             f"MEDICAMENT DEMANDE: {requested_name}",
-            f"- Desole, je n'ai pas trouve le medicament {requested_name} dans ma base de donnees de stocks actifs.",
+            f"- Desole, je n'ai pas trouve le medicament {requested_name} chez les partenaires certifies PharmiGo pour le moment.",
         ]
         if close_names:
-            lines.append("- Noms proches reperes dans les stocks:")
+            lines.append("- Noms proches reperes chez les partenaires certifies :")
             lines.extend([f"  • {name}" for name in close_names[:5]])
+        else:
+            lines.append("- Je n'ai pas de partenaire certifie disponible dans cette zone pour le moment.")
         return "\n".join(lines)
 
     @staticmethod
@@ -2431,14 +2467,12 @@ class ChatbotResponseService:
             return "Distance indisponible"
 
     def _find_close_stock_names(self, medication_name: str) -> List[str]:
-        from apps.prescriptions.models import PharmacyStock as RealPharmacyStock
-
         requested = normalize_text(medication_name)
         if not requested:
             return []
 
         candidates: Dict[str, int] = {}
-        for stock in RealPharmacyStock.objects.filter(is_available=True, quantity__gt=0):
+        for stock in self._iter_eligible_partner_stocks():
             for candidate in [stock.medication_name, stock.generic_name or ""]:
                 normalized_candidate = normalize_text(candidate)
                 if not normalized_candidate:
