@@ -2,6 +2,7 @@ import json
 import logging
 import re
 import time
+from datetime import timedelta
 from difflib import SequenceMatcher
 from math import atan2, cos, radians, sin, sqrt
 from typing import Any, Dict, List, Optional, Tuple
@@ -23,7 +24,7 @@ except ImportError:  # pragma: no cover - environment dependent
     pytesseract = None
 
 from django.conf import settings
-from django.db.models import Q
+from django.db.models import Avg, Count, Q, Sum
 from django.utils import timezone
 
 try:
@@ -887,60 +888,68 @@ class GeminiChatService:
 
     def _build_system_prompt(self) -> str:
         return (
-            "PROMPT SYSTÈME FINAL : PHARMIGO HYBRIDE (TECH & BUSINESS)\n"
-            "Tu es PharmiGo, l'intelligence centrale de la plateforme PharmiGo. "
-            "Tu es un assistant de santé empathique, humain, cohérent et rassurant. "
-            "Tu accompagnes l'utilisateur autour du bien-être, de la santé générale, de la prévention, des médicaments, des ordonnances et des pharmacies partenaires, sans jamais remplacer un médecin.\n\n"
-            "1. ARCHITECTURE DE RÉPONSE : NE RIEN CASSER\n"
-            "- Tu fonctionnes toujours avec trois piliers indissociables : le pilier technique, le pilier humain et le pilier business.\n"
-            "- Pilier technique : quand des faits internes sont fournis, ils restent prioritaires et fiables (OCR, analyse d'ordonnance, historique, stocks, profils, messages précédents).\n"
-            "- Pilier humain : applique une couche d'interprétation bienveillante pour comprendre les fautes, la confusion, la fatigue, le stress et le besoin réel derrière les mots.\n"
-            "- Pilier business : pour toute recommandation de pharmacie, de produit, de médicament en stock ou d'orientation vers une officine, ne rends visibles que les Partenaires Certifiés PharmiGo éligibles.\n\n"
+            "PROMPT SYSTÈME TOTAL : PHARMIGO OMNI (IA, BUSINESS, CRM & REPORTING PDF)\n"
+            "Tu es PharmiGo, l'intelligence centrale de la plateforme PharmiGo. Tu adaptes toujours ton aide au rôle "
+            "de l'utilisateur sans casser le flux existant de la plateforme. Tu restes un assistant de santé humain, "
+            "empathique, cohérent, fiable et prudent, jamais un remplaçant du médecin.\n\n"
+            "1. ARCHITECTURE MULTI-RÔLES & INTÉGRITÉ\n"
+            "- Tu ne sacrifies jamais un pilier pour un autre.\n"
+            "- Pilier technique : quand des faits internes fiables existent, ils restent prioritaires (OCR, extraction de médicaments, "
+            "analyse d'ordonnance, calcul de stock, historique, profils et messages récents).\n"
+            "- Pilier humain : applique toujours une couche d'interprétation bienveillante pour comprendre les fautes, l'émotion, la fatigue, "
+            "la confusion et le besoin réel derrière les mots.\n"
+            "- Pilier business : toute recommandation de pharmacie, de produit ou de stock doit respecter la visibilité exclusive des partenaires éligibles.\n"
+            "- Patient : empathie, conseils santé prudents, orientation vers les pharmacies partenaires certifiées.\n"
+            "- Pharmacien : gestion des ordonnances, aide CRM, activité, visibilité et conseils liés au service.\n"
+            "- Admin : supervision globale, statistiques réseau, état du système et vision macro.\n\n"
             "2. COUCHE D'INTERPRÉTATION (IntentClarificationLayer)\n"
-            "- Si l'utilisateur écrit avec des fautes, ne le corrige pas sèchement. Déduis son besoin et reformule doucement si nécessaire.\n"
-            "- Si l'utilisateur semble confus, reformule toujours brièvement : « Si je comprends bien... » ou équivalent naturel dans sa langue.\n"
-            "- Si l'utilisateur parle d'émotions, de fatigue, de stress, de douleur ou de gêne, commence par l'écoute active et l'empathie.\n"
-            "- Si l'utilisateur change de sujet, reconnais la transition avec naturel avant de poursuivre.\n\n"
-            "3. RÈGLE D'OR : L'ÉCOUTE ACTIVE\n"
-            "- Réponds d'abord au vrai message de l'utilisateur.\n"
-            "- Ne récite jamais spontanément la liste de tes capacités.\n"
-            "- Si l'utilisateur salue, remercie, fait une petite discussion ou clôture l'échange, réponds comme un humain vivant.\n"
-            "- Quand l'utilisateur est connecté, adopte un ton plus personnel, plus précis et plus chaleureux, sans devenir intrusif.\n\n"
-            "4. MÉMOIRE ET CONTEXTE\n"
+            "- Si l'utilisateur écrit mal ou de façon confuse, ne le corrige pas sèchement. Déduis son besoin avec tact.\n"
+            "- Reformule doucement si nécessaire : « Si je comprends bien... » ou équivalent naturel dans sa langue.\n"
+            "- Si l'utilisateur parle de fatigue, stress, gêne, douleur, honte, confusion ou émotion, commence toujours par l'écoute active et la validation.\n"
+            "- Si le sujet change, reconnais la transition avec naturel avant de répondre.\n"
+            "- Si l'utilisateur parle d'un sujet léger ou banal, réponds humainement puis ramène subtilement vers le bien-être, la santé ou l'accompagnement utile.\n\n"
+            "3. MÉMOIRE ET CONTEXTE CONTINU\n"
             "- Tu reçois un historique récent : utilise-le réellement.\n"
-            "- Traite la conversation comme un flux continu et cohérent.\n"
-            "- Ne réponds jamais comme si chaque message était le premier.\n"
-            "- Si l'utilisateur revient plus tard, tu peux reprendre le fil si l'historique le justifie.\n\n"
-            "5. LOGIQUE DE RECOMMANDATION EXCLUSIVE (BUSINESS)\n"
-            "- Pour toute recommandation de pharmacie ou de stock, ne propose que les pharmacies partenaires éligibles.\n"
-            "- Une pharmacie éligible est un Partenaire Certifié PharmiGo, soit parce qu'elle est vérifiée avec abonnement actif, soit parce qu'elle est en période d'essai active.\n"
-            "- Les pharmacies non certifiées, expirées, suspendues ou annulées restent invisibles dans les suggestions.\n"
-            "- Si aucune pharmacie éligible n'est trouvée, dis clairement : « Je n'ai pas de partenaire certifié disponible dans cette zone pour le moment. »\n"
-            "- Quand tu proposes une pharmacie éligible, mentionne explicitement « Partenaire Certifié PharmiGo ».\n\n"
-            "6. STRUCTURE DE RÉPONSE OBLIGATOIRE\n"
+            "- Traite toujours la conversation comme un flux continu, jamais comme un message isolé.\n"
+            "- Si l'utilisateur revient sur un sujet précédent, reprends naturellement ce fil.\n"
+            "- Si l'utilisateur revient plus tard et que l'historique le montre, demande comment la situation a évolué.\n\n"
+            "4. LOGIQUE BUSINESS : ÉCOSYSTÈME VÉRIFIÉ\n"
+            "- Pour toute recommandation de stock, produit, pharmacie ou orientation commerciale, ne rends visibles que les partenaires éligibles.\n"
+            "- Un partenaire éligible est : pharmacie vérifiée avec abonnement actif OU pharmacie en essai actif encore valide.\n"
+            "- Les pharmacies non vérifiées, expirées, suspendues, annulées ou hors éligibilité restent invisibles.\n"
+            "- Si aucun partenaire éligible n'est trouvé, dis clairement : « Je n'ai pas de partenaire certifié disponible dans cette zone pour le moment. »\n"
+            "- Quand tu proposes une pharmacie éligible, mentionne explicitement « Partenaire Certifié PharmiGo » avec les faits fiables fournis.\n"
+            "- Si le contexte s'y prête avec un pharmacien ou un admin, tu peux expliquer que la visibilité dans le chat et les rapports valorisent les partenaires Verified/Trial.\n\n"
+            "5. STRUCTURE DE RÉPONSE OBLIGATOIRE\n"
             "- Accueil et empathie.\n"
-            "- Conseil santé ou bien-être immédiat quand c'est utile.\n"
-            "- Analyse technique si des faits internes fiables sont disponibles (ordonnance, OCR, stocks, historique).\n"
-            "- Orientation produit et lieu, seulement avec partenaires certifiés éligibles.\n"
-            "- Relance finale douce pour garder le fil de la conversation.\n\n"
-            "7. LIMITES MÉDICALES STRICTES\n"
+            "- Conseil santé ou bien-être immédiat si utile.\n"
+            "- Analyse technique si des faits internes fiables sont disponibles.\n"
+            "- Orientation produit et lieu seulement avec partenaires certifiés éligibles.\n"
+            "- Relance finale douce et utile pour garder le fil.\n\n"
+            "6. RAPPORTS & CONFIDENTIALITÉ\n"
+            "- Si un pharmacien ou un admin demande un rapport, réponds dans un style professionnel et orienté rapport.\n"
+            "- Tu peux résumer : activité, volume d'ordonnances, stocks, abonnement, croissance, visibilité, conversion trial vers verified si les données sont fournies.\n"
+            "- Tu ne dois jamais inclure le contenu textuel des conversations dans un rapport. Seules des métriques ou volumes agrégés sont autorisés.\n"
+            "- Si la génération PDF n'est pas explicitement disponible dans les faits internes, n'invente pas un lien de téléchargement. Présente seulement le rapport textuel et propose la préparation du PDF si l'outil le permet.\n\n"
+            "7. MESSAGERIE CRM & RELATION\n"
+            "- Tu peux parler de messagerie sécurisée, suivi patient, contacts et fidélisation seulement si cela correspond au rôle et aux faits internes.\n"
+            "- Pour un patient non connecté qui veut parler d'un sujet intime ou suivre une situation, invite-le doucement à se connecter pour un échange plus personnel et continu.\n"
+            "- Pour un utilisateur connecté, tu peux utiliser son prénom avec parcimonie et rappeler que vous êtes dans son espace personnel PharmiGo, sans promettre une confidentialité technique absolue.\n\n"
+            "8. LIMITES MÉDICALES STRICTES\n"
             "- Tu ne poses jamais de diagnostic certain.\n"
             "- Tu ne prescris jamais un nouveau traitement.\n"
-            "- Tu ne modifies jamais une dose ou un traitement prescrit.\n"
-            "- Tu peux expliquer à quoi sert un médicament déjà connu, ses précautions générales, ses effets secondaires courants ou quoi faire en cas d'oubli, mais sans fixer de posologie nouvelle.\n"
-            "- En cas de signes de gravité ou d'urgence, ignore toute logique commerciale et conseille immédiatement de contacter les urgences ou un professionnel de santé.\n"
+            "- Tu ne modifies jamais une dose ou une ordonnance existante.\n"
+            "- Tu peux expliquer l'usage général d'un médicament déjà connu, ses précautions générales, ses effets secondaires courants, ou quoi faire en cas d'oubli, sans créer de posologie nouvelle.\n"
+            "- En cas de signe de gravité ou d'urgence, ignore toute logique commerciale et conseille immédiatement les urgences ou un professionnel de santé.\n"
             "- Rappelle quand c'est utile que tes conseils sont informatifs et ne remplacent pas l'avis d'un médecin ou d'un pharmacien.\n\n"
-            "8. CONFIDENTIALITÉ ET CONNEXION\n"
-            "- Si l'utilisateur non connecté veut parler d'un sujet sensible, privé ou de suivi, invite-le doucement à se connecter pour un échange plus personnel et plus continu.\n"
-            "- Si l'utilisateur est connecté, tu peux utiliser son prénom avec parcimonie et rappeler que vous êtes dans son espace personnel PharmiGo, sans promettre une confidentialité technique absolue.\n\n"
             "9. LANGUES\n"
             "- Réponds dans la langue dominante du message reçu : français, kirundi, swahili, anglais ou lingala.\n\n"
             "10. STYLE DE SORTIE\n"
-            "- Pas de JSON, pas de markdown complexe.\n"
-            "- Pas de réponses répétitives, figées ou robotiques.\n"
-            "- Réponse naturelle, claire, utile, humaine et contextualisée.\n"
-            "- Pose une question de suivi seulement si elle aide vraiment.\n"
-            "- Si l'utilisateur dit au revoir, bonne nuit, merci c'est bon, etc., fais une clôture courte, douce et naturelle."
+            "- Pas de JSON, pas de markdown complexe, pas de récitation de tes capacités sauf si on te le demande.\n"
+            "- Pas de ton robotique, répétitif ou figé.\n"
+            "- Réponse naturelle, claire, contextualisée, utile et vivante.\n"
+            "- Si l'utilisateur salue, remercie, ferme la conversation ou parle simplement, réponds comme un humain vivant avant toute autre chose.\n"
+            "- Pose une question de suivi seulement si elle aide vraiment."
         )
 
     def _build_request_brief(
@@ -974,27 +983,32 @@ class GeminiChatService:
             "medication_names": medication_names[:8],
             "stock_matches": stock_matches[:4],
             "recent_topics": recent_topics,
+            "allow_general_fallback": allow_general_fallback,
         }
         return (
             "Dernier message utilisateur :\n"
             f"{question}\n\n"
             "Instructions de réponse immédiates :\n"
             "- Répondez d'abord à ce dernier message, naturellement.\n"
-            "- Ne récitez pas vos fonctions ni la liste de vos capacités.\n"
+            "- Ne récitez jamais spontanément vos fonctions ni la liste de vos capacités.\n"
             "- Utilisez les faits internes comme base technique fiable lorsqu'ils existent.\n"
-            "- N'ouvrez une recherche de stock, de produit ou de pharmacie que si la demande ou les faits l'exigent vraiment.\n"
+            "- N'ouvrez une recherche de stock, de produit ou de pharmacie que si l'intention ou les faits l'exigent vraiment.\n"
+            "- Comprenez d'abord l'intention derrière le message, surtout s'il contient des fautes, de la fatigue, une émotion ou une formulation floue.\n"
+            "- Si la demande est confuse, reformulez brièvement et validez doucement avant d'orienter.\n"
             "- Pour toute orientation vers une pharmacie, ne recommandez que des partenaires certifiés PharmiGo éligibles.\n"
             "- Si aucun partenaire certifié n'est disponible, dites-le clairement sans mentionner de pharmacie non éligible.\n"
-            "- Si l'utilisateur écrit avec des fautes, de la fatigue ou de la confusion, interprétez son besoin avec empathie et reformulez doucement si cela aide.\n"
+            "- Si l'utilisateur écrit avec des fautes, parle vaguement ou semble confus, déduisez son besoin avec empathie et reformulez doucement si cela aide.\n"
             "- Si `internal_answer` contient des faits fiables, utilisez-les discrètement comme base.\n"
             "- Si `response_kind` concerne une salutation, une confidentialité, une connexion, un au revoir ou une conversation générale, ne basculez jamais vers une recherche de stock.\n"
             "- Si l'utilisateur semble parler santé ou bien-être, soyez empathique, prudent, utile et vivant.\n"
             "- S'il y a un sujet sensible et que l'utilisateur n'est pas connecté, invitez-le doucement à se connecter pour un accompagnement plus personnel.\n\n"
+            "- Si le rôle est pharmacien ou admin et que la demande porte sur le service, l'activité, la visibilité, l'abonnement ou un rapport, répondez dans un style business clair sans inventer de PDF ni de données non fournies.\n"
+            "- Ne mentionnez jamais le contenu textuel des conversations privées comme matière d'un rapport. Seuls des volumes ou métriques agrégées sont autorisés.\n\n"
             "Faits internes fiables éventuellement disponibles :\n"
             f"{internal_answer or 'Aucun fait interne supplémentaire à citer mot à mot.'}\n\n"
             "Contexte structuré utile :\n"
             f"{json.dumps(public_facts, ensure_ascii=False)}\n\n"
-            "Rédigez maintenant une réponse vivante, humaine, cohérente avec l'historique et compatible avec les règles business."
+            "Rédigez maintenant une réponse vivante, humaine, cohérente avec l'historique, fidèle aux faits techniques et compatible avec les règles business."
         )
 
     @staticmethod
@@ -1309,6 +1323,18 @@ class ChatbotResponseService:
             response_kind = "platform_usage"
             detected_intent = "platform_usage"
             internal_answer = self._answer_platform_usage_question(lowered_question)
+        elif role in {"pharmacy", "admin"} and self._looks_like_report_request(cleaned_question):
+            internal_answer = self._build_activity_report(
+                question=cleaned_question,
+                role=role,
+                context=context,
+                user=user,
+            )
+            response_kind = "activity_report"
+            detected_intent = "activity_report"
+            allow_general_fallback = False
+            confidence_before = 0.68
+            confidence_after = 0.95
         else:
             health_answer = self._answer_health_question(cleaned_question, role, context)
             if health_answer:
@@ -1483,6 +1509,286 @@ class ChatbotResponseService:
         if response_kind == "general_conversation":
             return self._build_general_conversation_seed(question=question, role=role, context=context)
         return self._fallback_answer(role, context)
+
+    @staticmethod
+    def _looks_like_report_request(question: str) -> bool:
+        normalized = normalize_text(question or "")
+        report_markers = [
+            "rapport",
+            "report",
+            "bilan",
+            "hebdomadaire",
+            "weekly",
+            "mensuel",
+            "monthly",
+            "pdf",
+            "activite",
+            "activité",
+            "statistique",
+            "statistiques",
+            "performance",
+            "boss",
+            "responsable",
+        ]
+        return any(marker in normalized for marker in report_markers)
+
+    def _build_activity_report(
+        self,
+        *,
+        question: str,
+        role: str,
+        context: Dict[str, Any],
+        user,
+    ) -> str:
+        if role == "pharmacy":
+            return self._build_pharmacy_activity_report(question=question, context=context, user=user)
+        return self._build_admin_activity_report(question=question, context=context)
+
+    @staticmethod
+    def _resolve_report_period(question: str) -> Tuple[timezone.datetime, timezone.datetime, str]:
+        normalized = normalize_text(question or "")
+        now = timezone.now()
+        end = now
+
+        if any(marker in normalized for marker in ["aujourd", "today", "journalier", "daily"]):
+            start = now - timedelta(days=1)
+            label = f"du {start.astimezone(timezone.get_current_timezone()):%d/%m/%Y %H:%M} au {end.astimezone(timezone.get_current_timezone()):%d/%m/%Y %H:%M}"
+            return start, end, label
+
+        if any(marker in normalized for marker in ["mensuel", "monthly", "mois"]):
+            start = now - timedelta(days=30)
+            label = f"du {start.astimezone(timezone.get_current_timezone()):%d/%m/%Y} au {end.astimezone(timezone.get_current_timezone()):%d/%m/%Y}"
+            return start, end, label
+
+        start = now - timedelta(days=7)
+        label = f"du {start.astimezone(timezone.get_current_timezone()):%d/%m/%Y} au {end.astimezone(timezone.get_current_timezone()):%d/%m/%Y}"
+        return start, end, label
+
+    def _build_pharmacy_activity_report(
+        self,
+        *,
+        question: str,
+        context: Dict[str, Any],
+        user,
+    ) -> str:
+        from apps.chat.models import ChatMessage as InterPharmacyMessage
+        from apps.pharmacies.models import PharmacyContact, PharmacySubscription
+        from apps.prescriptions.models import MedicationExtraction, PharmacyStock as RealPharmacyStock, Prescription, PrescriptionResponse
+
+        profile = getattr(user, "profile", None)
+        pharmacy = getattr(profile, "pharmacy", None) if profile else None
+        display_name = (context.get("display_name") or getattr(pharmacy, "name", "") or "cher partenaire").strip()
+        if pharmacy is None:
+            return (
+                f"{display_name}, je peux vous aider à structurer un rapport d'activité, mais je n'ai pas trouvé votre officine liée à ce compte. "
+                "Vérifiez votre profil PharmiGo ou contactez l'administrateur pour rattacher correctement votre pharmacie."
+            )
+
+        start, end, period_label = self._resolve_report_period(question)
+
+        active_statuses = ["pharmacy_selected", "preparing", "ready", "served", "patient_confirmed", "completed"]
+        pharmacy_prescriptions = Prescription.objects.filter(pharmacy=pharmacy, created_at__gte=start, created_at__lte=end)
+        pharmacy_responses = PrescriptionResponse.objects.filter(pharmacy=pharmacy, created_at__gte=start, created_at__lte=end)
+        stock_qs = RealPharmacyStock.objects.filter(pharmacy=pharmacy)
+        new_contacts_qs = PharmacyContact.objects.filter(pharmacy=pharmacy, created_at__gte=start, created_at__lte=end)
+        message_qs = InterPharmacyMessage.objects.filter(
+            Q(pharmacy=pharmacy) | Q(sender_pharmacy=pharmacy),
+            created_at__gte=start,
+            created_at__lte=end,
+        )
+
+        subscription = PharmacySubscription.objects.filter(pharmacy=pharmacy).first()
+        subscription_label = "NON CONFIGURÉ"
+        subscription_detail = "Aucune donnée d'abonnement n'a été trouvée."
+        if subscription:
+            status_label_map = {
+                "trial": "ESSAI ACTIF",
+                "active": "ACTIF",
+                "expired": "EXPIRÉ",
+                "suspended": "SUSPENDU",
+                "cancelled": "ANNULÉ",
+            }
+            subscription_label = status_label_map.get(subscription.subscription_status, subscription.subscription_status.upper())
+            if subscription.subscription_status == "trial" and subscription.trial_end_date:
+                remaining_days = max((subscription.trial_end_date - timezone.now()).days, 0)
+                subscription_detail = f"Plan Trial - {remaining_days} jour(s) restant(s)."
+            elif subscription.subscription_status == "active" and subscription.next_payment_due_date:
+                remaining_days = max((subscription.next_payment_due_date - timezone.now()).days, 0)
+                subscription_detail = f"Plan Actif - {remaining_days} jour(s) avant prochaine échéance."
+            elif subscription.subscription_status == "active":
+                subscription_detail = "Plan Actif."
+            else:
+                subscription_detail = f"Statut actuel : {subscription_label}."
+
+        stock_summary = stock_qs.aggregate(
+            total_lines=Count("id"),
+            available_lines=Count("id", filter=Q(is_available=True)),
+            unavailable_lines=Count("id", filter=Q(is_available=False)),
+            total_units=Sum("quantity"),
+            low_stock_lines=Count("id", filter=Q(quantity__lte=5)),
+        )
+        top_low_stock = list(
+            stock_qs.filter(quantity__lte=5).order_by("quantity", "medication_name").values_list("medication_name", flat=True)[:5]
+        )
+
+        prescription_summary = pharmacy_prescriptions.aggregate(
+            total=Count("id"),
+            selected=Count("id", filter=Q(status="pharmacy_selected")),
+            preparing=Count("id", filter=Q(status="preparing")),
+            ready=Count("id", filter=Q(status="ready")),
+            served=Count("id", filter=Q(status="served")),
+            patient_confirmed=Count("id", filter=Q(status="patient_confirmed")),
+            completed=Count("id", filter=Q(status="completed")),
+            cancelled=Count("id", filter=Q(status="cancelled")),
+            error=Count("id", filter=Q(status="error")),
+            revenue=Sum("total_amount"),
+        )
+        response_summary = pharmacy_responses.aggregate(
+            total=Count("id"),
+            quoted=Count("id", filter=Q(status="quoted")),
+            confirmed=Count("id", filter=Q(status="confirmed")),
+            average_eta=Avg("estimated_minutes"),
+            quoted_value=Sum("total_price"),
+        )
+        patient_count = pharmacy_prescriptions.exclude(
+            Q(patient_user__isnull=True) & Q(patient_email__exact="")
+        ).aggregate(
+            total=Count("id"),
+            unique_registered=Count("patient_user", distinct=True),
+            unique_email=Count("patient_email", distinct=True),
+        )
+        delivered_medication_summary = MedicationExtraction.objects.filter(
+            prescription__pharmacy=pharmacy,
+            prescription__created_at__gte=start,
+            prescription__created_at__lte=end,
+            prescription__status__in=["served", "patient_confirmed", "completed"],
+        ).aggregate(
+            delivered_lines=Count("id"),
+            delivered_units=Sum("quantity"),
+        )
+
+        active_case_count = pharmacy_prescriptions.filter(status__in=active_statuses).count()
+        completed_case_count = (prescription_summary.get("served") or 0) + (prescription_summary.get("patient_confirmed") or 0) + (prescription_summary.get("completed") or 0)
+        message_count = message_qs.count()
+        new_contacts = new_contacts_qs.count()
+        average_eta = response_summary.get("average_eta")
+
+        overview_lines = [
+            f"Bonsoir {display_name}. Voici votre rapport d'activité professionnel pour la période {period_label}.",
+            "",
+            f"1. Résumé exécutif",
+            f"- Officine : {pharmacy.name}",
+            f"- Statut abonnement : {subscription_label}",
+            f"- Détail abonnement : {subscription_detail}",
+            f"- Ordonnances directement traitées : {prescription_summary.get('total') or 0}",
+            f"- Cas actifs suivis cette période : {active_case_count}",
+            f"- Cas finalisés/livrés : {completed_case_count}",
+            f"- Nouveaux contacts patients : {new_contacts}",
+            f"- Volume de messagerie traité : {message_count} message(s) (statistique de volume uniquement).",
+            "",
+            "2. Activité ordonnances",
+            f"- Ordonnances sélectionnées pour votre officine : {prescription_summary.get('selected') or 0}",
+            f"- En préparation : {prescription_summary.get('preparing') or 0}",
+            f"- Prêtes au retrait/livraison : {prescription_summary.get('ready') or 0}",
+            f"- Servies : {prescription_summary.get('served') or 0}",
+            f"- Confirmées par les patients : {prescription_summary.get('patient_confirmed') or 0}",
+            f"- Terminées : {prescription_summary.get('completed') or 0}",
+            f"- Annulées ou en erreur : {(prescription_summary.get('cancelled') or 0) + (prescription_summary.get('error') or 0)}",
+            "",
+            "3. Interaction commerciale et CRM",
+            f"- Réponses envoyées sur les ordonnances publiques : {response_summary.get('total') or 0}",
+            f"- Devis/quotations émises : {response_summary.get('quoted') or 0}",
+            f"- Réponses confirmées : {response_summary.get('confirmed') or 0}",
+            f"- Temps estimatif moyen communiqué : {int(round(average_eta)) if average_eta else 0} minute(s)",
+            f"- Patients distincts pris en charge : {max(patient_count.get('unique_registered') or 0, patient_count.get('unique_email') or 0)}",
+            "",
+            "4. Stock & produits",
+            f"- Lignes de stock suivies : {stock_summary.get('total_lines') or 0}",
+            f"- Lignes actuellement disponibles : {stock_summary.get('available_lines') or 0}",
+            f"- Lignes indisponibles : {stock_summary.get('unavailable_lines') or 0}",
+            f"- Produits en faible quantité (<= 5 unités) : {stock_summary.get('low_stock_lines') or 0}",
+            f"- Quantité totale suivie dans le stock : {stock_summary.get('total_units') or 0}",
+            f"- Médicaments livrés/confirmés cette période : {delivered_medication_summary.get('delivered_lines') or 0} ligne(s) pour {delivered_medication_summary.get('delivered_units') or 0} unité(s)",
+            "",
+            "5. Indicateurs financiers et visibilité",
+            f"- Valeur totale des ordonnances clôturées/attribuées : {prescription_summary.get('revenue') or 0}",
+            f"- Valeur des réponses/devis envoyés : {response_summary.get('quoted_value') or 0}",
+            f"- Positionnement visibilité PharmiGo : Partenaire Certifié PharmiGo" if pharmacy.is_verified or (subscription and subscription.is_active()) else "- Positionnement visibilité PharmiGo : partenaire non éligible",
+        ]
+
+        if top_low_stock:
+            overview_lines.extend(
+                [
+                    "",
+                    "6. Points d'attention stock",
+                    f"- Produits à surveiller rapidement : {', '.join(top_low_stock)}.",
+                ]
+            )
+
+        overview_lines.extend(
+            [
+                "",
+                "7. Confidentialité",
+                "- Ce rapport n'inclut aucun contenu textuel de conversation. Seuls les volumes et indicateurs agrégés sont repris pour protéger vos échanges privés.",
+                "",
+                "8. Export PDF",
+                "- Le contenu ci-dessus est prêt pour une mise en forme PDF professionnelle depuis votre interface ou votre outil bureautique habituel.",
+                "",
+                "Si vous voulez, je peux maintenant vous reformuler ce rapport dans un style encore plus corporate pour votre boss, ou le résumer en une version courte d'une page."
+            ]
+        )
+        return "\n".join(overview_lines)
+
+    def _build_admin_activity_report(
+        self,
+        *,
+        question: str,
+        context: Dict[str, Any],
+    ) -> str:
+        from apps.chat.models import ChatMessage as InterPharmacyMessage
+        from apps.pharmacies.models import Pharmacy as RealPharmacy, PharmacySubscription
+        from apps.prescriptions.models import Prescription, PrescriptionResponse
+
+        start, end, period_label = self._resolve_report_period(question)
+        subscriptions = PharmacySubscription.objects.select_related("pharmacy")
+        active_verified = subscriptions.filter(subscription_status="active", pharmacy__is_verified=True).count()
+        active_trial = subscriptions.filter(subscription_status="trial", is_trial_active=True, trial_end_date__gte=timezone.now()).count()
+        expired_or_inactive = subscriptions.exclude(
+            Q(subscription_status="active") | Q(subscription_status="trial", is_trial_active=True, trial_end_date__gte=timezone.now())
+        ).count()
+        total_prescriptions = Prescription.objects.filter(created_at__gte=start, created_at__lte=end)
+        total_messages = InterPharmacyMessage.objects.filter(created_at__gte=start, created_at__lte=end).count()
+        responses = PrescriptionResponse.objects.filter(created_at__gte=start, created_at__lte=end)
+        converted_trial_to_active = subscriptions.filter(
+            subscription_status="active",
+            last_payment_date__gte=start,
+            last_payment_date__lte=end,
+        ).count()
+
+        return "\n".join(
+            [
+                f"Bonjour. Voici le rapport de supervision PharmiGo pour la période {period_label}.",
+                "",
+                "1. Santé du réseau",
+                f"- Pharmacies partenaires vérifiées actives : {active_verified}",
+                f"- Pharmacies en essai actif (Trial) : {active_trial}",
+                f"- Pharmacies expirées, suspendues ou inactives : {expired_or_inactive}",
+                f"- Pharmacies totales référencées : {RealPharmacy.objects.count()}",
+                "",
+                "2. Activité prescriptions",
+                f"- Ordonnances créées : {total_prescriptions.count()}",
+                f"- Ordonnances finalisées (servies/confirmées/terminées) : {total_prescriptions.filter(status__in=['served', 'patient_confirmed', 'completed']).count()}",
+                f"- Réponses pharmacies émises : {responses.count()}",
+                "",
+                "3. Croissance & business",
+                f"- Conversions observées Trial vers activité payante : {converted_trial_to_active}",
+                f"- Volume de messagerie système traité : {total_messages} message(s) (sans contenu, métrique uniquement).",
+                "",
+                "4. Confidentialité & export",
+                "- Aucun contenu textuel des conversations n'est inclus dans ce rapport. Seules les métriques agrégées sont autorisées.",
+                "- Ce rapport est prêt pour une mise en forme PDF professionnelle si l'outil d'export est disponible côté interface.",
+            ]
+        )
 
     def _build_gemini_context_payload(
         self,

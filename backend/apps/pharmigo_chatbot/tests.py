@@ -8,7 +8,7 @@ from django.utils import timezone
 from apps.pharmigo_chatbot.models import ConversationHistory, ConversationSession
 from apps.pharmigo_chatbot.services import ChatbotContextService, ChatbotResponseService
 from apps.pharmacies.models import Pharmacy as RealPharmacy, PharmacySubscription
-from apps.prescriptions.models import PharmacyStock as RealPharmacyStock
+from apps.prescriptions.models import PharmacyStock as RealPharmacyStock, Prescription, PrescriptionResponse, MedicationExtraction
 from apps.users.models import UserProfile
 
 
@@ -20,6 +20,38 @@ class ChatbotResponseServiceTests(TestCase):
             password="testpass123",
         )
         UserProfile.objects.create(user=self.user, role="patient", email_verified=True)
+        self.pharmacy = RealPharmacy.objects.create(
+            name="Pharmacie Mapendo",
+            city="Bujumbura",
+            address="Rohero I",
+            phone_number="+25761010000",
+            is_verified=True,
+        )
+        self.pharmacy_user = User.objects.create_user(
+            username="pharmacy-chatbot",
+            email="pharmacy-chatbot@example.com",
+            password="testpass123",
+            first_name="Mapendo",
+        )
+        UserProfile.objects.create(
+            user=self.pharmacy_user,
+            role="pharmacy",
+            email_verified=True,
+            pharmacy=self.pharmacy,
+        )
+        PharmacySubscription.objects.create(
+            pharmacy=self.pharmacy,
+            subscription_status="active",
+            is_trial_active=False,
+            trial_end_date=timezone.now() + timedelta(days=7),
+            next_payment_due_date=timezone.now() + timedelta(days=22),
+        )
+        self.admin_user = User.objects.create_user(
+            username="admin-chatbot",
+            email="admin-chatbot@example.com",
+            password="testpass123",
+        )
+        UserProfile.objects.create(user=self.admin_user, role="admin", email_verified=True)
 
     @patch("apps.pharmigo_chatbot.services.GeminiChatService.generate_response")
     def test_uses_gemini_humanized_reply_for_general_question(self, mocked_generate):
@@ -121,16 +153,10 @@ class ChatbotResponseServiceTests(TestCase):
         self.assertNotIn("stocks des pharmacies", response.lower())
 
     def test_admin_role_uses_admin_fallback(self):
-        admin_user = User.objects.create_user(
-            username="admin-chatbot",
-            email="admin-chatbot@example.com",
-            password="testpass123",
-        )
-        UserProfile.objects.create(user=admin_user, role="admin", email_verified=True)
         service = ChatbotResponseService()
         service.gemini_chat.available = False
 
-        response = service.answer("Que peux-tu faire pour moi ?", admin_user)
+        response = service.answer("Que peux-tu faire pour moi ?", self.admin_user)
 
         self.assertIn("plateforme", response.lower())
         self.assertIn("pharmigo", response.lower())
@@ -341,3 +367,72 @@ class ChatbotResponseServiceTests(TestCase):
         self.assertIn("partenaire certifie", answer.lower())
         self.assertNotIn("Pharmacie Expiree", answer)
         self.assertGreaterEqual(confidence, 0.75)
+
+    def test_pharmacy_weekly_report_uses_real_system_metrics(self):
+        now = timezone.now()
+        RealPharmacyStock.objects.create(
+            pharmacy=self.pharmacy,
+            medication_name="Paracetamol",
+            dosage="500mg",
+            quantity=12,
+            unit="comprimés",
+            is_available=True,
+        )
+        RealPharmacyStock.objects.create(
+            pharmacy=self.pharmacy,
+            medication_name="Amoxicilline",
+            dosage="500mg",
+            quantity=3,
+            unit="gélules",
+            is_available=True,
+        )
+        prescription = Prescription.objects.create(
+            patient_name="Aline",
+            patient_email="aline@example.com",
+            patient_user=self.user,
+            pharmacy=self.pharmacy,
+            status="completed",
+            medication_name="Paracetamol",
+            total_amount=2500,
+        )
+        Prescription.objects.filter(id=prescription.id).update(created_at=now - timedelta(days=2))
+        MedicationExtraction.objects.create(
+            prescription=prescription,
+            name="Paracetamol",
+            dosage="500mg",
+            quantity=2,
+            confirmed=True,
+        )
+        PrescriptionResponse.objects.create(
+            prescription=prescription,
+            pharmacy=self.pharmacy,
+            responder_name="Mapendo",
+            availability_note="Disponible",
+            estimated_minutes=20,
+            total_price=2500,
+            status="confirmed",
+        )
+
+        service = ChatbotResponseService()
+        service.gemini_chat.available = False
+
+        response = service.answer("fais moi mon rapport hebdomadaire en pdf", self.pharmacy_user)
+
+        self.assertIn("rapport d'activité professionnel", response.lower())
+        self.assertIn("pharmacie mapendo", response.lower())
+        self.assertIn("ordonnances directement traitées", response.lower())
+        self.assertIn("nouveaux contacts patients", response.lower())
+        self.assertIn("volume de messagerie traité", response.lower())
+        self.assertIn("prêt", response.lower())
+        self.assertNotIn("copier les totaux", response.lower())
+        self.assertNotIn("transmettez ici", response.lower())
+
+    def test_admin_report_uses_aggregated_metrics_without_message_content(self):
+        service = ChatbotResponseService()
+        service.gemini_chat.available = False
+
+        response = service.answer("prépare moi un rapport mensuel du réseau en pdf", self.admin_user)
+
+        self.assertIn("rapport de supervision pharmigo", response.lower())
+        self.assertIn("pharmacies partenaires vérifiées actives", response.lower())
+        self.assertIn("aucun contenu textuel des conversations", response.lower())
