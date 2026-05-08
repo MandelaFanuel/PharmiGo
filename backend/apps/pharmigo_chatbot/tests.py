@@ -423,6 +423,8 @@ class ChatbotResponseServiceTests(TestCase):
         self.assertIn("ordonnances directement traitées", response.lower())
         self.assertIn("nouveaux contacts patients", response.lower())
         self.assertIn("volume de messagerie traité", response.lower())
+        self.assertIn("chiffre d'affaires total généré via pharmigo", response.lower())
+        self.assertIn("note de pharmigo", response.lower())
         self.assertIn("prêt", response.lower())
         self.assertNotIn("copier les totaux", response.lower())
         self.assertNotIn("transmettez ici", response.lower())
@@ -435,4 +437,5 @@ class ChatbotResponseServiceTests(TestCase):
 
         self.assertIn("rapport de supervision pharmigo", response.lower())
         self.assertIn("pharmacies partenaires vérifiées actives", response.lower())
+        self.assertIn("chiffre d'affaires total tracé via pharmigo", response.lower())
         self.assertIn("aucun contenu textuel des conversations", response.lower())

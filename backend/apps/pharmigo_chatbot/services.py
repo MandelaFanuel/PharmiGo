@@ -888,7 +888,7 @@ class GeminiChatService:
 
     def _build_system_prompt(self) -> str:
         return (
-            "PROMPT SYSTÈME TOTAL : PHARMIGO OMNI (IA, BUSINESS, CRM & REPORTING PDF)\n"
+            "PROMPT SYSTÈME TOTAL : PHARMIGO OMNI (INTELLIGENCE, FINANCES & STRATÉGIE)\n"
             "Tu es PharmiGo, l'intelligence centrale de la plateforme PharmiGo. Tu adaptes toujours ton aide au rôle "
             "de l'utilisateur sans casser le flux existant de la plateforme. Tu restes un assistant de santé humain, "
             "empathique, cohérent, fiable et prudent, jamais un remplaçant du médecin.\n\n"
@@ -900,8 +900,8 @@ class GeminiChatService:
             "la confusion et le besoin réel derrière les mots.\n"
             "- Pilier business : toute recommandation de pharmacie, de produit ou de stock doit respecter la visibilité exclusive des partenaires éligibles.\n"
             "- Patient : empathie, conseils santé prudents, orientation vers les pharmacies partenaires certifiées.\n"
-            "- Pharmacien : gestion des ordonnances, aide CRM, activité, visibilité et conseils liés au service.\n"
-            "- Admin : supervision globale, statistiques réseau, état du système et vision macro.\n\n"
+            "- Pharmacien : gestion des ordonnances, aide CRM, activité, revenus, abonnements, rapports d'officine et visibilité.\n"
+            "- Admin : supervision globale, statistiques réseau, performance financière agrégée et vision de croissance.\n\n"
             "2. COUCHE D'INTERPRÉTATION (IntentClarificationLayer)\n"
             "- Si l'utilisateur écrit mal ou de façon confuse, ne le corrige pas sèchement. Déduis son besoin avec tact.\n"
             "- Reformule doucement si nécessaire : « Si je comprends bien... » ou équivalent naturel dans sa langue.\n"
@@ -926,9 +926,11 @@ class GeminiChatService:
             "- Analyse technique si des faits internes fiables sont disponibles.\n"
             "- Orientation produit et lieu seulement avec partenaires certifiés éligibles.\n"
             "- Relance finale douce et utile pour garder le fil.\n\n"
-            "6. RAPPORTS & CONFIDENTIALITÉ\n"
+            "6. RAPPORTS, FINANCES & CONFIDENTIALITÉ\n"
             "- Si un pharmacien ou un admin demande un rapport, réponds dans un style professionnel et orienté rapport.\n"
-            "- Tu peux résumer : activité, volume d'ordonnances, stocks, abonnement, croissance, visibilité, conversion trial vers verified si les données sont fournies.\n"
+            "- Quand des données de prix ou de volumes passés via PharmiGo existent, calcule le chiffre d'affaires total sur la période demandée.\n"
+            "- Propose toujours une période par défaut cohérente (jour, semaine, mois, année) tout en laissant la possibilité de préciser une autre date.\n"
+            "- Tu peux résumer : activité, volume d'ordonnances, stocks, abonnement, revenus, croissance, visibilité, conversion trial vers verified si les données sont fournies.\n"
             "- Tu ne dois jamais inclure le contenu textuel des conversations dans un rapport. Seules des métriques ou volumes agrégés sont autorisés.\n"
             "- Si la génération PDF n'est pas explicitement disponible dans les faits internes, n'invente pas un lien de téléchargement. Présente seulement le rapport textuel et propose la préparation du PDF si l'outil le permet.\n\n"
             "7. MESSAGERIE CRM & RELATION\n"
@@ -1002,7 +1004,7 @@ class GeminiChatService:
             "- Si `response_kind` concerne une salutation, une confidentialité, une connexion, un au revoir ou une conversation générale, ne basculez jamais vers une recherche de stock.\n"
             "- Si l'utilisateur semble parler santé ou bien-être, soyez empathique, prudent, utile et vivant.\n"
             "- S'il y a un sujet sensible et que l'utilisateur n'est pas connecté, invitez-le doucement à se connecter pour un accompagnement plus personnel.\n\n"
-            "- Si le rôle est pharmacien ou admin et que la demande porte sur le service, l'activité, la visibilité, l'abonnement ou un rapport, répondez dans un style business clair sans inventer de PDF ni de données non fournies.\n"
+            "- Si le rôle est pharmacien ou admin et que la demande porte sur le service, l'activité, la visibilité, l'abonnement, les revenus ou un rapport, répondez dans un style business clair sans inventer de PDF ni de données non fournies.\n"
             "- Ne mentionnez jamais le contenu textuel des conversations privées comme matière d'un rapport. Seuls des volumes ou métriques agrégées sont autorisés.\n\n"
             "Faits internes fiables éventuellement disponibles :\n"
             f"{internal_answer or 'Aucun fait interne supplémentaire à citer mot à mot.'}\n\n"
@@ -1560,6 +1562,11 @@ class ChatbotResponseService:
             label = f"du {start.astimezone(timezone.get_current_timezone()):%d/%m/%Y} au {end.astimezone(timezone.get_current_timezone()):%d/%m/%Y}"
             return start, end, label
 
+        if any(marker in normalized for marker in ["annuel", "annuelle", "yearly", "year", "annee", "année"]):
+            start = now - timedelta(days=365)
+            label = f"du {start.astimezone(timezone.get_current_timezone()):%d/%m/%Y} au {end.astimezone(timezone.get_current_timezone()):%d/%m/%Y}"
+            return start, end, label
+
         start = now - timedelta(days=7)
         label = f"du {start.astimezone(timezone.get_current_timezone()):%d/%m/%Y} au {end.astimezone(timezone.get_current_timezone()):%d/%m/%Y}"
         return start, end, label
@@ -1600,6 +1607,7 @@ class ChatbotResponseService:
         subscription = PharmacySubscription.objects.filter(pharmacy=pharmacy).first()
         subscription_label = "NON CONFIGURÉ"
         subscription_detail = "Aucune donnée d'abonnement n'a été trouvée."
+        is_partner_eligible = bool(getattr(pharmacy, "is_verified", False))
         if subscription:
             status_label_map = {
                 "trial": "ESSAI ACTIF",
@@ -1619,6 +1627,14 @@ class ChatbotResponseService:
                 subscription_detail = "Plan Actif."
             else:
                 subscription_detail = f"Statut actuel : {subscription_label}."
+            is_partner_eligible = subscription.is_active() and (getattr(pharmacy, "is_verified", False) or subscription.subscription_status == "trial")
+
+        if not is_partner_eligible:
+            return (
+                f"{display_name}, votre officine n'est pas actuellement éligible à ce rapport stratégique PharmiGo. "
+                "Seules les pharmacies Verified ou Trial avec abonnement actif peuvent générer ce niveau de rapport. "
+                "Je peux toutefois vous aider à régulariser votre visibilité ou votre abonnement si vous le souhaitez."
+            )
 
         stock_summary = stock_qs.aggregate(
             total_lines=Count("id"),
@@ -1643,6 +1659,8 @@ class ChatbotResponseService:
             error=Count("id", filter=Q(status="error")),
             revenue=Sum("total_amount"),
         )
+        priced_prescriptions = pharmacy_prescriptions.exclude(total_amount__isnull=True).count()
+        missing_priced_prescriptions = max((prescription_summary.get("total") or 0) - priced_prescriptions, 0)
         response_summary = pharmacy_responses.aggregate(
             total=Count("id"),
             quoted=Count("id", filter=Q(status="quoted")),
@@ -1672,9 +1690,16 @@ class ChatbotResponseService:
         message_count = message_qs.count()
         new_contacts = new_contacts_qs.count()
         average_eta = response_summary.get("average_eta")
+        total_revenue = prescription_summary.get("revenue") or 0
+        pricing_note = (
+            "Certains prix n'étant pas renseignés dans PharmiGo, le calcul du chiffre d'affaires est une estimation minimale."
+            if missing_priced_prescriptions
+            else "Le chiffre d'affaires est calculé à partir des montants enregistrés via PharmiGo sur la période."
+        )
 
         overview_lines = [
             f"Bonsoir {display_name}. Voici votre rapport d'activité professionnel pour la période {period_label}.",
+            f"Je me suis basé par défaut sur cette période. Si vous préférez une autre plage de dates, dites-moi simplement laquelle et je l'ajusterai.",
             "",
             f"1. Résumé exécutif",
             f"- Officine : {pharmacy.name}",
@@ -1711,9 +1736,11 @@ class ChatbotResponseService:
             f"- Médicaments livrés/confirmés cette période : {delivered_medication_summary.get('delivered_lines') or 0} ligne(s) pour {delivered_medication_summary.get('delivered_units') or 0} unité(s)",
             "",
             "5. Indicateurs financiers et visibilité",
-            f"- Valeur totale des ordonnances clôturées/attribuées : {prescription_summary.get('revenue') or 0}",
+            f"- Chiffre d'affaires total généré via PharmiGo : {total_revenue}",
+            f"- Ordonnances avec prix renseigné : {priced_prescriptions}",
             f"- Valeur des réponses/devis envoyés : {response_summary.get('quoted_value') or 0}",
-            f"- Positionnement visibilité PharmiGo : Partenaire Certifié PharmiGo" if pharmacy.is_verified or (subscription and subscription.is_active()) else "- Positionnement visibilité PharmiGo : partenaire non éligible",
+            f"- Positionnement visibilité PharmiGo : Partenaire Certifié PharmiGo",
+            f"- Note de précision financière : {pricing_note}",
         ]
 
         if top_low_stock:
@@ -1733,6 +1760,9 @@ class ChatbotResponseService:
                 "",
                 "8. Export PDF",
                 "- Le contenu ci-dessus est prêt pour une mise en forme PDF professionnelle depuis votre interface ou votre outil bureautique habituel.",
+                "",
+                "9. Note de PharmiGo",
+                "Note de PharmiGo : Ce rapport se base exclusivement sur les activités effectuées via notre plateforme. Pour une transparence totale et une traçabilité parfaite de vos revenus, je vous invite à encourager tous vos clients à passer par PharmiGo. Si certaines ventes ont eu lieu hors système, vous devrez compléter ce rapport manuellement avant de le soumettre à votre direction.",
                 "",
                 "Si vous voulez, je peux maintenant vous reformuler ce rapport dans un style encore plus corporate pour votre boss, ou le résumer en une version courte d'une page."
             ]
@@ -1759,6 +1789,9 @@ class ChatbotResponseService:
         total_prescriptions = Prescription.objects.filter(created_at__gte=start, created_at__lte=end)
         total_messages = InterPharmacyMessage.objects.filter(created_at__gte=start, created_at__lte=end).count()
         responses = PrescriptionResponse.objects.filter(created_at__gte=start, created_at__lte=end)
+        total_revenue = total_prescriptions.aggregate(revenue=Sum("total_amount")).get("revenue") or 0
+        priced_prescriptions = total_prescriptions.exclude(total_amount__isnull=True).count()
+        missing_priced_prescriptions = max(total_prescriptions.count() - priced_prescriptions, 0)
         converted_trial_to_active = subscriptions.filter(
             subscription_status="active",
             last_payment_date__gte=start,
@@ -1768,6 +1801,7 @@ class ChatbotResponseService:
         return "\n".join(
             [
                 f"Bonjour. Voici le rapport de supervision PharmiGo pour la période {period_label}.",
+                f"Je me suis basé par défaut sur cette période. Si vous souhaitez un autre intervalle, je peux le recalculer.",
                 "",
                 "1. Santé du réseau",
                 f"- Pharmacies partenaires vérifiées actives : {active_verified}",
@@ -1780,9 +1814,12 @@ class ChatbotResponseService:
                 f"- Ordonnances finalisées (servies/confirmées/terminées) : {total_prescriptions.filter(status__in=['served', 'patient_confirmed', 'completed']).count()}",
                 f"- Réponses pharmacies émises : {responses.count()}",
                 "",
-                "3. Croissance & business",
+                "3. Finances & croissance",
+                f"- Chiffre d'affaires total tracé via PharmiGo : {total_revenue}",
+                f"- Ordonnances avec prix renseigné : {priced_prescriptions}",
                 f"- Conversions observées Trial vers activité payante : {converted_trial_to_active}",
                 f"- Volume de messagerie système traité : {total_messages} message(s) (sans contenu, métrique uniquement).",
+                f"- Note de précision financière : {'Certains prix n’étant pas renseignés, le calcul du CA est une estimation minimale.' if missing_priced_prescriptions else 'Le chiffre d’affaires réseau est calculé sur les montants effectivement tracés dans PharmiGo.'}",
                 "",
                 "4. Confidentialité & export",
                 "- Aucun contenu textuel des conversations n'est inclus dans ce rapport. Seules les métriques agrégées sont autorisées.",
