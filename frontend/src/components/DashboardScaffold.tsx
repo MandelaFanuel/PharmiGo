@@ -77,6 +77,22 @@ export function EyeGlyph() {
   );
 }
 
+export function MessageGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="dashboard-message-icon">
+      <path
+        d="M5 6.75h14a1.75 1.75 0 0 1 1.75 1.75v7a1.75 1.75 0 0 1-1.75 1.75H11.9L7.2 20.5a.7.7 0 0 1-1.1-.57V17.25H5A1.75 1.75 0 0 1 3.25 15.5v-7A1.75 1.75 0 0 1 5 6.75Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M7.75 10h8.5M7.75 13h5.5" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export default function DashboardScaffold({
   brand,
   pageTitle,

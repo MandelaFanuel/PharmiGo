@@ -6558,12 +6558,23 @@ label span {
   }
 
   .prescription-social-actions {
-    flex-direction: column;
-    align-items: stretch;
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: 18px;
+    overflow-x: auto;
+    scrollbar-width: none;
   }
 
   .prescription-action-button {
-    justify-content: space-between;
+    justify-content: flex-start;
+    min-height: auto;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    gap: 6px;
   }
 
   .prescription-document-panel {
@@ -6588,21 +6599,27 @@ label span {
 @media (max-width: 640px) {
   .interactive-prescription-sheet-card .prescription-social-actions.sheet-actions,
   .pharmacy-showcase-card .prescription-social-actions.pharmacy-social-actions {
-    display: grid !important;
-    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-    gap: 8px !important;
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    gap: 18px !important;
     width: 100% !important;
-    align-items: stretch !important;
+    align-items: center !important;
     flex-direction: row !important;
+    overflow-x: auto !important;
+    scrollbar-width: none !important;
   }
 
   .interactive-prescription-sheet-card .prescription-social-actions.sheet-actions > .prescription-action-button,
   .pharmacy-showcase-card .prescription-social-actions.pharmacy-social-actions > .prescription-action-button {
-    width: 100% !important;
+    width: auto !important;
     min-width: 0 !important;
-    min-height: 44px !important;
-    padding: 0 8px !important;
-    justify-content: center !important;
+    min-height: auto !important;
+    padding: 0 !important;
+    justify-content: flex-start !important;
+    border: none !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
   }
 
   .interactive-prescription-sheet-card .prescription-social-actions .prescription-action-button span,
@@ -6612,7 +6629,14 @@ label span {
 
   .interactive-prescription-sheet-card .prescription-social-actions .prescription-action-button strong,
   .pharmacy-showcase-card .prescription-social-actions .prescription-action-button strong {
-    font-size: 0.86rem !important;
+    font-size: 0.92rem !important;
+    color: var(--text) !important;
+  }
+
+  .interactive-prescription-sheet-card .prescription-social-actions .prescription-action-button .landing-svg-icon,
+  .pharmacy-showcase-card .prescription-social-actions .prescription-action-button .landing-svg-icon {
+    width: 1.18rem !important;
+    height: 1.18rem !important;
   }
 
   .document-viewer-overlay {

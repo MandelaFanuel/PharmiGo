@@ -719,6 +719,12 @@
   display: block;
 }
 
+.dashboard-message-icon {
+  width: 1.12rem;
+  height: 1.12rem;
+  display: block;
+}
+
 .dashboard-action-icon-button-success {
   color: #15803d;
 }
@@ -3403,10 +3409,20 @@ canvas {
   }
 
   .dashboard-topbar-actions .dashboard-icon-button {
-    width: 2.7rem !important;
-    min-width: 2.7rem !important;
-    height: 2.7rem !important;
-    min-height: 2.7rem !important;
+    width: auto !important;
+    min-width: 0 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    padding: 4px !important;
+    border: none !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  .dashboard-topbar-actions .dashboard-icon-button svg {
+    width: 1.35rem !important;
+    height: 1.35rem !important;
   }
 
   .dashboard-hero-card {
@@ -3939,11 +3955,20 @@ canvas {
   }
 
   .dashboard-action-icon-button {
-    width: 2.5rem;
-    height: 2.5rem;
-    min-width: 2.5rem;
-    min-height: 2.5rem;
-    border-radius: 12px;
+    width: auto;
+    height: auto;
+    min-width: 0;
+    min-height: 0;
+    padding: 4px;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .dashboard-action-icon-button svg {
+    width: 1.2rem;
+    height: 1.2rem;
   }
 
   .dashboard-record-card {
