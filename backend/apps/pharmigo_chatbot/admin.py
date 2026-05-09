@@ -10,6 +10,9 @@ from .models import (
     ChatMessage,
     ChatbotKnowledgeBase,
     ChatbotLearningData,
+    LearnedMedicalPattern,
+    PharmiGoAISettings,
+    PharmiGoAIEventLog,
 )
 
 admin.site.register(Pharmacy)
@@ -21,3 +24,6 @@ admin.site.register(PrescriptionHistory)
 admin.site.register(ChatMessage)
 admin.site.register(ChatbotKnowledgeBase)
 admin.site.register(ChatbotLearningData)
+admin.site.register(LearnedMedicalPattern)
+admin.site.register(PharmiGoAISettings)
+admin.site.register(PharmiGoAIEventLog)

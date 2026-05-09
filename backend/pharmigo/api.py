@@ -2,7 +2,7 @@ from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from datetime import timedelta
 from django.conf import settings
-from django.db.models import Avg, Count, Q
+from django.db.models import Avg, CharField, Count, F, FloatField, Q, Value
 from django.utils import timezone
 from rest_framework import parsers, routers, status, viewsets
 from rest_framework.decorators import action, api_view
@@ -15,7 +15,9 @@ from apps.notifications.serializers import NotificationSerializer
 from apps.pharmacies.models import Pharmacy, PharmacyComment, PharmacyEngagement
 from apps.pharmacies.payment_config import sanitize_payment_methods
 from apps.pharmacies.serializers import PharmacyCommentSerializer, PharmacySerializer, SubscriptionSystemSettingsSerializer
-from apps.pharmigo_chatbot.models import ChatbotLearningData
+from apps.pharmacies.services.access import PAYMENT_WALL_MESSAGE, get_active_partner_pharmacies, pharmacy_has_platform_access
+from apps.pharmigo_chatbot.models import ChatbotLearningData, LearnedMedicalPattern, PharmiGoAIEventLog, PharmiGoAISettings
+from apps.pharmigo_chatbot.services import AIConfigService, AIEventLogger, GeminiChatService
 from apps.prescriptions.models import Prescription, PrescriptionComment, PrescriptionEngagement, PrescriptionResponse
 from apps.prescriptions.serializers import PrescriptionCommentSerializer, PrescriptionResponseSerializer, PrescriptionSerializer
 from apps.users.phone_numbers import normalize_phone_number
@@ -26,6 +28,7 @@ from apps.users.models import UserProfile
 from apps.pharmacies.models import PharmacySubscription, SubscriptionPayment, SubscriptionSystemSettings
 from apps.pharmacies.services.exchange_rate_service import ExchangeRateService
 from apps.users.serializers import ensure_default_admin_user
+from apps.pharmigo_chatbot.utils import normalize_text
 
 User = get_user_model()
 
@@ -78,20 +81,8 @@ def create_targeted_notification(title, message, channel, recipient_user=None, r
 def pharmacy_subscription_is_active(pharmacy):
     if pharmacy is None:
         return False
-
-    subscription = ensure_subscription_for_pharmacy(pharmacy)
-    if subscription is None:
-        return False
-
-    if subscription.subscription_status == "active":
-        return True
-
-    if subscription.subscription_status == "trial" and subscription.is_trial_active and subscription.trial_end_date:
-        from django.utils import timezone
-
-        return timezone.now() <= subscription.trial_end_date
-
-    return False
+    ensure_subscription_for_pharmacy(pharmacy)
+    return pharmacy_has_platform_access(pharmacy)
 
 
 def filter_notifications_for_user(queryset, user):
@@ -133,6 +124,17 @@ def ensure_subscription_for_pharmacy(pharmacy):
     return subscription
 
 
+def sync_pharmacy_verification_with_subscription(pharmacy, subscription):
+    if pharmacy is None or subscription is None:
+        return
+
+    status = (subscription.subscription_status or "").strip().lower()
+    should_be_verified = status == "active"
+    if getattr(pharmacy, "is_verified", False) != should_be_verified:
+        pharmacy.is_verified = should_be_verified
+        pharmacy.save(update_fields=["is_verified"])
+
+
 def sync_subscription_prices(settings_obj):
     exchange_service = ExchangeRateService()
     exchange_rate = exchange_service.get_exchange_rate()
@@ -154,13 +156,78 @@ def sync_subscription_prices(settings_obj):
             subscription.save(update_fields=updated_fields)
 
 
+def _count_lost_prescription_opportunities(
+    subscriptions,
+    prescriptions,
+):
+    from apps.prescriptions.models import MedicationExtraction, PharmacyStock as RealPharmacyStock
+
+    inactive_subscriptions = [
+        subscription
+        for subscription in subscriptions
+        if subscription.subscription_status in {"expired", "suspended", "cancelled"}
+        or (
+            subscription.subscription_status == "trial"
+            and (
+                not subscription.is_trial_active
+                or not subscription.trial_end_date
+                or timezone.now() > subscription.trial_end_date
+            )
+        )
+    ]
+    if not inactive_subscriptions:
+        return {}, 0
+
+    stock_names_by_pharmacy_id = {}
+    for pharmacy_id, medication_name in RealPharmacyStock.objects.filter(
+        pharmacy_id__in=[subscription.pharmacy_id for subscription in inactive_subscriptions],
+        is_available=True,
+        quantity__gt=0,
+    ).values_list("pharmacy_id", "medication_name"):
+        stock_names_by_pharmacy_id.setdefault(pharmacy_id, set()).add(normalize_text(medication_name))
+
+    prescription_names = {}
+    for prescription_id, medication_name in MedicationExtraction.objects.filter(
+        prescription_id__in=[prescription.id for prescription in prescriptions],
+        confirmed=True,
+    ).values_list("prescription_id", "name"):
+        prescription_names.setdefault(prescription_id, set()).add(normalize_text(medication_name))
+
+    lost_counts = {}
+    for subscription in inactive_subscriptions:
+        stock_names = stock_names_by_pharmacy_id.get(subscription.pharmacy_id) or set()
+        if not stock_names:
+            lost_counts[subscription.pharmacy_id] = 0
+            continue
+
+        count = 0
+        for prescription in prescriptions:
+            names = prescription_names.get(prescription.id) or set()
+            if names and names & stock_names:
+                count += 1
+        lost_counts[subscription.pharmacy_id] = count
+
+    return lost_counts, sum(lost_counts.values())
+
+
 class PharmacyViewSet(viewsets.ModelViewSet):
-    queryset = Pharmacy.objects.filter(is_active=True).annotate(
-        prescription_count=Count("prescriptions"),
-        response_count=Count("responses"),
-    ).select_related("subscription").prefetch_related("comments__user__profile__pharmacy")
     serializer_class = PharmacySerializer
     parser_classes = [parsers.MultiPartParser, parsers.FormParser, parsers.JSONParser]
+
+    def get_queryset(self):
+        user = get_request_user(self.request)
+        base_queryset = (
+            Pharmacy.objects.filter(is_active=True)
+            .annotate(
+                prescription_count=Count("prescriptions"),
+                response_count=Count("responses"),
+            )
+            .select_related("subscription")
+            .prefetch_related("comments__user__profile__pharmacy")
+        )
+        if is_admin_user(user):
+            return base_queryset
+        return base_queryset.filter(id__in=get_active_partner_pharmacies().values("id"))
 
     @action(detail=True, methods=["post"], url_path="engagement")
     def engagement(self, request, pk=None):
@@ -264,6 +331,8 @@ class PharmacyViewSet(viewsets.ModelViewSet):
         subscription.subscription_status = next_status
         if next_status == "active":
             subscription.is_trial_active = False
+            if subscription.next_payment_due_date is None or subscription.next_payment_due_date <= timezone.now():
+                subscription.next_payment_due_date = timezone.now() + timedelta(days=30)
         elif next_status == "trial":
             settings_obj = SubscriptionSystemSettings.get_solo()
             trial_start = timezone.now()
@@ -273,6 +342,7 @@ class PharmacyViewSet(viewsets.ModelViewSet):
         else:
             subscription.is_trial_active = False
         subscription.save()
+        sync_pharmacy_verification_with_subscription(pharmacy, subscription)
 
         broadcast_feed_event(
             "pharmacy.subscription.updated",
@@ -413,7 +483,7 @@ class PrescriptionResponseViewSet(viewsets.ModelViewSet):
             return Response({"detail": "Connexion pharmacie requise."}, status=status.HTTP_401_UNAUTHORIZED)
         if not pharmacy_subscription_is_active(user.profile.pharmacy):
             return Response(
-                {"detail": "Votre abonnement pharmacie est inactif ou expiré."},
+                {"detail": PAYMENT_WALL_MESSAGE},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
@@ -824,9 +894,11 @@ def admin_dashboard(request):
         return Response({"detail": "Acces administrateur requis."}, status=status.HTTP_403_FORBIDDEN)
 
     settings_obj = SubscriptionSystemSettings.get_solo()
+    ai_settings_obj = PharmiGoAISettings.get_solo()
 
     if request.method == "PATCH":
         update_fields = ["updated_by", "updated_at"]
+        ai_update_fields = []
 
         if "trial_period_days" in request.data:
             try:
@@ -869,9 +941,33 @@ def admin_dashboard(request):
             settings_obj.payment_methods = sanitize_payment_methods(request.data.get("payment_methods"))
             update_fields.append("payment_methods")
 
+        ai_settings_payload = request.data.get("ai_settings")
+        if isinstance(ai_settings_payload, dict):
+            ai_boolean_fields = [
+                "human_layer",
+                "learning_passif",
+                "fallback_ai",
+                "memory_engine",
+                "semantic_search",
+                "local_reasoning",
+            ]
+            for field_name in ai_boolean_fields:
+                if field_name in ai_settings_payload:
+                    setattr(ai_settings_obj, field_name, bool(ai_settings_payload.get(field_name)))
+                    ai_update_fields.append(field_name)
+
         settings_obj.updated_by = user
         settings_obj.save(update_fields=update_fields)
         sync_subscription_prices(settings_obj)
+        if ai_update_fields:
+            ai_update_fields.append("updated_at")
+            ai_settings_obj.save(update_fields=ai_update_fields)
+            AIEventLogger.log(
+                "config_change",
+                "Configuration PharmiGo AI mise a jour depuis le dashboard admin.",
+                severity="info",
+                payload={field: getattr(ai_settings_obj, field) for field in ai_update_fields if field != "updated_at"},
+            )
 
     pharmacies = Pharmacy.objects.all().order_by("-created_at")
     for pharmacy in pharmacies:
@@ -888,6 +984,10 @@ def admin_dashboard(request):
     messages = ChatMessage.objects.select_related("pharmacy", "sender_pharmacy").order_by("-created_at")
     subscriptions = PharmacySubscription.objects.select_related("pharmacy").order_by("-updated_at")
     payments = SubscriptionPayment.objects.select_related("pharmacy", "verified_by").order_by("-created_at")
+    recent_prescriptions = list(
+        prescriptions.filter(created_at__gte=timezone.now() - timedelta(days=7))[:500]
+    )
+    lost_counts_by_pharmacy_id, lost_total = _count_lost_prescription_opportunities(subscriptions, recent_prescriptions)
 
     active_trials = subscriptions.filter(subscription_status="trial", is_trial_active=True).count()
     active_paid = subscriptions.filter(subscription_status="active").count()
@@ -931,6 +1031,7 @@ def admin_dashboard(request):
             "days_remaining": max(0, (subscription.trial_end_date - timezone.now()).days) if subscription.trial_end_date else 0,
             "monthly_price_usd": subscription.monthly_price_usd,
             "monthly_price_bif": subscription.monthly_price_bif,
+            "lost_prescriptions_count": lost_counts_by_pharmacy_id.get(subscription.pharmacy_id, 0),
         }
         for subscription in subscriptions[:100]
     ]
@@ -979,6 +1080,31 @@ def admin_dashboard(request):
         )[:100]
     )
 
+    ai_runtime_config = AIConfigService.get_current_config()
+    gemini_service = GeminiChatService()
+    ai_learning_audit = list(
+        LearnedMedicalPattern.objects.order_by("-created_at").values(
+            "id",
+            "source",
+            "detected_intent",
+            "created_at",
+            original_text=F("user_query"),
+            corrected_medicine=Value("", output_field=CharField()),
+            confidence_before=Value(0.0, output_field=FloatField()),
+            confidence_after=F("confidence_score"),
+        )[:20]
+    )
+    ai_recent_logs = list(
+        PharmiGoAIEventLog.objects.order_by("-created_at").values(
+            "id",
+            "event_type",
+            "severity",
+            "message",
+            "payload",
+            "created_at",
+        )[:10]
+    )
+
     return Response(
         {
             "generated_at": timezone.now(),
@@ -995,6 +1121,7 @@ def admin_dashboard(request):
                 "trial_pharmacies": active_trials,
                 "active_paid_pharmacies": active_paid,
                 "expired_or_limited_pharmacies": expired_subscriptions,
+                "lost_prescriptions_total": lost_total,
             },
             "chatbot_metrics": {
                 "learning_events_total": learning_total,
@@ -1012,6 +1139,15 @@ def admin_dashboard(request):
             "messages": ChatMessageSerializer(messages[:100], many=True).data,
             "subscriptions": subscription_data,
             "payments": payment_data,
+            "ai_settings": ai_runtime_config,
+            "ai_health": {
+                "gemini_enabled": bool(getattr(settings, "GEMINI_ENABLED", True)),
+                "gemini_configured": bool(getattr(settings, "GEMINI_API_KEY", "").strip()),
+                "gemini_available": bool(gemini_service.available),
+                "gemini_model": gemini_service.model,
+            },
+            "ai_learning_audit": ai_learning_audit,
+            "ai_recent_logs": ai_recent_logs,
         }
     )
 

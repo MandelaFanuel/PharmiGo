@@ -206,3 +206,14 @@ Typical example:
 - login works with a Tanzania number:
   - `+255` + 9 digits
 - websocket updates propagate on dashboard actions
+
+### Persistent media storage
+
+- `PHARMIGO_MEDIA_ROOT`
+
+Recommended Render disk mount example:
+
+- create a persistent disk mounted at `/var/data/pharmigo`
+- set `PHARMIGO_MEDIA_ROOT=/var/data/pharmigo/media`
+
+With this setup, public profile images remain available after redeploys and restarts.

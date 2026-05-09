@@ -1,7 +1,7 @@
 """Permissions for pharmacy subscription"""
 
 from rest_framework import permissions
-from apps.pharmacies.models import PharmacySubscription
+from apps.pharmacies.services.access import pharmacy_has_platform_access
 
 
 class IsPharmacySubscriptionActive(permissions.BasePermission):
@@ -20,9 +20,8 @@ class IsPharmacySubscriptionActive(permissions.BasePermission):
         # Get pharmacy subscription
         try:
             pharmacy = request.user.profile.pharmacy
-            subscription = PharmacySubscription.objects.get(pharmacy=pharmacy)
-            return subscription.is_active()
-        except (PharmacySubscription.DoesNotExist, AttributeError):
+            return pharmacy_has_platform_access(pharmacy)
+        except AttributeError:
             return False
 
 
@@ -42,17 +41,6 @@ class IsPharmacySubscriptionActiveOrTrial(permissions.BasePermission):
         # Get pharmacy subscription
         try:
             pharmacy = request.user.profile.pharmacy
-            subscription = PharmacySubscription.objects.get(pharmacy=pharmacy)
-            
-            # Allow if subscription is active
-            if subscription.subscription_status == 'active':
-                return True
-            
-            # Allow if trial is still active
-            if subscription.subscription_status == 'trial' and subscription.is_trial_active:
-                from django.utils import timezone
-                return timezone.now() <= subscription.trial_end_date
-            
-            return False
-        except (PharmacySubscription.DoesNotExist, AttributeError):
+            return pharmacy_has_platform_access(pharmacy)
+        except AttributeError:
             return False

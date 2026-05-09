@@ -23,7 +23,14 @@ import {
   unbanPharmacy,
   unbanUser,
 } from "../services/api";
-import type { AdminDashboardData, AuthUser, PaymentMethodConfig, Pharmacy, PrescriptionRecord } from "../types";
+import type {
+  AdminDashboardAISettings,
+  AdminDashboardData,
+  AuthUser,
+  PaymentMethodConfig,
+  Pharmacy,
+  PrescriptionRecord,
+} from "../types";
 
 type AdminSection =
   | "dashboard"
@@ -37,6 +44,7 @@ type AdminSection =
   | "payments"
   | "payment-modes"
   | "subscriptions"
+  | "ai-pharmigo"
   | "configurations";
 
 const PHARMACY_PAGE_SIZE = 4;
@@ -227,6 +235,14 @@ export default function AdminDashboard() {
   const [trialDays, setTrialDays] = useState("180");
   const [monthlyPriceUsd, setMonthlyPriceUsd] = useState("5");
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodConfig[]>([]);
+  const [aiSettings, setAiSettings] = useState<AdminDashboardAISettings>({
+    human_layer: true,
+    learning_passif: true,
+    fallback_ai: true,
+    memory_engine: false,
+    semantic_search: false,
+    local_reasoning: false,
+  });
   const [activeSection, setActiveSection] = useState<AdminSection>("dashboard");
   const [searchTerm, setSearchTerm] = useState("");
   const [pharmacyPage, setPharmacyPage] = useState(1);
@@ -261,7 +277,7 @@ export default function AdminDashboard() {
       users: "Utilisateurs",
       pharmacies: "Pharmacies",
       patients: "Patients",
-      prescriptions: "POrdonnances",
+      prescriptions: "Ordonnances",
       ocr: "Verification OCR",
       trials: "Essais actifs",
       activeSubs: "Abonnements actifs",
@@ -335,7 +351,7 @@ export default function AdminDashboard() {
       users: "Abakoresha",
       pharmacies: "Farumasi",
       patients: "Abarwayi",
-      prescriptions: "POrdonnance",
+      prescriptions: "Ordonnance",
       ocr: "Verification OCR",
       trials: "Essai zikora",
       activeSubs: "Abonnement zikora",
@@ -529,6 +545,12 @@ export default function AdminDashboard() {
   }, [data?.settings]);
 
   useEffect(() => {
+    if (data?.ai_settings) {
+      setAiSettings(data.ai_settings);
+    }
+  }, [data?.ai_settings]);
+
+  useEffect(() => {
     setPharmacyPage(1);
     setPatientPage(1);
     setPrescriptionPage(1);
@@ -652,6 +674,26 @@ export default function AdminDashboard() {
     }
   }
 
+  async function handleAISettingsSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsSaving(true);
+    setError(null);
+    setFeedback(null);
+    try {
+      const payload = await updateAdminSettings({
+        ai_settings: aiSettings,
+      });
+      setData(payload);
+      setFeedback("La configuration IA PharmiGo a ete mise a jour.");
+    } catch (saveError) {
+      void saveError;
+      logClientError("La mise a jour des reglages IA admin a echoue.");
+      setError("Impossible de mettre a jour la configuration IA PharmiGo.");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   async function handleBroadcastSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!broadcastTitle.trim() || !broadcastMessage.trim()) {
@@ -758,18 +800,18 @@ export default function AdminDashboard() {
           subscriptions: current.subscriptions.map((item) =>
             item.pharmacy_id === pharmacyId
               ? {
-                  ...item,
-                  subscription_status: subscriptionStatus,
-                }
+                ...item,
+                subscription_status: subscriptionStatus,
+              }
               : item
           ),
           pharmacies: current.pharmacies.map((item) =>
             item.id === pharmacyId
               ? {
-                  ...item,
-                  subscription_status: subscriptionStatus,
-                  is_official: subscriptionStatus === "active",
-                }
+                ...item,
+                subscription_status: subscriptionStatus,
+                is_official: subscriptionStatus === "active",
+              }
               : item
           ),
         };
@@ -855,36 +897,36 @@ export default function AdminDashboard() {
         payments: current.payments.map((item) =>
           item.id === paymentId
             ? {
-                ...item,
-                payment_status: paymentStatus,
-                verified_at: paymentStatus === "verified" ? new Date().toISOString() : item.verified_at ?? null,
-              }
+              ...item,
+              payment_status: paymentStatus,
+              verified_at: paymentStatus === "verified" ? new Date().toISOString() : item.verified_at ?? null,
+            }
             : item
         ),
         subscriptions:
           paymentStatus === "verified" && pharmacyId
             ? current.subscriptions.map((item) =>
-                item.pharmacy_id === pharmacyId
-                  ? {
-                      ...item,
-                      subscription_status: "active",
-                      is_trial_active: false,
-                      days_remaining: Math.max(item.days_remaining, 30),
-                    }
-                  : item
-              )
+              item.pharmacy_id === pharmacyId
+                ? {
+                  ...item,
+                  subscription_status: "active",
+                  is_trial_active: false,
+                  days_remaining: Math.max(item.days_remaining, 30),
+                }
+                : item
+            )
             : current.subscriptions,
         pharmacies:
           paymentStatus === "verified" && pharmacyId
             ? current.pharmacies.map((item) =>
-                item.id === pharmacyId
-                  ? {
-                      ...item,
-                      subscription_status: "active",
-                      is_official: true,
-                    }
-                  : item
-              )
+              item.id === pharmacyId
+                ? {
+                  ...item,
+                  subscription_status: "active",
+                  is_official: true,
+                }
+                : item
+            )
             : current.pharmacies,
       };
     });
@@ -1007,6 +1049,7 @@ export default function AdminDashboard() {
       title: language === "en" ? "System" : "Systeme",
       items: [
         { id: "admin-settings", label: labels.settings, active: activeSection === "settings", onClick: () => setActiveSection("settings") },
+        { id: "admin-ai", label: "IA PharmiGo", active: activeSection === "ai-pharmigo", onClick: () => setActiveSection("ai-pharmigo") },
         { id: "admin-status", label: labels.status, active: activeSection === "status", onClick: () => setActiveSection("status") },
         { id: "admin-active", label: labels.activity, active: activeSection === "active-system", onClick: () => setActiveSection("active-system") },
         { id: "admin-config", label: labels.configurations, active: activeSection === "configurations", onClick: () => setActiveSection("configurations") },
@@ -1029,6 +1072,7 @@ export default function AdminDashboard() {
     { label: labels.trials, value: data?.summary.trial_pharmacies ?? 0 },
     { label: labels.activeSubs, value: data?.summary.active_paid_pharmacies ?? 0 },
     { label: labels.limited, value: data?.summary.expired_or_limited_pharmacies ?? 0 },
+    { label: "Ordonnances perdues", value: data?.summary.lost_prescriptions_total ?? 0 },
   ];
 
   const highlights = [
@@ -1252,6 +1296,118 @@ export default function AdminDashboard() {
         </DashboardPanel>
       ) : null}
 
+      {activeSection === "ai-pharmigo" ? (
+        <DashboardPanel title="IA PharmiGo" description="Pilotage de la couche humaine, du fallback et de l'apprentissage passif." className="dashboard-panel-span-3 dashboard-keep-visible">
+          <div className="admin-ai-grid">
+            <form className="admin-settings-form admin-ai-settings-form" onSubmit={handleAISettingsSubmit}>
+              <div className="admin-ai-toggle-list">
+                {[
+                  ["human_layer", "Human Layer"],
+                  ["learning_passif", "Learning passif"],
+                  ["fallback_ai", "Fallback intelligent"],
+                  ["memory_engine", "Memory Engine"],
+                  ["semantic_search", "Semantic Search"],
+                  ["local_reasoning", "Local Reasoning"],
+                ].map(([key, label]) => (
+                  <label key={key} className="admin-ai-toggle">
+                    <span>{label}</span>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(aiSettings[key as keyof AdminDashboardAISettings])}
+                      onChange={(event) =>
+                        setAiSettings((current) => ({
+                          ...current,
+                          [key]: event.target.checked,
+                        }))
+                      }
+                    />
+                  </label>
+                ))}
+              </div>
+              <button type="submit" className="primary-button" disabled={isSaving}>
+                {isSaving ? "Mise a jour..." : "Enregistrer la configuration IA"}
+              </button>
+            </form>
+
+            <div className="admin-ai-stack">
+              <div className="admin-ai-health-card">
+                <div className="dashboard-panel-head">
+                  <h3>Sante Gemini</h3>
+                </div>
+                <div className="admin-ai-health-grid">
+                  <div>
+                    <span>Service</span>
+                    <strong>{data?.ai_health?.gemini_enabled ? "Active" : "Desactive"}</strong>
+                  </div>
+                  <div>
+                    <span>Cle API</span>
+                    <strong>{data?.ai_health?.gemini_configured ? "Configuree" : "Manquante"}</strong>
+                  </div>
+                  <div>
+                    <span>Disponibilite</span>
+                    <strong>{data?.ai_health?.gemini_available ? "Disponible" : "Indisponible"}</strong>
+                  </div>
+                  <div>
+                    <span>Modele</span>
+                    <strong>{data?.ai_health?.gemini_model || "N/A"}</strong>
+                  </div>
+                </div>
+              </div>
+
+              <div className="admin-ai-lists">
+                <section className="admin-ai-list-card">
+                  <div className="dashboard-panel-head">
+                    <h3>Audit d'apprentissage</h3>
+                    <small>{data?.ai_learning_audit?.length ?? 0} entrees</small>
+                  </div>
+                  <div className="admin-ai-list">
+                    {(data?.ai_learning_audit ?? []).length ? (
+                      (data?.ai_learning_audit ?? []).map((item) => (
+                        <article key={item.id} className="admin-ai-list-item">
+                          <div className="admin-ai-list-head">
+                            <strong>{item.detected_intent || "intent inconnu"}</strong>
+                            <span>{new Date(item.created_at).toLocaleString()}</span>
+                          </div>
+                          <p>{item.original_text}</p>
+                          <small>Source: {item.source} • confiance: {Math.round((item.confidence_after ?? 0) * 100)}%</small>
+                        </article>
+                      ))
+                    ) : (
+                      <div className="empty-state">Aucune observation d'apprentissage pour le moment.</div>
+                    )}
+                  </div>
+                </section>
+
+                <section className="admin-ai-list-card">
+                  <div className="dashboard-panel-head">
+                    <h3>Logs IA recents</h3>
+                    <small>{data?.ai_recent_logs?.length ?? 0} evenements</small>
+                  </div>
+                  <div className="admin-ai-list">
+                    {(data?.ai_recent_logs ?? []).length ? (
+                      (data?.ai_recent_logs ?? []).map((item) => (
+                        <article key={item.id} className="admin-ai-list-item">
+                          <div className="admin-ai-list-head">
+                            <strong>{item.event_type}</strong>
+                            <span className={`badge ${item.severity === "error" ? "warning" : item.severity === "warning" ? "info" : "success"}`}>
+                              {item.severity}
+                            </span>
+                          </div>
+                          <p>{item.message}</p>
+                          <small>{new Date(item.created_at).toLocaleString()}</small>
+                        </article>
+                      ))
+                    ) : (
+                      <div className="empty-state">Aucun log IA recent.</div>
+                    )}
+                  </div>
+                </section>
+              </div>
+            </div>
+          </div>
+        </DashboardPanel>
+      ) : null}
+
       {activeSection === "payment-modes" ? (
         <DashboardPanel title={labels.paymentMethods} description="Ajustez manuellement les modes de paiement utilises dans tout le systeme." className="dashboard-panel-span-3 dashboard-keep-visible">
           <form className="admin-payment-methods" onSubmit={handleSettingsSubmit}>
@@ -1421,7 +1577,7 @@ export default function AdminDashboard() {
             <section className="admin-subscription-block">
               <div className="dashboard-panel-head">
                 <h3>Historique des abonnements</h3>
-                <small>{archivedSubscriptions.length} entree(s)</small>
+                <small>{archivedSubscriptions.length} entree(s) • {data?.summary.lost_prescriptions_total ?? 0} opportunite(s) perdue(s)</small>
               </div>
               <div className="admin-table-grid">
                 {pagedSubscriptions.map((subscription) => (
@@ -1449,6 +1605,9 @@ export default function AdminDashboard() {
                     <div className="admin-pharmacy-dashboard-details">
                       <p>{formatExactDateTime(subscription.trial_start_date, language)} → {formatExactDateTime(subscription.trial_end_date, language)}</p>
                       <small>{subscription.days_remaining} jours restants</small>
+                      {subscription.lost_prescriptions_count > 0 ? (
+                        <small>{subscription.lost_prescriptions_count} ordonnance(s) recente(s) compatible(s) perdues</small>
+                      ) : null}
                     </div>
                     <div className="admin-card-actions">
                       <ActionIconButton

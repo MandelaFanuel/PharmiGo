@@ -192,6 +192,84 @@ class ChatbotLearningData(models.Model):
         return f"{self.source} - {self.detected_intent or 'unknown'}"
 
 
+class LearnedMedicalPattern(models.Model):
+    SOURCE_CHOICES = [
+        ("gemini", "Gemini"),
+        ("fallback", "Fallback"),
+    ]
+
+    user_query = models.TextField()
+    detected_intent = models.CharField(max_length=255, blank=True)
+    medical_context = models.JSONField(default=dict, blank=True)
+    confidence_score = models.FloatField(default=0.0)
+    is_validated = models.BooleanField(default=False)
+    source = models.CharField(max_length=50, choices=SOURCE_CHOICES, default="gemini")
+    created_at = models.DateTimeField(auto_now_add=True)
+    admin_notes = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Learned medical pattern"
+        verbose_name_plural = "Learned medical patterns"
+
+    def __str__(self):
+        return f"{self.detected_intent or 'pattern'} ({self.source})"
+
+
+class PharmiGoAISettings(models.Model):
+    """Runtime flags for the PharmiGo AI stack, editable from the admin dashboard."""
+
+    human_layer = models.BooleanField(default=True)
+    learning_passif = models.BooleanField(default=True)
+    fallback_ai = models.BooleanField(default=True)
+    memory_engine = models.BooleanField(default=False)
+    semantic_search = models.BooleanField(default=False)
+    local_reasoning = models.BooleanField(default=False)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "PharmiGo AI settings"
+        verbose_name_plural = "PharmiGo AI settings"
+
+    def __str__(self):
+        return "PharmiGo AI Settings"
+
+    @classmethod
+    def get_solo(cls):
+        settings_obj, _ = cls.objects.get_or_create(pk=1)
+        return settings_obj
+
+
+class PharmiGoAIEventLog(models.Model):
+    """Minimal operational log for AI health and fallback visibility."""
+
+    EVENT_TYPE_CHOICES = [
+        ("gemini_error", "Gemini error"),
+        ("fallback_used", "Fallback used"),
+        ("config_change", "Config change"),
+        ("learning_observation", "Learning observation"),
+    ]
+    SEVERITY_CHOICES = [
+        ("info", "Info"),
+        ("warning", "Warning"),
+        ("error", "Error"),
+    ]
+
+    event_type = models.CharField(max_length=40, choices=EVENT_TYPE_CHOICES)
+    severity = models.CharField(max_length=20, choices=SEVERITY_CHOICES, default="info")
+    message = models.TextField()
+    payload = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "PharmiGo AI event log"
+        verbose_name_plural = "PharmiGo AI event logs"
+
+    def __str__(self):
+        return f"{self.event_type} ({self.severity})"
+
+
 class ConversationSession(models.Model):
     SESSION_STATUS_CHOICES = [
         ("open", "Open"),

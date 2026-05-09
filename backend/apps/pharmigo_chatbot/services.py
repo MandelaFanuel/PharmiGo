@@ -24,8 +24,10 @@ except ImportError:  # pragma: no cover - environment dependent
     pytesseract = None
 
 from django.conf import settings
+from django.db import connection
 from django.db.models import Avg, Count, Q, Sum
 from django.utils import timezone
+from apps.pharmacies.services.access import PAYMENT_WALL_MESSAGE, is_pharmacy_partner_eligible, pharmacy_has_platform_access
 
 try:
     from fuzzywuzzy import fuzz
@@ -36,6 +38,152 @@ from .models import Pharmacy, PharmacyStock, Medicine, MedicineSynonym
 from .utils import normalize_text
 
 logger = logging.getLogger(__name__)
+
+_KNOWN_AI_TABLES: Optional[set[str]] = None
+
+
+def _table_exists(table_name: str) -> bool:
+    global _KNOWN_AI_TABLES
+    try:
+        if _KNOWN_AI_TABLES is None:
+            _KNOWN_AI_TABLES = set(connection.introspection.table_names())
+        return table_name in _KNOWN_AI_TABLES
+    except Exception:  # pragma: no cover - db boot timing dependent
+        return False
+
+
+class AIConfigService:
+    """Resolve runtime AI flags from Django settings, then allow DB overrides."""
+
+    @staticmethod
+    def get_current_config() -> Dict[str, bool]:
+        config = {
+            "human_layer": bool(getattr(settings, "PHARMIGO_HUMAN_LAYER_ENABLED", True)),
+            "learning_passif": bool(getattr(settings, "PHARMIGO_LEARNING_ENABLED", True)),
+            "fallback_ai": bool(getattr(settings, "PHARMIGO_FALLBACK_AI_ENABLED", True)),
+            "memory_engine": bool(getattr(settings, "PHARMIGO_MEMORY_ENGINE_ENABLED", False)),
+            "semantic_search": bool(getattr(settings, "PHARMIGO_SEMANTIC_SEARCH_ENABLED", False)),
+            "local_reasoning": bool(getattr(settings, "PHARMIGO_LOCAL_REASONING_ENABLED", False)),
+        }
+        if not _table_exists("pharmigo_chatbot_pharmigoaisettings"):
+            return config
+        try:
+            from .models import PharmiGoAISettings
+
+            db_settings = PharmiGoAISettings.get_solo()
+        except Exception as exc:  # pragma: no cover - db/migration timing dependent
+            logger.debug("AI config fallback to env defaults: %s", exc)
+            return config
+
+        config.update(
+            {
+                "human_layer": db_settings.human_layer,
+                "learning_passif": db_settings.learning_passif,
+                "fallback_ai": db_settings.fallback_ai,
+                "memory_engine": db_settings.memory_engine,
+                "semantic_search": db_settings.semantic_search,
+                "local_reasoning": db_settings.local_reasoning,
+            }
+        )
+        return config
+
+
+class AIEventLogger:
+    """Best-effort event logger for AI health and audit visibility."""
+
+    @staticmethod
+    def log(event_type: str, message: str, *, severity: str = "info", payload: Optional[Dict[str, Any]] = None) -> None:
+        if not _table_exists("pharmigo_chatbot_pharmigoaieventlog"):
+            return
+        try:
+            from .models import PharmiGoAIEventLog
+
+            PharmiGoAIEventLog.objects.create(
+                event_type=event_type,
+                severity=severity,
+                message=message[:2000],
+                payload=payload or {},
+            )
+        except Exception as exc:  # pragma: no cover - logging should never break chat flow
+            logger.debug("AI event log skipped: %s", exc)
+
+
+class HumanLayerService:
+    """Enrich the structured context for Gemini with a concise human summary."""
+
+    @staticmethod
+    def enrich(context: Dict[str, Any], message: str) -> Dict[str, Any]:
+        enriched_context = dict(context)
+        memory = dict(context.get("conversation_memory") or {})
+        support = dict(context.get("patient_support_profile") or {})
+        response_style = dict(context.get("response_style") or {})
+        detected_language = (context.get("preferred_language") or "fr").strip().lower() or "fr"
+
+        emotional_markers = []
+        normalized_message = normalize_text(message or "")
+        for label, markers in {
+            "stress": ["stress", "angoisse", "anxieux", "anxieuse", "peur"],
+            "pain": ["douleur", "mal", "souffr", "fièvre", "fievre", "toux"],
+            "fatigue": ["fatigue", "fatigu", "epuise", "épuis"],
+            "confusion": ["je ne comprends pas", "confus", "perdu", "je sais pas"],
+        }.items():
+            if any(marker in normalized_message for marker in markers):
+                emotional_markers.append(label)
+
+        summary_parts = [
+            f"Role: {context.get('role') or 'guest'}",
+            f"Langue preferee: {detected_language}",
+            f"Tonalite souhaitee: {response_style.get('tone') or 'standard'}",
+        ]
+        if memory.get("continuity_note"):
+            summary_parts.append(f"Continuite: {memory['continuity_note']}")
+        if memory.get("recent_user_goals"):
+            summary_parts.append(f"Objectifs recents: {' | '.join(memory['recent_user_goals'][:2])}")
+        if support.get("possible_chronic_condition"):
+            summary_parts.append(
+                "Contexte long cours possible: "
+                + ", ".join(support.get("chronic_signals") or [])[:180]
+            )
+        if emotional_markers:
+            summary_parts.append(f"Marqueurs emotionnels: {', '.join(emotional_markers)}")
+
+        enriched_context["human_context_summary"] = " ; ".join(part for part in summary_parts if part)
+        return enriched_context
+
+
+class LearningEngine:
+    """Passive observation layer that stores structured learning traces without changing live behavior."""
+
+    @staticmethod
+    def observe(
+        *,
+        original_text: str,
+        detected_intent: str,
+        response_text: str,
+        context: Dict[str, Any],
+        source: str,
+        confidence_score: float,
+    ) -> None:
+        if not _table_exists("pharmigo_chatbot_learnedmedicalpattern"):
+            return
+
+        try:
+            from .models import LearnedMedicalPattern
+
+            LearnedMedicalPattern.objects.create(
+                user_query=original_text,
+                detected_intent=detected_intent[:255],
+                medical_context={
+                    "role": context.get("role"),
+                    "preferred_language": context.get("preferred_language"),
+                    "human_context_summary": context.get("human_context_summary"),
+                    "response_preview": (response_text or "")[:400],
+                },
+                confidence_score=confidence_score,
+                source="gemini" if response_text else "fallback",
+            )
+        except Exception as exc:  # pragma: no cover - learning must not break the chatbot
+            logger.debug("Passive learning observation skipped: %s", exc)
 
 
 class ImagePreprocessor:
@@ -825,6 +973,12 @@ class GeminiChatService:
         response_kind: str,
     ) -> str:
         if not self.available:
+            AIEventLogger.log(
+                "gemini_error",
+                "Gemini indisponible: cle API absente ou service desactive.",
+                severity="warning",
+                payload={"response_kind": response_kind, "role": role},
+            )
             return ""
 
         chat_history = self._build_chat_history_contents(structured_context.get("recent_chat_history") or [])
@@ -870,9 +1024,21 @@ class GeminiChatService:
             except Exception:
                 body = ""
             logger.warning("Gemini chatbot HTTP error %s: %s", exc.code, body[:2000] or exc)
+            AIEventLogger.log(
+                "gemini_error",
+                f"Gemini HTTP error {exc.code}",
+                severity="error",
+                payload={"body": body[:1000], "response_kind": response_kind, "role": role},
+            )
             return ""
         except Exception as exc:  # pragma: no cover - network dependent
             logger.warning("Gemini chatbot request failed: %s", exc)
+            AIEventLogger.log(
+                "gemini_error",
+                "Gemini chatbot request failed.",
+                severity="error",
+                payload={"error": str(exc), "response_kind": response_kind, "role": role},
+            )
             return ""
 
         response_time_ms = int((time.perf_counter() - started_at) * 1000)
@@ -884,79 +1050,53 @@ class GeminiChatService:
                 "response_kind": response_kind,
             },
         )
-        return self._extract_text_content(raw_response).strip()
+        answer = self._extract_text_content(raw_response).strip()
+        conversation_profile = structured_context.get("conversation_profile") or {}
+        normalized_question = normalize_text(question or "")
+        looks_like_greeting_turn = any(
+            marker in normalized_question
+            for marker in ["bonjour", "salut", "bonsoir", "coucou", "hello", "hi", "amakuru", "jambo", "habari", "mbote"]
+        )
+        if (
+            answer
+            and not conversation_profile.get("should_greet_now")
+            and not looks_like_greeting_turn
+        ):
+            answer = ChatbotResponseService._remove_redundant_leading_greeting(answer)
+        return answer
 
     def _build_system_prompt(self) -> str:
         return (
-            "PROMPT SYSTÈME TOTAL : PHARMIGO OMNI (INTELLIGENCE, FINANCES & STRATÉGIE)\n"
-            "Tu es PharmiGo, l'intelligence centrale de la plateforme PharmiGo. Tu adaptes toujours ton aide au rôle "
-            "de l'utilisateur sans casser le flux existant de la plateforme. Tu restes un assistant de santé humain, "
-            "empathique, cohérent, fiable et prudent, jamais un remplaçant du médecin.\n\n"
-            "1. ARCHITECTURE MULTI-RÔLES & INTÉGRITÉ\n"
-            "- Tu ne sacrifies jamais un pilier pour un autre.\n"
-            "- Pilier technique : quand des faits internes fiables existent, ils restent prioritaires (OCR, extraction de médicaments, "
-            "analyse d'ordonnance, calcul de stock, historique, profils et messages récents).\n"
-            "- Pilier humain : applique toujours une couche d'interprétation bienveillante pour comprendre les fautes, l'émotion, la fatigue, "
-            "la confusion et le besoin réel derrière les mots.\n"
-            "- Pilier business : toute recommandation de pharmacie, de produit ou de stock doit respecter la visibilité exclusive des partenaires éligibles.\n"
-            "- Patient : empathie, conseils santé prudents, orientation vers les pharmacies partenaires certifiées.\n"
-            "- Pharmacien : gestion des flux, CRM, activité, revenus, abonnements, rapports d'officine, visibilité et synthèses financières.\n"
-            "- Admin : supervision globale, statistiques réseau, performance financière agrégée, croissance et vision stratégique.\n\n"
-            "2. COUCHE D'INTERPRÉTATION (IntentClarificationLayer)\n"
-            "- Si l'utilisateur écrit mal ou de façon confuse, ne le corrige pas sèchement. Déduis son besoin avec tact.\n"
-            "- Reformule doucement si nécessaire : « Si je comprends bien... » ou équivalent naturel dans sa langue.\n"
-            "- Si l'utilisateur parle de fatigue, stress, gêne, douleur, honte, confusion ou émotion, commence toujours par l'écoute active et la validation.\n"
-            "- Si le sujet change, reconnais la transition avec naturel avant de répondre.\n"
-            "- Si l'utilisateur parle d'un sujet léger ou banal, réponds humainement puis ramène subtilement vers le bien-être, la santé ou l'accompagnement utile.\n\n"
-            "3. MÉMOIRE ET CONTEXTE CONTINU\n"
-            "- Tu reçois un historique récent : utilise-le réellement.\n"
-            "- Traite toujours la conversation comme un flux continu, jamais comme un message isolé.\n"
-            "- Si l'utilisateur revient sur un sujet précédent, reprends naturellement ce fil.\n"
-            "- Si l'utilisateur revient plus tard et que l'historique le montre, demande comment la situation a évolué.\n\n"
-            "4. LOGIQUE BUSINESS : ÉCOSYSTÈME VÉRIFIÉ\n"
-            "- Pour toute recommandation de stock, produit, pharmacie ou orientation commerciale, ne rends visibles que les partenaires éligibles.\n"
-            "- Un partenaire éligible est : pharmacie vérifiée avec abonnement actif OU pharmacie en essai actif encore valide.\n"
-            "- Une pharmacie Trial active bénéficie de la même visibilité qu'une pharmacie Verified jusqu'à expiration de son essai.\n"
-            "- Les pharmacies non vérifiées, expirées, suspendues, annulées ou hors éligibilité restent invisibles.\n"
-            "- Si aucun partenaire éligible n'est trouvé, dis clairement : « Je n'ai pas de partenaire certifié disponible dans cette zone pour le moment. »\n"
-            "- Quand tu proposes une pharmacie éligible, mentionne explicitement « Partenaire Certifié PharmiGo » avec les faits fiables fournis.\n"
-            "- Si le contexte s'y prête avec un pharmacien ou un admin, tu peux expliquer que la visibilité dans le chat et les rapports valorisent les partenaires Verified/Trial.\n\n"
-            "5. STRUCTURE DE RÉPONSE OBLIGATOIRE\n"
-            "- Accueil et empathie.\n"
-            "- Conseil santé ou bien-être immédiat si utile.\n"
-            "- Analyse technique si des faits internes fiables sont disponibles.\n"
-            "- Orientation produit et lieu seulement avec partenaires certifiés éligibles.\n"
-            "- Relance finale douce et utile pour garder le fil.\n\n"
-            "6. RAPPORTS, FINANCES & CONFIDENTIALITÉ\n"
-            "- Si un pharmacien ou un admin demande un rapport, réponds dans un style professionnel et orienté rapport.\n"
-            "- Quand des données de prix ou de volumes passés via PharmiGo existent, calcule le chiffre d'affaires total sur la période demandée.\n"
-            "- Propose toujours une période par défaut cohérente (jour, semaine, mois, année) tout en laissant la possibilité de préciser une autre date.\n"
-            "- Si aucune date précise n'est donnée, indique explicitement la période par défaut utilisée et demande si l'utilisateur souhaite en changer.\n"
-            "- Tu peux résumer : activité, volume d'ordonnances, stocks, abonnement, revenus, croissance, visibilité, conversion trial vers verified si les données sont fournies.\n"
-            "- Tu ne dois jamais inclure le contenu textuel des conversations dans un rapport. Seules des métriques ou volumes agrégés sont autorisés.\n"
-            "- Si des données de prix manquent, signale-le clairement comme estimation minimale ou partielle.\n"
-            "- À la fin de chaque rapport destiné à un pharmacien ou un gérant, inclus toujours la note de traçabilité PharmiGo sur les ventes effectuées hors plateforme.\n"
-            "- Si la génération PDF n'est pas explicitement disponible dans les faits internes, n'invente pas un lien de téléchargement. Présente seulement le rapport textuel et propose la préparation du PDF si l'outil le permet.\n"
-            "- Si l'outil PDF est disponible dans le flux existant, garde un style professionnel, structuré et corporate.\n\n"
-            "7. MESSAGERIE CRM & RELATION\n"
-            "- Tu peux parler de messagerie sécurisée, suivi patient, contacts et fidélisation seulement si cela correspond au rôle et aux faits internes.\n"
-            "- Pour un patient non connecté qui veut parler d'un sujet intime ou suivre une situation, invite-le doucement à se connecter pour un échange plus personnel et continu.\n"
-            "- Pour un utilisateur connecté, tu peux utiliser son prénom avec parcimonie et rappeler que vous êtes dans son espace personnel PharmiGo, sans promettre une confidentialité technique absolue.\n\n"
-            "8. LIMITES MÉDICALES STRICTES\n"
-            "- Tu ne poses jamais de diagnostic certain.\n"
-            "- Tu ne prescris jamais un nouveau traitement.\n"
-            "- Tu ne modifies jamais une dose ou une ordonnance existante.\n"
-            "- Tu peux expliquer l'usage général d'un médicament déjà connu, ses précautions générales, ses effets secondaires courants, ou quoi faire en cas d'oubli, sans créer de posologie nouvelle.\n"
-            "- En cas de signe de gravité ou d'urgence, ignore toute logique commerciale et conseille immédiatement les urgences ou un professionnel de santé.\n"
-            "- Rappelle quand c'est utile que tes conseils sont informatifs et ne remplacent pas l'avis d'un médecin ou d'un pharmacien.\n\n"
-            "9. LANGUES\n"
-            "- Réponds dans la langue dominante du message reçu : français, kirundi, swahili, anglais ou lingala.\n\n"
-            "10. STYLE DE SORTIE\n"
-            "- Pas de JSON, pas de markdown complexe, pas de récitation de tes capacités sauf si on te le demande.\n"
-            "- Pas de ton robotique, répétitif ou figé.\n"
-            "- Réponse naturelle, claire, contextualisée, utile et vivante.\n"
-            "- Si l'utilisateur salue, remercie, ferme la conversation ou parle simplement, réponds comme un humain vivant avant toute autre chose.\n"
-            "- Pose une question de suivi seulement si elle aide vraiment."
+            "PROMPT SYSTÈME : PHARMIGO OMNI (INTELLIGENCE MÉDICALE, CRM & BUSINESS LAYER)\n\n"
+            "1. IDENTITÉ ET POSTURE (HUMAN LAYER)\n"
+            "- Tu es PharmiGo, une IA médicale africaine chaleureuse, empathique et experte.\n"
+            "- Si un patient exprime un malaise, demande systématiquement les symptômes, la durée depuis le début des troubles et l'âge du patient.\n"
+            "- Priorité humaine : si l'utilisateur exprime douleur, stress, fatigue ou confusion, commence par une réassurance empathique avant toute orientation.\n\n"
+            "2. ANALYSE MÉDICALE ET REDIRECTION PRUDENTE\n"
+            "- Une fois les symptômes reçus, fournis une analyse indicative sans certitude absolue.\n"
+            "- Structure recommandée : « D'après les symptômes décrits, il pourrait s'agir de [hypothèse]. Cependant, cela reste une analyse basée sur vos déclarations. »\n"
+            "- Invite toujours le patient à consulter un médecin ou un pharmacien pour un diagnostic sûr et une prescription officielle.\n"
+            "- Zéro auto-médication : ne dis jamais « prenez ce médicament ».\n"
+            "- Si une orientation vers une pharmacie est utile, propose uniquement une pharmacie éligible et ne cite jamais de médicament au patient.\n\n"
+            "3. RESTRICTIONS STRICTES ET BUSINESS LOGIC\n"
+            "- Seules les pharmacies `is_verified=True` avec abonnement actif ou `trial` actif non expiré, ainsi que les pharmacies en essai actif non expiré, sont visibles et actives.\n"
+            "- Les pharmacies non actives, expirées ou hors période d'essai ne doivent jamais être proposées, ni recevoir une ordonnance, ni apparaître comme partenaires visibles.\n"
+            "- Si le rôle est pharmacie et que l'abonnement est expiré ou l'essai terminé, la réponse autorisée est uniquement le message de réactivation transmis par les faits internes.\n\n"
+            "4. RAPPORTS ET TRAÇABILITÉ\n"
+            "- Pour un pharmacien ou un administrateur, génère des rapports professionnels avec CA, volume d'ordonnances et état d'abonnement.\n"
+            "- Ne mets jamais de contenu de conversation dans les rapports, seulement des volumes et agrégats.\n"
+            "- Termine les rapports par une note de traçabilité PharmiGo vs hors-système.\n\n"
+            "5. SÉCURITÉ ET GARDES-FOUS\n"
+            "- Ne jamais inventer de diagnostic ni de posologie médicale précise.\n"
+            "- En cas d'urgence vitale, dirige immédiatement vers les secours.\n"
+            "- Utilise le contexte human_context_summary pour garder la continuité sans te répéter.\n\n"
+            "6. STYLE ET CONDUITE\n"
+            "- Réponds dans la langue dominante du message reçu.\n"
+            "- Réponse naturelle, claire, utile et non robotique.\n"
+            "- Réponds d'abord au besoin immédiat avant de parler de la plateforme.\n"
+            "- Si l'utilisateur salue, remercie, ferme la conversation ou parle simplement, réponds comme un humain avant toute logique métier.\n"
+            "- Ne récite jamais spontanément la liste de tes capacités, sauf si on te le demande explicitement.\n"
+            "- Si la conversation est déjà entamée et que le contexte indique `should_greet_now=false`, n'ouvre pas la réponse avec une nouvelle salutation sauf si le dernier message est lui-même une nouvelle salutation explicite."
         )
 
     def _build_request_brief(
@@ -982,6 +1122,7 @@ class GeminiChatService:
             "is_authenticated": structured_context.get("is_authenticated"),
             "display_name": structured_context.get("display_name") or "",
             "detected_language": conversation_profile.get("detected_language") or "fr",
+            "should_greet_now": conversation_profile.get("should_greet_now") or False,
             "recent_topic_transition": conversation_profile.get("recent_topic_transition") or "",
             "conversation_turns": conversation_profile.get("turn_count") or 0,
             "can_use_name": conversation_profile.get("can_use_name") or False,
@@ -991,6 +1132,7 @@ class GeminiChatService:
             "stock_matches": stock_matches[:4],
             "recent_topics": recent_topics,
             "allow_general_fallback": allow_general_fallback,
+            "human_context_summary": structured_context.get("human_context_summary") or "",
         }
         return (
             "Dernier message utilisateur :\n"
@@ -1303,9 +1445,16 @@ class ChatbotResponseService:
         from .models import ChatbotKnowledgeBase, ChatbotLearningData
 
         cleaned_question = (question or "").strip()
+        ai_config = AIConfigService.get_current_config()
         context = self.context_service.build_context(user)
         context = self._inject_preferred_language(context, preferred_language)
+        if ai_config.get("human_layer", True):
+            context = HumanLayerService.enrich(context, cleaned_question)
         role = context["role"] if context["role"] in {"patient", "pharmacy", "admin"} else "all"
+        if role == "pharmacy":
+            pharmacy = getattr(getattr(user, "profile", None), "pharmacy", None) if user is not None else None
+            if not pharmacy_has_platform_access(pharmacy):
+                return PAYMENT_WALL_MESSAGE
         lowered_question = cleaned_question.lower()
         medication_names: List[str] = []
         medication_name = ""
@@ -1429,31 +1578,56 @@ class ChatbotResponseService:
             response_kind=response_kind,
             medication_names=medication_names or ([medication_name] if medication_name else []),
             allow_general_fallback=allow_general_fallback,
+            ai_config=ai_config,
         )
 
         if not final_answer:
-            final_answer = self._build_local_fallback(
-                question=cleaned_question,
-                role=role,
-                context=context,
-                response_kind=response_kind,
-            )
-            detected_intent = detected_intent or "general_fallback"
-            if response_kind == "general_fallback":
-                response_kind = "general_fallback"
+            if ai_config.get("fallback_ai", True):
+                final_answer = self._build_local_fallback(
+                    question=cleaned_question,
+                    role=role,
+                    context=context,
+                    response_kind=response_kind,
+                )
+                AIEventLogger.log(
+                    "fallback_used",
+                    "Fallback local utilise pour la reponse chatbot.",
+                    severity="warning",
+                    payload={"role": role, "response_kind": response_kind},
+                )
+                detected_intent = detected_intent or "general_fallback"
+                if response_kind == "general_fallback":
+                    response_kind = "general_fallback"
+            else:
+                final_answer = "Service temporairement indisponible."
 
-        self._record_learning(
-            ChatbotLearningData,
-            user=user,
-            original_text=cleaned_question,
-            detected_intent=detected_intent,
-            detected_medicine=", ".join(medication_names) if medication_names else (medication_name or ""),
-            corrected_medicine=corrected_medicine,
-            corrected_answer=final_answer,
-            source=role if role in {"patient", "pharmacy", "admin"} else "system",
-            confidence_before=confidence_before,
-            confidence_after=confidence_after,
-        )
+        if ai_config.get("learning_passif", True):
+            self._record_learning(
+                ChatbotLearningData,
+                user=user,
+                original_text=cleaned_question,
+                detected_intent=detected_intent,
+                detected_medicine=", ".join(medication_names) if medication_names else (medication_name or ""),
+                corrected_medicine=corrected_medicine,
+                corrected_answer=final_answer,
+                source=role if role in {"patient", "pharmacy", "admin"} else "system",
+                confidence_before=confidence_before,
+                confidence_after=confidence_after,
+            )
+            LearningEngine.observe(
+                original_text=cleaned_question,
+                detected_intent=detected_intent,
+                response_text=final_answer,
+                context=context,
+                source=role if role in {"patient", "pharmacy", "admin"} else "system",
+                confidence_score=confidence_after or confidence_before or 0.0,
+            )
+            AIEventLogger.log(
+                "learning_observation",
+                "Observation passive enregistree pour PharmiGo AI.",
+                severity="info",
+                payload={"role": role, "intent": detected_intent},
+            )
         return final_answer
 
     @staticmethod
@@ -1477,6 +1651,7 @@ class ChatbotResponseService:
         response_kind: str,
         medication_names: Optional[List[str]] = None,
         allow_general_fallback: bool,
+        ai_config: Optional[Dict[str, bool]] = None,
     ) -> str:
         medication_name = medication_names[0] if medication_names else ""
         personalized_answer = self._personalize_answer(internal_answer, role, context, medication_name)
@@ -1499,6 +1674,8 @@ class ChatbotResponseService:
             return gemini_answer
         if personalized_answer:
             return personalized_answer
+        if ai_config and not ai_config.get("fallback_ai", True):
+            return ""
         return ""
 
     def _build_local_fallback(
@@ -1614,7 +1791,7 @@ class ChatbotResponseService:
         subscription = PharmacySubscription.objects.filter(pharmacy=pharmacy).first()
         subscription_label = "NON CONFIGURÉ"
         subscription_detail = "Aucune donnée d'abonnement n'a été trouvée."
-        is_partner_eligible = bool(getattr(pharmacy, "is_verified", False))
+        has_platform_access = pharmacy_has_platform_access(pharmacy)
         if subscription:
             status_label_map = {
                 "trial": "ESSAI ACTIF",
@@ -1634,14 +1811,9 @@ class ChatbotResponseService:
                 subscription_detail = "Plan Actif."
             else:
                 subscription_detail = f"Statut actuel : {subscription_label}."
-            is_partner_eligible = subscription.is_active() and (getattr(pharmacy, "is_verified", False) or subscription.subscription_status == "trial")
 
-        if not is_partner_eligible:
-            return (
-                f"{display_name}, votre officine n'est pas actuellement éligible à ce rapport stratégique PharmiGo. "
-                "Seules les pharmacies Verified ou Trial avec abonnement actif peuvent générer ce niveau de rapport. "
-                "Je peux toutefois vous aider à régulariser votre visibilité ou votre abonnement si vous le souhaitez."
-            )
+        if not has_platform_access:
+            return PAYMENT_WALL_MESSAGE
 
         stock_summary = stock_qs.aggregate(
             total_lines=Count("id"),
@@ -1868,6 +2040,7 @@ class ChatbotResponseService:
             "conversation_memory": context.get("conversation_memory") or {},
             "response_style": context.get("response_style") or {},
             "patient_support_profile": context.get("patient_support_profile") or {},
+            "human_context_summary": context.get("human_context_summary") or "",
         }
 
     @staticmethod
@@ -2103,6 +2276,22 @@ class ChatbotResponseService:
 
         return any(marker in lowered for marker in self.GENERAL_CONVERSATION_MARKERS)
 
+    @staticmethod
+    def _remove_redundant_leading_greeting(answer: str) -> str:
+        cleaned = (answer or "").strip()
+        if not cleaned:
+            return ""
+
+        cleaned = re.sub(
+            r"^\s*(bonjour|salut|bonsoir|hello|habari|amakuru|mbote)\s*(cher(?:e)?\s+)?(pharmigo)?\s*[\.,!:\-–—]*\s*",
+            "",
+            cleaned,
+            flags=re.IGNORECASE,
+        ).strip()
+        if not cleaned:
+            return (answer or "").strip()
+        return cleaned[0].upper() + cleaned[1:] if len(cleaned) > 1 else cleaned.upper()
+
     def _looks_like_farewell(self, question: str) -> bool:
         lowered = normalize_text(question or "")
         if not lowered:
@@ -2131,20 +2320,22 @@ class ChatbotResponseService:
         normalized = normalize_text(question or "")
         display_name = context.get("display_name") or ""
         profile = context.get("conversation_profile") or {}
-        should_greet = bool(profile.get("should_greet_now"))
+        should_greet = bool(profile.get("should_greet_now", True))
         language = self._resolve_response_language(question, context)
 
         if any(marker in normalized for marker in ["bonjour", "salut", "bonsoir", "coucou", "amakuru", "jambo", "habari", "mbote"]):
             greeting_map = {
-                "fr": "Bonjour" if should_greet else "Rebonjour",
-                "en": "Hello" if should_greet else "Hello again",
-                "sw": "Habari" if should_greet else "Habari tena",
-                "rn": "Amakuru" if should_greet else "Amakuru kandi",
-                "ln": "Mbote" if should_greet else "Mbote lisusu",
+                "fr": "Bonjour",
+                "en": "Hello",
+                "sw": "Habari",
+                "rn": "Amakuru",
+                "ln": "Mbote",
             }
-            greeting = greeting_map.get(language, greeting_map["fr"])
-            name_chunk = f" {display_name}" if display_name and should_greet else ""
-            return f"{greeting}{name_chunk}. Je suis content de vous retrouver. Qu'est-ce qui vous amène aujourd'hui ?"
+            if should_greet:
+                greeting = greeting_map.get(language, greeting_map["fr"])
+                name_chunk = f" {display_name}" if display_name else ""
+                return f"{greeting}{name_chunk}. Je suis content de vous retrouver. Qu'est-ce qui vous amène aujourd'hui ?"
+            return "Je vous écoute. Qu'est-ce qui vous amène maintenant ?"
 
         if any(marker in normalized for marker in ["merci", "thank", "asante", "urakoze", "matondo"]):
             return "Avec plaisir. Si vous voulez, nous pouvons continuer calmement et regarder ensemble ce qui vous préoccupe."
@@ -2528,24 +2719,7 @@ class ChatbotResponseService:
 
     @staticmethod
     def _is_partner_eligible(pharmacy) -> bool:
-        if pharmacy is None:
-            return False
-        subscription = getattr(pharmacy, "subscription", None)
-        if subscription is None:
-            return False
-
-        status = (getattr(subscription, "subscription_status", "") or "").strip().lower()
-        trial_active = bool(getattr(subscription, "is_trial_active", False))
-        trial_end_date = getattr(subscription, "trial_end_date", None)
-        now = timezone.now()
-
-        if status == "active":
-            return bool(getattr(pharmacy, "is_verified", False))
-
-        if status == "trial" and trial_active and trial_end_date and now <= trial_end_date:
-            return True
-
-        return False
+        return is_pharmacy_partner_eligible(pharmacy)
 
     def _format_available_stock_snapshot(self) -> str:
         visible_stocks = list(self._iter_eligible_partner_stocks()[:8])

@@ -364,6 +364,14 @@ export async function updateAdminSettings(payload: {
     account_number: string;
     instructions: string;
   }>;
+  ai_settings?: {
+    human_layer?: boolean;
+    learning_passif?: boolean;
+    fallback_ai?: boolean;
+    memory_engine?: boolean;
+    semantic_search?: boolean;
+    local_reasoning?: boolean;
+  };
 }): Promise<AdminDashboardData> {
   const { data } = await api.patch<AdminDashboardData>(API_ENDPOINTS.adminDashboard, {
     ...payload,
@@ -637,6 +645,10 @@ export async function register(payload: {
   pharmacy_name?: string;
   address?: string;
   pharmacy_image?: File | null;
+  latitude?: number;
+  longitude?: number;
+  location_city?: string;
+  location_country?: string;
 }): Promise<AuthResponse> {
   let body: FormData | typeof payload = payload;
   if (payload.account_type === "pharmacy" && payload.pharmacy_image) {
@@ -647,6 +659,18 @@ export async function register(payload: {
     formData.append("phone_number", payload.phone_number ?? "");
     formData.append("email", payload.email ?? "");
     formData.append("address", payload.address ?? "");
+    if (typeof payload.latitude === "number") {
+      formData.append("latitude", String(payload.latitude));
+    }
+    if (typeof payload.longitude === "number") {
+      formData.append("longitude", String(payload.longitude));
+    }
+    if (payload.location_city) {
+      formData.append("location_city", payload.location_city);
+    }
+    if (payload.location_country) {
+      formData.append("location_country", payload.location_country);
+    }
     formData.append("pharmacy_image", payload.pharmacy_image);
     body = formData;
   }

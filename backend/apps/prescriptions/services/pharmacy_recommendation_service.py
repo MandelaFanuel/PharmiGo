@@ -9,6 +9,7 @@ from typing import Iterable
 from django.db import transaction
 
 from apps.pharmacies.models import Pharmacy, PharmacySubscription
+from apps.pharmacies.services.access import is_pharmacy_partner_eligible
 from apps.pharmigo_chatbot.utils import normalize_text
 from apps.prescriptions.models import MedicationExtraction, PharmacyStock, Prescription, PrescriptionRecommendation
 from apps.prescriptions.services.qa_service import QAService
@@ -319,7 +320,8 @@ class PharmacyRecommendationService:
             subscription = ensure_subscription_for_pharmacy(pharmacy)
             if subscription is None:
                 return False
-        return subscription.is_active()
+        setattr(pharmacy, "subscription", subscription)
+        return is_pharmacy_partner_eligible(pharmacy)
 
     @staticmethod
     def _score_recommendation(

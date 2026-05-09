@@ -356,6 +356,7 @@ export interface AdminDashboardSummary {
   trial_pharmacies: number;
   active_paid_pharmacies: number;
   expired_or_limited_pharmacies: number;
+  lost_prescriptions_total: number;
 }
 
 export interface AdminDashboardUser {
@@ -379,6 +380,7 @@ export interface AdminDashboardSubscription {
   days_remaining: number;
   monthly_price_usd: number;
   monthly_price_bif: number | null;
+  lost_prescriptions_count: number;
 }
 
 export interface AdminDashboardPayment {
@@ -402,6 +404,42 @@ export interface AdminDashboardPayment {
   created_at: string;
 }
 
+export interface AdminDashboardAISettings {
+  human_layer: boolean;
+  learning_passif: boolean;
+  fallback_ai: boolean;
+  memory_engine: boolean;
+  semantic_search: boolean;
+  local_reasoning: boolean;
+}
+
+export interface AdminDashboardAIHealth {
+  gemini_enabled: boolean;
+  gemini_configured: boolean;
+  gemini_available: boolean;
+  gemini_model: string;
+}
+
+export interface AdminDashboardAILearningAuditItem {
+  id: number;
+  source: string;
+  detected_intent: string;
+  original_text: string;
+  corrected_medicine: string;
+  confidence_before: number;
+  confidence_after: number;
+  created_at: string;
+}
+
+export interface AdminDashboardAILogItem {
+  id: number;
+  event_type: string;
+  severity: string;
+  message: string;
+  payload: Record<string, unknown>;
+  created_at: string;
+}
+
 export interface AdminDashboardData {
   generated_at: string;
   settings: SubscriptionSystemSettings;
@@ -422,6 +460,10 @@ export interface AdminDashboardData {
   messages: ChatMessage[];
   subscriptions: AdminDashboardSubscription[];
   payments: AdminDashboardPayment[];
+  ai_settings: AdminDashboardAISettings;
+  ai_health: AdminDashboardAIHealth;
+  ai_learning_audit: AdminDashboardAILearningAuditItem[];
+  ai_recent_logs: AdminDashboardAILogItem[];
 }
 
 export interface AppProductConfig {
@@ -461,6 +503,10 @@ export interface AuthUserProfile {
   phone_number: string;
   whatsapp_number: string;
   address: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  location_city?: string;
+  location_country?: string;
   email_verified?: boolean;
   google_connected?: boolean;
   created_at?: string;

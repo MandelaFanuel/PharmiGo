@@ -4,12 +4,13 @@ from django.contrib.auth.models import User
 from django.utils import timezone
 from decimal import Decimal
 
+from apps.common.public_storage import public_media_storage
 from .payment_config import get_default_payment_methods
 
 
 class Pharmacy(models.Model):
     name = models.CharField(max_length=255)
-    profile_image = models.ImageField(upload_to="pharmacies/", blank=True, null=True)
+    profile_image = models.ImageField(upload_to="pharmacies/", storage=public_media_storage, blank=True, null=True)
     city = models.CharField(max_length=120)
     address = models.CharField(max_length=255)
     phone_number = models.CharField(max_length=30)
@@ -146,9 +147,9 @@ class PharmacySubscription(models.Model):
     
     def is_active(self):
         """Check if subscription is active (trial or paid)"""
-        if self.subscription_status == "trial" and self.is_trial_active:
-            return timezone.now() <= self.trial_end_date
-        return self.subscription_status == "active"
+        from .services.access import is_subscription_eligible
+
+        return is_subscription_eligible(self)
 
 
 class SubscriptionSystemSettings(models.Model):

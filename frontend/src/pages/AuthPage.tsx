@@ -5,12 +5,17 @@ import GoogleSignInButton from "../components/GoogleSignInButton";
 import PhoneNumberField from "../components/PhoneNumberField";
 import { getDashboardPathForUser, persistStoredAuthSession } from "../lib/auth";
 import { parseApiError } from "../lib/apiErrors";
+import { describeGeolocationError, requestBrowserCoordinates, supportsGeolocation } from "../lib/geolocation";
 import { buildPhoneNumber, type PhoneCountryCode, validateInternationalPhoneNumber } from "../lib/phoneCountries";
 import { login, loginWithGoogle, register } from "../services/api";
 
 type AuthMode = "login" | "register";
 type AccountType = "patient" | "pharmacy";
 type PatientGender = "male" | "female" | "other" | "";
+type RegistrationLocation = {
+  latitude: number;
+  longitude: number;
+};
 
 function EyeIcon({ open }: { open: boolean }) {
   return open ? (
@@ -95,6 +100,9 @@ export default function AuthPage() {
   });
   const [showPatientPassword, setShowPatientPassword] = useState(false);
   const [showPharmacyPassword, setShowPharmacyPassword] = useState(false);
+  const [registrationLocation, setRegistrationLocation] = useState<RegistrationLocation | null>(null);
+  const [locationBusy, setLocationBusy] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
 
   const mode: AuthMode = useMemo(() => {
     const searchParams = new URLSearchParams(location.search);
@@ -106,6 +114,19 @@ export default function AuthPage() {
       return;
     }
     navigate(nextMode === "register" ? "/login?mode=register" : "/login");
+  }
+
+  async function handleCaptureLocation() {
+    setLocationBusy(true);
+    setLocationError(null);
+    try {
+      const coordinates = await requestBrowserCoordinates();
+      setRegistrationLocation(coordinates);
+    } catch (caughtError) {
+      setLocationError(describeGeolocationError(caughtError));
+    } finally {
+      setLocationBusy(false);
+    }
   }
 
   async function handleLoginSubmit(event: FormEvent<HTMLFormElement>) {
@@ -232,6 +253,8 @@ export default function AuthPage() {
           gender: gender || undefined,
           email,
           password: patientForm.password,
+          latitude: registrationLocation?.latitude,
+          longitude: registrationLocation?.longitude,
         });
         navigate(`/verify-email?email=${encodeURIComponent(email)}`, {
           replace: true,
@@ -286,6 +309,8 @@ export default function AuthPage() {
         address,
         password: pharmacyForm.password,
         pharmacy_image: pharmacyForm.pharmacy_image,
+        latitude: registrationLocation?.latitude,
+        longitude: registrationLocation?.longitude,
       });
       navigate(`/verify-email?email=${encodeURIComponent(email)}`, {
         replace: true,
@@ -572,6 +597,41 @@ export default function AuthPage() {
                       {registerFieldErrors.password ? <small className="field-error">{registerFieldErrors.password}</small> : null}
                     </label>
                   </div>
+                </div>
+              </div>
+
+              <div className="auth-location-card">
+                <div className="auth-location-copy">
+                  <strong>Activez votre localisation</strong>
+                  <p>
+                    PharmiGo vous la demande des l'inscription pour retrouver les pharmacies proches de vous et calculer les
+                    distances plus justement.
+                  </p>
+                  {registrationLocation ? (
+                    <p className="auth-location-success">
+                      Position recuperee. Vos coordonnees seront associees a votre compte apres l'inscription.
+                    </p>
+                  ) : null}
+                  {locationError ? <p className="field-error auth-location-error">{locationError}</p> : null}
+                  {!supportsGeolocation() ? (
+                    <p className="auth-location-note">
+                      Ce navigateur ne permet pas la geolocalisation ici. Vous pourrez la partager plus tard depuis votre compte.
+                    </p>
+                  ) : (
+                    <p className="auth-location-note">
+                      Si vous refusez maintenant, PharmiGo vous la redemandera plus tard pour ameliorer la recherche locale.
+                    </p>
+                  )}
+                </div>
+                <div className="auth-location-actions">
+                  <button
+                    type="button"
+                    className="pharmigo-secondary-btn"
+                    onClick={() => void handleCaptureLocation()}
+                    disabled={locationBusy || !supportsGeolocation()}
+                  >
+                    {locationBusy ? "Localisation..." : registrationLocation ? "Actualiser ma position" : "Activer ma localisation"}
+                  </button>
                 </div>
               </div>
 

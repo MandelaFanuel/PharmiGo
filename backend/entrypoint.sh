@@ -1,8 +1,9 @@
 #!/bin/sh
 set -eu
 
-mkdir -p /app/media/prescriptions/files /app/media/prescriptions/images /app/media/pharmacies /app/private_media/prescriptions
-chmod -R 777 /app/media || true
+PUBLIC_MEDIA_ROOT="${PHARMIGO_MEDIA_ROOT:-/app/media}"
+mkdir -p "$PUBLIC_MEDIA_ROOT/prescriptions/files" "$PUBLIC_MEDIA_ROOT/prescriptions/images" "$PUBLIC_MEDIA_ROOT/pharmacies" /app/private_media/prescriptions
+chmod -R 777 "$PUBLIC_MEDIA_ROOT" || true
 chmod -R 700 /app/private_media || true
 
 python - <<'PY'

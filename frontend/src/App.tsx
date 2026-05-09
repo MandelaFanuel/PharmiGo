@@ -1,10 +1,11 @@
-import { type ReactNode, useEffect } from "react";
+import { type ReactNode } from "react";
 import { Route, Routes, useLocation } from "react-router-dom";
 
 import AnimatedPage from "./components/AnimatedPage";
 import { ProtectedRoute, PublicOnlyRoute } from "./components/RouteGuards";
 import Footer from "./components/Footer";
 import Header from "./components/Header";
+import LocationPermissionPrompt from "./components/LocationPermissionPrompt";
 import PWAInstallPrompt from "./components/PWAInstallPrompt";
 import AuthPage from "./pages/AuthPage";
 import Chat from "./pages/Chat";
@@ -17,69 +18,8 @@ import ResetPassword from "./pages/ResetPassword";
 import Search from "./pages/Search";
 import UploadPrescription from "./pages/UploadPrescription";
 import VerifyEmail from "./pages/VerifyEmail";
-import { getStoredAuthToken, getStoredCurrentUser, persistStoredCurrentUser } from "./lib/auth";
-import { updateProfileLocation } from "./services/api";
-
-const GEO_SYNC_SESSION_KEY = "pharmigo.geoSync.v1";
-
 function withPageTransition(element: ReactNode) {
   return <AnimatedPage>{element}</AnimatedPage>;
-}
-
-function ProfileLocationSync() {
-  useEffect(() => {
-    if (typeof window === "undefined" || typeof navigator === "undefined") {
-      return;
-    }
-
-    const authToken = getStoredAuthToken();
-    const currentUser = getStoredCurrentUser();
-    if (!authToken || !currentUser?.profile) {
-      return;
-    }
-
-    const profileRole = currentUser.profile.role;
-    if (!["patient", "pharmacy", "admin"].includes(profileRole)) {
-      return;
-    }
-
-    const sessionFlag = window.sessionStorage.getItem(GEO_SYNC_SESSION_KEY);
-    if (sessionFlag === "done" || sessionFlag === "denied" || sessionFlag === "pending") {
-      return;
-    }
-
-    if (!("geolocation" in navigator)) {
-      window.sessionStorage.setItem(GEO_SYNC_SESSION_KEY, "unsupported");
-      return;
-    }
-
-    window.sessionStorage.setItem(GEO_SYNC_SESSION_KEY, "pending");
-
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        try {
-          const updatedUser = await updateProfileLocation({
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-          });
-          persistStoredCurrentUser(updatedUser);
-          window.sessionStorage.setItem(GEO_SYNC_SESSION_KEY, "done");
-        } catch {
-          window.sessionStorage.setItem(GEO_SYNC_SESSION_KEY, "failed");
-        }
-      },
-      () => {
-        window.sessionStorage.setItem(GEO_SYNC_SESSION_KEY, "denied");
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 15 * 60 * 1000,
-      }
-    );
-  }, []);
-
-  return null;
 }
 
 export default function App() {
@@ -97,7 +37,7 @@ export default function App() {
   return (
     <div className="app-shell">
       <PWAInstallPrompt />
-      <ProfileLocationSync />
+      <LocationPermissionPrompt key={`${location.pathname}${location.search}`} />
       {showChrome ? <Header /> : null}
       <main
         className={

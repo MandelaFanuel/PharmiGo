@@ -8,6 +8,7 @@ from django.utils import timezone
 from apps.pharmigo_chatbot.models import ConversationHistory, ConversationSession
 from apps.pharmigo_chatbot.services import ChatbotContextService, ChatbotResponseService
 from apps.pharmacies.models import Pharmacy as RealPharmacy, PharmacySubscription
+from apps.pharmacies.services.access import PAYMENT_WALL_MESSAGE
 from apps.prescriptions.models import PharmacyStock as RealPharmacyStock, Prescription, PrescriptionResponse, MedicationExtraction
 from apps.users.models import UserProfile
 
@@ -85,6 +86,32 @@ class ChatbotResponseServiceTests(TestCase):
 
         self.assertEqual(response, "Bonjour, je suis PharmiGo et je peux vous accompagner.")
         mocked_lookup.assert_not_called()
+
+    @patch("apps.pharmigo_chatbot.services.GeminiChatService._generate_content")
+    def test_redundant_greeting_is_removed_mid_conversation(self, mocked_generate_content):
+        mocked_generate_content.return_value = (
+            {
+                "candidates": [
+                    {
+                        "content": {
+                            "parts": [
+                                {"text": "Bonjour. Je comprends votre inquiétude. Dites-moi ce qui vous gêne le plus."}
+                            ]
+                        }
+                    }
+                ]
+            },
+            "gemini-2.5-flash",
+        )
+        session = ConversationSession.objects.create(user=self.user, session_key="user-1-default")
+        ConversationHistory.objects.create(session=session, user=self.user, sender="user", message="bonjour")
+        ConversationHistory.objects.create(session=session, user=self.user, sender="bot", message="Bonjour. Je suis content de vous retrouver.")
+        ConversationHistory.objects.create(session=session, user=self.user, sender="user", message="j'ai mal à la tête")
+
+        response = ChatbotResponseService().answer("j'ai de la fièvre aussi", self.user)
+
+        self.assertFalse(response.lower().startswith("bonjour"))
+        self.assertTrue(response)
 
     @patch("apps.pharmigo_chatbot.services.GeminiChatService.generate_response")
     def test_gemini_receives_recent_history_buffer(self, mocked_generate):
@@ -439,3 +466,34 @@ class ChatbotResponseServiceTests(TestCase):
         self.assertIn("pharmacies partenaires vérifiées actives", response.lower())
         self.assertIn("chiffre d'affaires total tracé via pharmigo", response.lower())
         self.assertIn("aucun contenu textuel des conversations", response.lower())
+
+    def test_expired_pharmacy_chat_is_blocked_by_payment_wall_message(self):
+        PharmacySubscription.objects.filter(pharmacy=self.pharmacy).update(
+            subscription_status="expired",
+            is_trial_active=False,
+            trial_end_date=timezone.now() - timedelta(days=1),
+        )
+
+        service = ChatbotResponseService()
+        service.gemini_chat.available = False
+
+        response = service.answer("fais moi mon rapport", self.pharmacy_user)
+
+        self.assertEqual(response, PAYMENT_WALL_MESSAGE)
+
+    def test_active_paid_pharmacy_chat_is_unblocked_even_if_verified_flag_is_false(self):
+        PharmacySubscription.objects.filter(pharmacy=self.pharmacy).update(
+            subscription_status="active",
+            is_trial_active=False,
+            next_payment_due_date=timezone.now() + timedelta(days=30),
+        )
+        self.pharmacy.is_verified = False
+        self.pharmacy.save(update_fields=["is_verified"])
+
+        service = ChatbotResponseService()
+        service.gemini_chat.available = False
+
+        response = service.answer("fais moi mon rapport", self.pharmacy_user)
+
+        self.assertNotEqual(response, PAYMENT_WALL_MESSAGE)
+        self.assertIn("rapport", response.lower())

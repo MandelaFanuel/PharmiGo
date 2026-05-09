@@ -28,6 +28,7 @@ from .services.qa_service import QAService
 from apps.pharmigo_chatbot.orchestrator import PharmiGoChatbotOrchestrator
 from apps.pharmigo_chatbot.models import ChatbotLearningData
 from apps.pharmacies.permissions import IsPharmacySubscriptionActiveOrTrial
+from apps.pharmacies.services.access import PAYMENT_WALL_MESSAGE, is_pharmacy_partner_eligible, pharmacy_has_platform_access
 from pharmigo.api import broadcast_feed_event, create_targeted_notification, get_request_user, pharmacy_subscription_is_active
 
 logger = logging.getLogger(__name__)
@@ -145,6 +146,8 @@ def _get_visible_prescription_queryset(request):
         return patient_queryset
 
     if profile.role == "pharmacy":
+        if not pharmacy_has_platform_access(getattr(profile, "pharmacy", None)):
+            return queryset.none()
         return queryset.filter(
             status__in=[
                 "uploaded",
@@ -681,6 +684,12 @@ class PrescriptionSelectPharmacyView(views.APIView):
             return Response(
                 {'error': 'Pharmacy not found'},
                 status=status.HTTP_404_NOT_FOUND
+            )
+
+        if not is_pharmacy_partner_eligible(pharmacy):
+            return Response(
+                {"error": PAYMENT_WALL_MESSAGE},
+                status=status.HTTP_403_FORBIDDEN,
             )
 
         recommended_pharmacy_ids = set(

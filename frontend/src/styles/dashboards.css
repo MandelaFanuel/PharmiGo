@@ -259,6 +259,113 @@
   font-size: 0.78rem;
 }
 
+.admin-ai-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 360px) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.admin-ai-settings-form {
+  gap: 1rem;
+}
+
+.admin-ai-toggle-list {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.admin-ai-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: color-mix(in srgb, var(--surface) 90%, transparent 10%);
+}
+
+.admin-ai-toggle span {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.admin-ai-toggle input {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+.admin-ai-stack {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.admin-ai-health-card,
+.admin-ai-list-card {
+  padding: 1rem;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: color-mix(in srgb, var(--surface) 92%, transparent 8%);
+}
+
+.admin-ai-health-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.admin-ai-health-grid div {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  background: color-mix(in srgb, var(--surface-strong) 88%, transparent 12%);
+}
+
+.admin-ai-health-grid span,
+.admin-ai-list-item small {
+  color: var(--muted);
+}
+
+.admin-ai-health-grid strong,
+.admin-ai-list-head strong {
+  color: var(--text);
+}
+
+.admin-ai-lists {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.admin-ai-list {
+  display: grid;
+  gap: 0.8rem;
+  max-height: 24rem;
+  overflow: auto;
+}
+
+.admin-ai-list-item {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  background: color-mix(in srgb, var(--surface-strong) 90%, transparent 10%);
+}
+
+.admin-ai-list-item p {
+  margin: 0;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.admin-ai-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
 .dashboard-topbar-avatar {
   width: 2.6rem;
   height: 2.6rem;
@@ -1051,6 +1158,50 @@
   border: 1px solid rgba(0, 0, 0, 0.08);
   background: color-mix(in srgb, var(--surface) 90%, transparent 10%);
   color: var(--text);
+}
+
+.admin-ai-toggle-row {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between;
+  gap: 1rem;
+  min-width: min(100%, 21rem) !important;
+  padding: 0.9rem 1rem;
+  border: 1px solid rgba(91, 119, 157, 0.14);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--surface) 94%, transparent 6%);
+}
+
+.admin-ai-toggle-row input[type="checkbox"] {
+  min-height: auto;
+  width: 1.1rem;
+  height: 1.1rem;
+  padding: 0;
+}
+
+.admin-ai-grid {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1.25rem;
+}
+
+.admin-ai-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.admin-ai-list-item {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.95rem 1rem;
+  border: 1px solid rgba(91, 119, 157, 0.14);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--surface) 94%, transparent 6%);
+}
+
+.admin-ai-list-item p,
+.admin-ai-list-item small {
+  margin: 0;
 }
 
 .admin-payment-methods {
@@ -4170,4 +4321,15 @@ canvas {
   isolation: isolate !important;
   overflow: visible !important;
   background: color-mix(in srgb, var(--surface-strong) 96%, #020617 4%) !important;
+}
+
+@media (max-width: 980px) {
+  .admin-ai-grid,
+  .admin-ai-lists {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-ai-health-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

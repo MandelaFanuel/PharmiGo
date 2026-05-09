@@ -4,6 +4,7 @@ from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
+from apps.common.public_storage import public_media_storage
 from apps.pharmacies.models import Pharmacy
 
 
@@ -21,7 +22,7 @@ class UserProfile(models.Model):
     birth_date = models.DateField(blank=True, null=True)
     gender = models.CharField(max_length=20, blank=True, default="")
     address = models.CharField(max_length=255, blank=True)
-    profile_image = models.ImageField(upload_to="profiles/", blank=True, null=True)
+    profile_image = models.ImageField(upload_to="profiles/", storage=public_media_storage, blank=True, null=True)
     last_known_ip = models.GenericIPAddressField(blank=True, null=True)
     latitude = models.FloatField(blank=True, null=True)
     longitude = models.FloatField(blank=True, null=True)

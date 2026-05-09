@@ -3732,6 +3732,49 @@ label span {
   font-size: 0.82rem;
 }
 
+.auth-location-card {
+  display: grid;
+  gap: 14px;
+  padding: 16px 18px;
+  border-radius: 18px;
+  border: 1px solid color-mix(in srgb, var(--primary) 22%, var(--line) 78%);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--primary) 8%, var(--surface-strong) 92%), color-mix(in srgb, var(--surface) 96%, transparent 4%));
+}
+
+.auth-location-copy {
+  display: grid;
+  gap: 6px;
+}
+
+.auth-location-copy strong {
+  color: var(--text);
+}
+
+.auth-location-copy p {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 0.94rem;
+}
+
+.auth-location-success {
+  color: color-mix(in srgb, var(--primary) 72%, var(--text) 28%);
+  font-weight: 600;
+}
+
+.auth-location-note {
+  font-size: 0.82rem;
+}
+
+.auth-location-error {
+  margin: 0;
+}
+
+.auth-location-actions {
+  display: flex;
+  justify-content: flex-start;
+}
+
 .landing-modal-overlay {
   position: fixed;
   inset: 0;
@@ -4435,6 +4478,53 @@ label span {
 .pharmacy-showcase-media:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--primary) 54%, white 46%);
   outline-offset: 3px;
+}
+
+.pharmacy-list-card {
+  display: grid;
+  gap: 14px;
+}
+
+.pharmacy-list-image-button {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 18px;
+  overflow: hidden;
+  cursor: zoom-in;
+  background: color-mix(in srgb, var(--surface) 92%, white 8%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--line) 84%, transparent 16%);
+}
+
+.pharmacy-list-image-button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--primary) 55%, white 45%);
+  outline-offset: 3px;
+}
+
+.pharmacy-list-image,
+.pharmacy-detail-image {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 11;
+  object-fit: cover;
+  transition: transform 220ms ease;
+}
+
+.pharmacy-list-image-button:hover .pharmacy-list-image,
+.pharmacy-list-image-button:focus-visible .pharmacy-list-image,
+.pharmacy-detail-image-button:hover .pharmacy-detail-image,
+.pharmacy-detail-image-button:focus-visible .pharmacy-detail-image {
+  transform: scale(1.03);
+}
+
+.pharmacy-detail-card {
+  display: grid;
+  gap: 14px;
+}
+
+.pharmacy-detail-image-button {
+  max-width: 520px;
 }
 
 .pharmacy-showcase-placeholder {

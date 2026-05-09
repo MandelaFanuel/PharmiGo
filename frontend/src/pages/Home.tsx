@@ -15,7 +15,7 @@ import PharmacyDashboard from "../components/PharmacyDashboard";
 import AdminDashboard from "../components/AdminDashboard";
 import PublicPrescriptionSheet from "../components/PublicPrescriptionSheet";
 import Reveal from "../components/Reveal";
-import { getApiOrigin, getChatWebSocketUrl } from "../config/endpoints";
+import { getChatWebSocketUrl } from "../config/endpoints";
 import { usePreferences } from "../context/PreferencesContext";
 import { downloadPharmiGoPDF } from "../utils/pharmigoPDF";
 import { clearStoredAuthSession, getDashboardPathForUser, getStoredCurrentUser, persistStoredAuthSession, persistStoredCurrentUser } from "../lib/auth";
@@ -24,6 +24,7 @@ import { formatExactDateTime } from "../lib/datetime";
 import { homeUiText, landingCopy } from "../lib/homeTranslations";
 import { type Language } from "../lib/i18n";
 import { logClientError } from "../lib/logger";
+import { resolveMediaUrl, resolvePharmacyProfileImageUrl } from "../lib/media";
 import { buildPhoneNumber, splitPhoneNumber, type PhoneCountryCode, validateInternationalPhoneNumber } from "../lib/phoneCountries";
 import {
   deleteAllNotifications,
@@ -252,23 +253,6 @@ function HomePagination({
       </button>
     </nav>
   );
-}
-
-function resolveMediaUrl(path?: string | null) {
-  if (!path) {
-    return null;
-  }
-
-  if (path.startsWith("http://") || path.startsWith("https://")) {
-    return path;
-  }
-
-  const explicitOrigin = import.meta.env.VITE_API_ORIGIN || getApiOrigin();
-  if (explicitOrigin) {
-    return `${explicitOrigin.replace(/\/$/, "")}${path.startsWith("/") ? path : `/${path}`}`;
-  }
-
-  return path.startsWith("/") ? path : `/${path}`;
 }
 
 function inferPharmacyTimeZone(pharmacy: Pharmacy) {
@@ -3663,7 +3647,7 @@ export default function Home() {
           {filteredPharmacies.length ? (
             <div className="pharmacy-showcase-list">
               {pagedPharmacies.map((pharmacy) => {
-                const pharmacyImage = resolveMediaUrl(pharmacy.profile_image);
+                const pharmacyImage = resolvePharmacyProfileImageUrl(pharmacy);
                 const hasVisibleImage = Boolean(pharmacyImage) && !brokenPharmacyImages[pharmacy.id];
                 const pharmacyImageSrc = hasVisibleImage && pharmacyImage ? pharmacyImage : undefined;
                 const operationalStatus = getPharmacyOperationalStatus(pharmacy, language);

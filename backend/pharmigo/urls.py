@@ -63,5 +63,5 @@ urlpatterns = [
     path("api/chatbot/", include("apps.pharmigo_chatbot.chatbot_api_urls")),
 ]
 
-if settings.DEBUG:
+if settings.DEBUG or getattr(settings, "PHARMIGO_SERVE_MEDIA", False):
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

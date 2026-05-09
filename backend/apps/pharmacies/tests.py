@@ -1,12 +1,14 @@
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
+from django.core.management import call_command
 from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from apps.notifications.models import Notification
 from apps.pharmacies.models import Pharmacy, PharmacySubscription, SubscriptionSystemSettings
-from apps.prescriptions.models import Prescription, PrescriptionResponse
+from apps.pharmacies.services.access import pharmacy_has_platform_access
+from apps.prescriptions.models import MedicationExtraction, PharmacyStock, Prescription, PrescriptionResponse
 from apps.users.models import UserProfile
 from apps.users.serializers import DEFAULT_ADMIN_EMAIL
 
@@ -48,6 +50,32 @@ class PharmacySubscriptionApiTests(APITestCase):
 
         self.assertTrue(subscription.is_active())
 
+    def test_active_subscription_reopens_access_even_if_verified_flag_was_false(self):
+        subscription = PharmacySubscription.objects.create(
+            pharmacy=self.pharmacy,
+            subscription_status="active",
+            is_trial_active=False,
+            trial_end_date=timezone.now() + timedelta(days=30),
+            next_payment_due_date=timezone.now() + timedelta(days=30),
+        )
+        self.pharmacy.is_verified = False
+        self.pharmacy.save(update_fields=["is_verified"])
+
+        self.assertTrue(subscription.is_active())
+        self.assertTrue(pharmacy_has_platform_access(self.pharmacy))
+
+    def test_expired_active_subscription_blocks_access_again_after_due_date(self):
+        subscription = PharmacySubscription.objects.create(
+            pharmacy=self.pharmacy,
+            subscription_status="active",
+            is_trial_active=False,
+            trial_end_date=timezone.now() + timedelta(days=30),
+            next_payment_due_date=timezone.now() - timedelta(days=1),
+        )
+
+        self.assertFalse(subscription.is_active())
+        self.assertFalse(pharmacy_has_platform_access(self.pharmacy))
+
     def test_admin_can_update_global_trial_duration(self):
         admin_user = User.objects.create_user(
             username="admin",
@@ -78,6 +106,53 @@ class PharmacySubscriptionApiTests(APITestCase):
         subscription.refresh_from_db()
         self.assertEqual(settings_obj.trial_period_days, 90)
         self.assertEqual((subscription.trial_end_date - subscription.trial_start_date).days, 90)
+
+    def test_admin_dashboard_exposes_lost_prescriptions_for_limited_pharmacies(self):
+        admin_user = User.objects.create_user(
+            username="admin-dashboard",
+            email="admin-dashboard@pharmigo.com",
+            password="secret123",
+            is_staff=True,
+            is_superuser=True,
+        )
+        PharmacySubscription.objects.update_or_create(
+            pharmacy=self.pharmacy,
+            defaults={
+                "subscription_status": "expired",
+                "is_trial_active": False,
+                "trial_end_date": timezone.now() - timedelta(days=1),
+            },
+        )
+        patient_user = User.objects.create_user(username="patient-lost", password="secret123")
+        UserProfile.objects.create(user=patient_user, role="patient", phone_number="+25761000046", email_verified=True)
+        prescription = Prescription.objects.create(
+            patient_name="Patient Lost",
+            patient_email="lost@example.com",
+            patient_user=patient_user,
+            status="confirmed",
+        )
+        MedicationExtraction.objects.create(
+            prescription=prescription,
+            name="Paracetamol",
+            dosage="500mg",
+            quantity=1,
+            confirmed=True,
+        )
+        PharmacyStock.objects.create(
+            pharmacy=self.pharmacy,
+            medication_name="Paracetamol",
+            dosage="500mg",
+            quantity=5,
+            is_available=True,
+        )
+
+        self.client.force_authenticate(user=admin_user)
+        response = self.client.get("/api/admin/dashboard/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertGreaterEqual(response.data["summary"]["lost_prescriptions_total"], 1)
+        subscription_row = next(item for item in response.data["subscriptions"] if item["pharmacy_id"] == self.pharmacy.id)
+        self.assertGreaterEqual(subscription_row["lost_prescriptions_count"], 1)
 
     def test_profile_exposes_registration_timestamps_and_filters_old_history(self):
         now = timezone.now()
@@ -163,5 +238,82 @@ class PharmacySubscriptionApiTests(APITestCase):
                 recipient_user=admin_user,
                 channel="payments:admin",
                 title="Nouveau paiement d'abonnement",
+            ).exists()
+        )
+
+    def test_expired_pharmacy_response_submission_is_blocked_with_payment_wall_message(self):
+        PharmacySubscription.objects.update_or_create(
+            pharmacy=self.pharmacy,
+            defaults={
+                "subscription_status": "expired",
+                "is_trial_active": False,
+                "trial_end_date": timezone.now() - timedelta(days=1),
+            },
+        )
+        patient_user = User.objects.create_user(username="patient-for-response", password="secret123")
+        UserProfile.objects.create(user=patient_user, role="patient", phone_number="+25761000044", email_verified=True)
+        prescription = Prescription.objects.create(
+            patient_name="Patient Test",
+            patient_email="patient@example.com",
+            patient_user=patient_user,
+            status="confirmed",
+        )
+
+        response = self.client.post(
+            "/api/prescription-responses/",
+            {
+                "prescription": prescription.id,
+                "availability_note": "Disponible",
+                "estimated_minutes": 20,
+                "total_price": "2500",
+                "status": "quoted",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(
+            response.data["detail"],
+            "Votre période d'essai est terminée, veuillez activer votre abonnement pour continuer à bénéficier de toutes les fonctionnalités.",
+        )
+
+    def test_notify_expired_pharmacies_command_creates_upsell_notification(self):
+        PharmacySubscription.objects.update_or_create(
+            pharmacy=self.pharmacy,
+            defaults={
+                "subscription_status": "expired",
+                "is_trial_active": False,
+                "trial_end_date": timezone.now() - timedelta(days=1),
+            },
+        )
+        patient_user = User.objects.create_user(username="patient-stock-match", password="secret123")
+        UserProfile.objects.create(user=patient_user, role="patient", phone_number="+25761000045", email_verified=True)
+        prescription = Prescription.objects.create(
+            patient_name="Patient Match",
+            patient_email="match@example.com",
+            patient_user=patient_user,
+            status="confirmed",
+        )
+        MedicationExtraction.objects.create(
+            prescription=prescription,
+            name="Paracetamol",
+            dosage="500mg",
+            quantity=1,
+            confirmed=True,
+        )
+        PharmacyStock.objects.create(
+            pharmacy=self.pharmacy,
+            medication_name="Paracetamol",
+            dosage="500mg",
+            quantity=10,
+            is_available=True,
+        )
+
+        call_command("notify_expired_pharmacies")
+
+        self.assertTrue(
+            Notification.objects.filter(
+                recipient_pharmacy=self.pharmacy,
+                title="Opportunités PharmiGo en attente",
             ).exists()
         )

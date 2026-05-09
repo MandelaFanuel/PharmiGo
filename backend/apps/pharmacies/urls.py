@@ -3,6 +3,7 @@ from django.urls import path
 from .views import (
     PharmacyDetailView,
     PharmacyListView,
+    PharmacyProfileImageView,
     PharmacyContactListView,
     PharmacyContactDetailView,
     PharmacyContactCreateView,
@@ -16,6 +17,7 @@ from .views import (
 urlpatterns = [
     path("", PharmacyListView.as_view(), name="pharmacy-list"),
     path("<int:pk>/", PharmacyDetailView.as_view(), name="pharmacy-detail"),
+    path("<int:pk>/profile-image/", PharmacyProfileImageView.as_view(), name="pharmacy-profile-image"),
     path("contacts/", PharmacyContactListView.as_view(), name="pharmacy-contact-list"),
     path("contacts/<int:pk>/", PharmacyContactDetailView.as_view(), name="pharmacy-contact-detail"),
     path("contacts/create/", PharmacyContactCreateView.as_view(), name="pharmacy-contact-create"),

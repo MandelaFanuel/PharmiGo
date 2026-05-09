@@ -4,6 +4,33 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+
+def _load_local_env_file() -> None:
+    """Best-effort .env loader for local/dev runs.
+
+    Render/Docker exported variables keep priority because we only call
+    os.environ.setdefault(...).
+    """
+    for candidate in (BASE_DIR.parent / ".env", BASE_DIR / ".env"):
+        if not candidate.exists():
+            continue
+        try:
+            for raw_line in candidate.read_text(encoding="utf-8").splitlines():
+                line = raw_line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                key = key.strip()
+                value = value.strip().strip('"').strip("'")
+                if key:
+                    os.environ.setdefault(key, value)
+            break
+        except Exception:
+            continue
+
+
+_load_local_env_file()
+
 def _read_bool_env(*names: str, default: bool = False) -> bool:
     for name in names:
         value = os.getenv(name)
@@ -105,8 +132,9 @@ USE_TZ = True
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
-MEDIA_ROOT = BASE_DIR / "media"
+MEDIA_ROOT = Path(os.getenv("PHARMIGO_MEDIA_ROOT", "")).expanduser() if os.getenv("PHARMIGO_MEDIA_ROOT") else BASE_DIR / "media"
 PRIVATE_MEDIA_ROOT = BASE_DIR / "private_media"
+PHARMIGO_SERVE_MEDIA = _read_bool_env("PHARMIGO_SERVE_MEDIA", default=True)
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
@@ -161,6 +189,13 @@ GEMINI_ENABLED = _read_bool_env("GEMINI_ENABLED", default=True)
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
 GOOGLE_VISION_ENABLED = _read_bool_env("GOOGLE_VISION_ENABLED", default=False)
 GOOGLE_APPLICATION_CREDENTIALS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
+PHARMIGO_HUMAN_LAYER_ENABLED = _read_bool_env("PHARMIGO_HUMAN_LAYER_ENABLED", default=True)
+PHARMIGO_TRIAL_RESTRICTION_ENABLED = _read_bool_env("PHARMIGO_TRIAL_RESTRICTION_ENABLED", default=True)
+PHARMIGO_LEARNING_ENABLED = _read_bool_env("PHARMIGO_LEARNING_ENABLED", default=True)
+PHARMIGO_FALLBACK_AI_ENABLED = _read_bool_env("PHARMIGO_FALLBACK_AI_ENABLED", default=True)
+PHARMIGO_MEMORY_ENGINE_ENABLED = _read_bool_env("PHARMIGO_MEMORY_ENGINE_ENABLED", default=False)
+PHARMIGO_SEMANTIC_SEARCH_ENABLED = _read_bool_env("PHARMIGO_SEMANTIC_SEARCH_ENABLED", default=False)
+PHARMIGO_LOCAL_REASONING_ENABLED = _read_bool_env("PHARMIGO_LOCAL_REASONING_ENABLED", default=False)
 
 FRONTEND_URL = (
     os.getenv("FRONTEND_URL", "").strip()

@@ -3,6 +3,7 @@ from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.tokens import default_token_generator
 from datetime import timedelta
 from django.db import transaction
+from django.urls import reverse
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
 from django.utils import timezone
@@ -105,7 +106,7 @@ def phone_number_already_used(phone_number: str, *, exclude_profile_id: int | No
 class UserProfileSerializer(serializers.ModelSerializer):
     profile_image = serializers.ImageField(read_only=True)
     pharmacy_name = serializers.CharField(source="pharmacy.name", read_only=True)
-    pharmacy_image = serializers.ImageField(source="pharmacy.profile_image", read_only=True)
+    pharmacy_image = serializers.SerializerMethodField()
     pharmacy_created_at = serializers.DateTimeField(source="pharmacy.created_at", read_only=True)
     is_online = serializers.SerializerMethodField()
     pharmacy_is_online = serializers.SerializerMethodField()
@@ -127,6 +128,17 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
     def get_google_connected(self, obj):
         return bool(obj.google_sub)
+
+    def get_pharmacy_image(self, obj):
+        pharmacy = getattr(obj, "pharmacy", None)
+        if pharmacy is None or not getattr(pharmacy, "profile_image", None):
+            return None
+
+        image_path = reverse("pharmacy-profile-image", kwargs={"pk": pharmacy.pk})
+        request = self.context.get("request")
+        if request is not None:
+            return request.build_absolute_uri(image_path)
+        return image_path
 
     class Meta:
         model = UserProfile
@@ -179,6 +191,10 @@ class RegisterSerializer(serializers.Serializer):
     pharmacy_name = serializers.CharField(required=False, allow_blank=True, max_length=255)
     address = serializers.CharField(required=False, allow_blank=True, max_length=255)
     pharmacy_image = serializers.ImageField(required=False, allow_null=True)
+    latitude = serializers.FloatField(required=False, allow_null=True)
+    longitude = serializers.FloatField(required=False, allow_null=True)
+    location_city = serializers.CharField(required=False, allow_blank=True, max_length=120)
+    location_country = serializers.CharField(required=False, allow_blank=True, max_length=120)
 
     def validate(self, attrs):
         account_type = attrs["account_type"]
@@ -230,6 +246,10 @@ class RegisterSerializer(serializers.Serializer):
                 phone_number=validated_data["phone_number"],
                 birth_date=validated_data.get("birth_date"),
                 gender=validated_data.get("gender", ""),
+                latitude=validated_data.get("latitude"),
+                longitude=validated_data.get("longitude"),
+                location_city=validated_data.get("location_city", "").strip(),
+                location_country=validated_data.get("location_country", "").strip(),
                 email_verified=False,
             )
             return user
@@ -237,6 +257,10 @@ class RegisterSerializer(serializers.Serializer):
         pharmacy_name = validated_data["pharmacy_name"].strip()
         phone_number = validated_data["phone_number"]
         address = validated_data["address"].strip()
+        latitude = validated_data.get("latitude")
+        longitude = validated_data.get("longitude")
+        location_city = validated_data.get("location_city", "").strip()
+        location_country = validated_data.get("location_country", "").strip()
         generated_username = f"{pharmacy_name.lower().replace(' ', '-')[:18]}-{phone_number[-4:]}"
         suffix = 1
         unique_username = generated_username
@@ -247,12 +271,14 @@ class RegisterSerializer(serializers.Serializer):
         pharmacy = Pharmacy.objects.create(
             name=pharmacy_name,
             profile_image=validated_data.get("pharmacy_image"),
-            city=infer_city(address),
+            city=location_city or infer_city(address),
             address=address,
             phone_number=phone_number,
             email=validated_data["email"],
             opening_hours="08:00 - 20:00",
             delivery_supported=False,
+            latitude=latitude,
+            longitude=longitude,
         )
         user = User.objects.create_user(username=unique_username, email=validated_data["email"], password=password)
         UserProfile.objects.create(
@@ -261,6 +287,10 @@ class RegisterSerializer(serializers.Serializer):
             phone_number=phone_number,
             whatsapp_number=phone_number,
             address=address,
+            latitude=latitude,
+            longitude=longitude,
+            location_city=location_city,
+            location_country=location_country,
             pharmacy=pharmacy,
             email_verified=False,
         )

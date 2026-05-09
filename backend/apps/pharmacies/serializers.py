@@ -1,9 +1,11 @@
 from django.contrib.auth import get_user_model
 from django.db.models import Avg
+from django.urls import reverse
 from rest_framework import serializers
 
 from .models import Pharmacy, PharmacyComment, PharmacyEngagement, PharmacyContact, PharmacySubscription, SubscriptionPayment, SubscriptionSystemSettings
 from .payment_config import sanitize_payment_methods
+from .services.access import is_pharmacy_partner_eligible
 
 User = get_user_model()
 
@@ -67,12 +69,13 @@ class PharmacySerializer(serializers.ModelSerializer):
             return None
 
         try:
-            if not obj.profile_image.storage.exists(obj.profile_image.name):
-                return None
+            image_path = reverse("pharmacy-profile-image", kwargs={"pk": obj.pk})
+            request = self.context.get("request")
+            if request is not None:
+                return request.build_absolute_uri(image_path)
+            return image_path
         except Exception:
             return None
-
-        return obj.profile_image.url
 
     def get_is_online(self, obj):
         linked_profile = getattr(obj, "user_profile", None)
@@ -93,8 +96,7 @@ class PharmacySerializer(serializers.ModelSerializer):
         return getattr(subscription, "subscription_status", None)
 
     def get_is_official(self, obj):
-        subscription = getattr(obj, "subscription", None)
-        return bool(subscription and subscription.subscription_status == "active")
+        return is_pharmacy_partner_eligible(obj)
 
     def get_trial_days_remaining(self, obj):
         subscription = getattr(obj, "subscription", None)

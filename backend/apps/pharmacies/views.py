@@ -1,4 +1,7 @@
+import mimetypes
+
 from django.contrib.auth import get_user_model
+from django.http import FileResponse, Http404
 from rest_framework import generics, permissions, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -7,8 +10,9 @@ from datetime import timedelta
 from .models import Pharmacy, PharmacyContact, PharmacySubscription, SubscriptionPayment, SubscriptionSystemSettings
 from .serializers import PharmacySerializer, PharmacyContactSerializer, PharmacySubscriptionSerializer, SubscriptionPaymentSerializer
 from .payment_config import build_payment_details
+from .services.access import is_pharmacy_partner_eligible
 from .services.exchange_rate_service import ExchangeRateService
-from pharmigo.api import broadcast_feed_event, create_targeted_notification
+from pharmigo.api import broadcast_feed_event, create_targeted_notification, sync_pharmacy_verification_with_subscription
 
 User = get_user_model()
 
@@ -20,6 +24,39 @@ class PharmacyListView(generics.ListCreateAPIView):
 class PharmacyDetailView(generics.RetrieveAPIView):
     queryset = Pharmacy.objects.all()
     serializer_class = PharmacySerializer
+
+
+class PharmacyProfileImageView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, pk: int):
+        pharmacy = Pharmacy.objects.select_related("subscription", "user_profile__user").filter(pk=pk, is_active=True).first()
+        if pharmacy is None:
+            raise Http404("Pharmacie introuvable.")
+
+        actor = getattr(request, "user", None)
+        actor_profile = getattr(actor, "profile", None) if getattr(actor, "is_authenticated", False) else None
+        can_access_private_preview = bool(
+            getattr(actor, "is_staff", False)
+            or (actor_profile is not None and getattr(actor_profile, "pharmacy_id", None) == pharmacy.id)
+        )
+
+        if not can_access_private_preview and not is_pharmacy_partner_eligible(pharmacy):
+            raise Http404("Image indisponible.")
+
+        image_field = pharmacy.profile_image
+        if not image_field or not image_field.name:
+            raise Http404("Image indisponible.")
+
+        storage = image_field.storage
+        if not storage.exists(image_field.name):
+            raise Http404("Fichier image introuvable.")
+
+        content_type, _ = mimetypes.guess_type(image_field.name)
+        image_file = storage.open(image_field.name, "rb")
+        response = FileResponse(image_file, content_type=content_type or "application/octet-stream")
+        response["Cache-Control"] = "public, max-age=3600"
+        return response
 
 # Contact management
 class PharmacyContactListView(generics.ListCreateAPIView):
@@ -169,10 +206,6 @@ class SubscriptionPaymentDetailView(generics.RetrieveUpdateAPIView):
             payment.save(update_fields=["verified_at", "verified_by"])
 
             pharmacy = payment.pharmacy
-            if not pharmacy.is_verified:
-                pharmacy.is_verified = True
-                pharmacy.save(update_fields=["is_verified"])
-
             subscription, _ = PharmacySubscription.objects.get_or_create(
                 pharmacy=pharmacy,
                 defaults={
@@ -193,6 +226,7 @@ class SubscriptionPaymentDetailView(generics.RetrieveUpdateAPIView):
                     "updated_at",
                 ]
             )
+            sync_pharmacy_verification_with_subscription(pharmacy, subscription)
 
             create_targeted_notification(
                 "Paiement valide",
@@ -213,10 +247,14 @@ class SubscriptionPaymentDetailView(generics.RetrieveUpdateAPIView):
                     "verified_at": payment.verified_at.isoformat() if payment.verified_at else None,
                 },
             )
-        elif payment.payment_status != "verified" and payment.pharmacy.is_verified:
+        elif payment.payment_status != "verified":
             pharmacy = payment.pharmacy
             if not pharmacy.payments.filter(payment_status="verified").exclude(pk=payment.pk).exists():
-                pharmacy.is_verified = False
-                pharmacy.save(update_fields=["is_verified"])
+                subscription = PharmacySubscription.objects.filter(pharmacy=pharmacy).first()
+                if subscription is not None and subscription.subscription_status == "active":
+                    subscription.subscription_status = "expired"
+                    subscription.is_trial_active = False
+                    subscription.save(update_fields=["subscription_status", "is_trial_active", "updated_at"])
+                sync_pharmacy_verification_with_subscription(pharmacy, subscription)
 
         return Response(self.get_serializer(payment).data, status=status.HTTP_200_OK)

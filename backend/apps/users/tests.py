@@ -51,6 +51,26 @@ class AuthenticationFlowTests(APITestCase):
         self.assertEqual(token_record.token_hash, sha256(raw_token.encode("utf-8")).hexdigest())
         self.assertNotEqual(token_record.token_hash, raw_token)
 
+    def test_patient_register_persists_browser_coordinates_when_provided(self):
+        response = self.client.post(
+            "/api/auth/register/",
+            {
+                "account_type": "patient",
+                "username": "patient-located",
+                "phone_number": "+25761000022",
+                "email": "patient-located@example.com",
+                "password": "secret123",
+                "latitude": -3.3822,
+                "longitude": 29.3644,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        profile = User.objects.get(username="patient-located").profile
+        self.assertEqual(profile.latitude, -3.3822)
+        self.assertEqual(profile.longitude, 29.3644)
+
     def test_email_verification_with_valid_token_marks_email_verified(self):
         self.client.post(
             "/api/auth/register/",
@@ -230,6 +250,34 @@ class AuthenticationFlowTests(APITestCase):
         self.assertEqual(subscription.subscription_status, "trial")
         self.assertTrue(subscription.is_trial_active)
         self.assertFalse(profile.email_verified)
+
+    def test_pharmacy_register_with_coordinates_updates_profile_and_pharmacy_position(self):
+        response = self.client.post(
+            "/api/auth/register/",
+            {
+                "account_type": "pharmacy",
+                "pharmacy_name": "Pharmacie GPS",
+                "phone_number": "+25761000031",
+                "email": "pharmacy-gps@example.com",
+                "address": "Gihosha, Bujumbura",
+                "password": "secret123",
+                "latitude": -3.3612,
+                "longitude": 29.3598,
+                "location_city": "Bujumbura",
+                "location_country": "Burundi",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        profile = UserProfile.objects.select_related("pharmacy").get(user__username=response.data["user"]["username"])
+        self.assertEqual(profile.latitude, -3.3612)
+        self.assertEqual(profile.longitude, 29.3598)
+        self.assertEqual(profile.location_city, "Bujumbura")
+        self.assertEqual(profile.location_country, "Burundi")
+        self.assertEqual(profile.pharmacy.latitude, -3.3612)
+        self.assertEqual(profile.pharmacy.longitude, 29.3598)
+        self.assertEqual(profile.pharmacy.city, "Bujumbura")
 
     def test_patient_register_without_email_is_rejected(self):
         response = self.client.post(
