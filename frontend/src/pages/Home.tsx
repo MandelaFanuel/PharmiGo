@@ -137,8 +137,22 @@ type LanguageMeta = {
   label: string;
 };
 
-type PharmacyConversationItem = {
-  pharmacy: Pharmacy;
+type ChatParticipantRole = "pharmacy" | "patient";
+
+type MessageParticipant = {
+  key: string;
+  role: ChatParticipantRole;
+  name: string;
+  subtitle: string;
+  imageUrl?: string | null;
+  isOnline?: boolean;
+  phoneNumber?: string;
+  pharmacy?: Pharmacy;
+  userId?: number;
+};
+
+type MessageConversationItem = {
+  participant: MessageParticipant;
   lastMessage: ChatMessage | null;
   unreadCount: number;
   isSaved: boolean;
@@ -752,7 +766,7 @@ export default function Home() {
   });
   const [pharmacyMessages, setPharmacyMessages] = useState<ChatMessage[]>([]);
   const [messageBody, setMessageBody] = useState("");
-  const [recipientPharmacyId, setRecipientPharmacyId] = useState("");
+  const [messageRecipientKey, setMessageRecipientKey] = useState("");
   const [messageBusy, setMessageBusy] = useState(false);
   const [messageError, setMessageError] = useState<string | null>(null);
   const [messageSuccess, setMessageSuccess] = useState<string | null>(null);
@@ -812,10 +826,11 @@ export default function Home() {
       });
   }, []);
   const [brokenPharmacyImages, setBrokenPharmacyImages] = useState<Record<number, boolean>>({});
+  const [brokenMessageParticipantImages, setBrokenMessageParticipantImages] = useState<Record<string, boolean>>({});
   const [lastReadMessageAt, setLastReadMessageAt] = useState<string>("");
-  const [savedContactIds, setSavedContactIds] = useState<number[]>([]);
-  const [selectedConversationId, setSelectedConversationId] = useState<string>("");
-  const [contactPickerId, setContactPickerId] = useState<string>("");
+  const [savedContactKeys, setSavedContactKeys] = useState<string[]>([]);
+  const [selectedConversationKey, setSelectedConversationKey] = useState<string>("");
+  const [contactPickerKey, setContactPickerKey] = useState<string>("");
   const [activePrescriptionPreview, setActivePrescriptionPreview] = useState<{ src: string; alt: string } | null>(null);
   const [directorySearchTerm, setDirectorySearchTerm] = useState("");
   const [shareMenu, setShareMenu] = useState<ShareMenuState | null>(null);
@@ -1944,25 +1959,33 @@ export default function Home() {
         country_code: "bi",
       });
       setPharmacyMessages([]);
-      setSavedContactIds([]);
-      setSelectedConversationId("");
-      setContactPickerId("");
+      setSavedContactKeys([]);
+      setSelectedConversationKey("");
+      setContactPickerKey("");
+      setMessageRecipientKey("");
       return;
     }
 
-    if (currentUser.profile?.role === "pharmacy" && currentUser.profile?.pharmacy) {
-      const storedValue = localStorage.getItem(`pharmigo.lastReadMessageAt.${currentUser.profile.pharmacy}`);
+    const currentMessagingActorKey =
+      currentUser.profile?.role === "pharmacy" && currentUser.profile?.pharmacy
+        ? `pharmacy:${currentUser.profile.pharmacy}`
+        : currentUser.profile?.role === "patient"
+          ? `patient:${currentUser.id}`
+          : "";
+
+    if (currentMessagingActorKey) {
+      const storedValue = localStorage.getItem(`pharmigo.lastReadMessageAt.${currentMessagingActorKey}`);
       setLastReadMessageAt(storedValue ?? "");
-      const storedContacts = localStorage.getItem(`pharmigo.savedContacts.${currentUser.profile.pharmacy}`);
+      const storedContacts = localStorage.getItem(`pharmigo.savedContacts.${currentMessagingActorKey}`);
       try {
-        const parsedContacts = storedContacts ? (JSON.parse(storedContacts) as number[]) : [];
-        setSavedContactIds(Array.isArray(parsedContacts) ? parsedContacts.filter((item) => Number.isInteger(item)) : []);
+        const parsedContacts = storedContacts ? (JSON.parse(storedContacts) as string[]) : [];
+        setSavedContactKeys(Array.isArray(parsedContacts) ? parsedContacts.filter((item) => typeof item === "string" && item.includes(":")) : []);
       } catch {
-        setSavedContactIds([]);
+        setSavedContactKeys([]);
       }
     } else {
       setLastReadMessageAt("");
-      setSavedContactIds([]);
+      setSavedContactKeys([]);
     }
 
     void fetchProfile()
@@ -1999,7 +2022,7 @@ export default function Home() {
         }
       });
 
-    if (currentUser.profile?.role === "pharmacy") {
+    if (currentUser.profile?.role === "pharmacy" || currentUser.profile?.role === "patient") {
       void fetchMessages()
         .then((items) => setPharmacyMessages(items))
         .catch(() => undefined);
@@ -2028,6 +2051,7 @@ export default function Home() {
   const rawConfigSecurity = config?.security;
   const rawDashboardPharmacies = dashboard?.pharmacies;
   const rawDashboardPrescriptions = dashboard?.prescriptions;
+  const rawDashboardResponses = dashboard?.responses;
   const rawDashboardNotifications = dashboard?.notifications;
 
   const configProduct = rawConfigProduct ?? null;
@@ -2035,6 +2059,7 @@ export default function Home() {
   const configSecurity = Array.isArray(rawConfigSecurity) ? rawConfigSecurity : [];
   const dashboardPharmacies = Array.isArray(rawDashboardPharmacies) ? rawDashboardPharmacies : [];
   const dashboardPrescriptions = Array.isArray(rawDashboardPrescriptions) ? rawDashboardPrescriptions : [];
+  const dashboardResponses = Array.isArray(rawDashboardResponses) ? rawDashboardResponses : [];
   const dashboardNotifications = Array.isArray(rawDashboardNotifications) ? rawDashboardNotifications : [];
   const deferredDirectorySearchTerm = useDeferredValue(directorySearchTerm);
   const normalizedDirectorySearchTerm = deferredDirectorySearchTerm.trim().toLowerCase();
@@ -2179,98 +2204,211 @@ export default function Home() {
       : resolveMediaUrl(currentUser?.profile?.profile_image ?? null);
   const notifications = dashboardNotifications;
   const unreadNotificationsCount = notifications.filter((item) => !item.is_read).length;
-  const availableRecipientPharmacies = pharmacies.filter((item) => item.id !== currentPharmacyId);
+  const currentPatientUserId = currentUser?.profile?.role === "patient" ? currentUser.id : null;
+  const currentMessagingActorKey =
+    currentPharmacyId !== null
+      ? `pharmacy:${currentPharmacyId}`
+      : currentPatientUserId !== null
+        ? `patient:${currentPatientUserId}`
+        : "";
+  const messagingEnabled = currentUser?.profile?.role === "pharmacy" || currentUser?.profile?.role === "patient";
   const canShowUploadAction = currentUser && currentUser.profile?.role === "patient";
   const canShowUploadActionForGuest = !currentUser;
   const shouldShowPublicUploadAction = Boolean(canShowUploadAction || canShowUploadActionForGuest);
   const pharmacyDirectory = new Map(pharmacies.map((item) => [item.id, item] as const));
-  const conversationItems: PharmacyConversationItem[] =
-    currentPharmacyId
+  const availableRecipientPharmacies = pharmacies.filter((item) => item.id !== currentPharmacyId);
+  const interactedPrescriptionIds = new Set(
+    dashboardResponses.filter((item) => item.pharmacy === currentPharmacyId).map((item) => item.prescription)
+  );
+  const patientParticipants = new Map<string, MessageParticipant>();
+  if (currentPharmacyId) {
+    dashboardPrescriptions.forEach((item) => {
+      if (!item.patient_user) {
+        return;
+      }
+      if (item.pharmacy !== currentPharmacyId && !interactedPrescriptionIds.has(item.id)) {
+        return;
+      }
+      const key = `patient:${item.patient_user}`;
+      if (!patientParticipants.has(key)) {
+        patientParticipants.set(key, {
+          key,
+          role: "patient",
+          userId: item.patient_user,
+          name: item.patient_name || `Patient ${item.patient_user}`,
+          subtitle: item.public_reference ? `Ordonnance ${item.public_reference}` : "Patient PharmiGo",
+        });
+      }
+    });
+  }
+  pharmacyMessages.forEach((item) => {
+    if (item.sender_user) {
+      const key = `patient:${item.sender_user}`;
+      if (!patientParticipants.has(key)) {
+        patientParticipants.set(key, {
+          key,
+          role: "patient",
+          userId: item.sender_user,
+          name: item.sender_user_name || item.sender_name || `Patient ${item.sender_user}`,
+          subtitle: "Patient PharmiGo",
+          imageUrl: item.sender_user_profile_image ?? null,
+        });
+      }
+    }
+    if (item.recipient_user) {
+      const key = `patient:${item.recipient_user}`;
+      if (!patientParticipants.has(key)) {
+        patientParticipants.set(key, {
+          key,
+          role: "patient",
+          userId: item.recipient_user,
+          name: item.recipient_user_name || `Patient ${item.recipient_user}`,
+          subtitle: "Patient PharmiGo",
+          imageUrl: item.recipient_user_profile_image ?? null,
+        });
+      }
+    }
+  });
+  const pharmacyParticipants = availableRecipientPharmacies.map<MessageParticipant>((item) => ({
+    key: `pharmacy:${item.id}`,
+    role: "pharmacy",
+    name: item.name,
+    subtitle: formatPharmacyLocation(item),
+    imageUrl: resolvePharmacyProfileImageUrl(item),
+    isOnline: item.is_online,
+    phoneNumber: item.phone_number,
+    pharmacy: item,
+  }));
+  const availableRecipients: MessageParticipant[] =
+    currentUser?.profile?.role === "pharmacy"
+      ? [...pharmacyParticipants, ...Array.from(patientParticipants.values())]
+      : pharmacyParticipants;
+  const messagingParticipantDirectory = new Map(availableRecipients.map((item) => [item.key, item] as const));
+
+  function isOutgoingMessageForActor(item: ChatMessage) {
+    if (currentPharmacyId !== null) {
+      return item.sender_pharmacy === currentPharmacyId;
+    }
+    if (currentPatientUserId !== null) {
+      return item.sender_user === currentPatientUserId;
+    }
+    return false;
+  }
+
+  function getConversationKeyFromMessage(item: ChatMessage) {
+    if (currentPharmacyId !== null) {
+      if (item.sender_pharmacy === currentPharmacyId && item.pharmacy) {
+        return `pharmacy:${item.pharmacy}`;
+      }
+      if (item.pharmacy === currentPharmacyId && item.sender_pharmacy) {
+        return `pharmacy:${item.sender_pharmacy}`;
+      }
+      if (item.sender_pharmacy === currentPharmacyId && item.recipient_user) {
+        return `patient:${item.recipient_user}`;
+      }
+      if (item.pharmacy === currentPharmacyId && item.sender_user) {
+        return `patient:${item.sender_user}`;
+      }
+      return null;
+    }
+    if (currentPatientUserId !== null) {
+      if (item.sender_user === currentPatientUserId && item.pharmacy) {
+        return `pharmacy:${item.pharmacy}`;
+      }
+      if (item.recipient_user === currentPatientUserId && item.sender_pharmacy) {
+        return `pharmacy:${item.sender_pharmacy}`;
+      }
+    }
+    return null;
+  }
+
+  function messageBelongsToParticipant(item: ChatMessage, participant: MessageParticipant) {
+    if (participant.role === "pharmacy" && participant.pharmacy) {
+      if (currentPharmacyId !== null) {
+        return (
+          (item.sender_pharmacy === currentPharmacyId && item.pharmacy === participant.pharmacy.id) ||
+          (item.pharmacy === currentPharmacyId && item.sender_pharmacy === participant.pharmacy.id)
+        );
+      }
+      if (currentPatientUserId !== null) {
+        return (
+          (item.sender_user === currentPatientUserId && item.pharmacy === participant.pharmacy.id) ||
+          (item.recipient_user === currentPatientUserId && item.sender_pharmacy === participant.pharmacy.id)
+        );
+      }
+    }
+    if (participant.role === "patient" && participant.userId && currentPharmacyId !== null) {
+      return (
+        (item.sender_pharmacy === currentPharmacyId && item.recipient_user === participant.userId) ||
+        (item.pharmacy === currentPharmacyId && item.sender_user === participant.userId)
+      );
+    }
+    return false;
+  }
+
+  const conversationItems: MessageConversationItem[] =
+    messagingEnabled
       ? Array.from(
-        new Set(
-          [
-            ...savedContactIds,
-            ...pharmacyMessages.flatMap((item) => {
-              if (item.sender_pharmacy === currentPharmacyId && item.pharmacy) {
-                return [item.pharmacy];
-              }
-              if (item.pharmacy === currentPharmacyId && item.sender_pharmacy) {
-                return [item.sender_pharmacy];
-              }
-              return [];
-            }),
-          ].filter((item) => item !== currentPharmacyId)
-        )
+        new Set([
+          ...savedContactKeys,
+          ...pharmacyMessages.map((item) => getConversationKeyFromMessage(item)).filter((item): item is string => Boolean(item)),
+        ])
       )
-        .map((pharmacyId) => {
-          const pharmacy = pharmacyDirectory.get(pharmacyId);
-          if (!pharmacy) {
+        .map((participantKey) => {
+          const participant = messagingParticipantDirectory.get(participantKey);
+          if (!participant) {
             return null;
           }
-
-          const relatedMessages = pharmacyMessages.filter(
-            (item) =>
-              (item.sender_pharmacy === currentPharmacyId && item.pharmacy === pharmacyId) ||
-              (item.pharmacy === currentPharmacyId && item.sender_pharmacy === pharmacyId)
-          );
+          const relatedMessages = pharmacyMessages.filter((item) => messageBelongsToParticipant(item, participant));
           const sortedMessages = [...relatedMessages].sort(
             (left, right) => new Date(left.created_at).getTime() - new Date(right.created_at).getTime()
           );
           const lastMessage = sortedMessages.length ? sortedMessages[sortedMessages.length - 1] : null;
           const lastReadTime = lastReadMessageAt ? new Date(lastReadMessageAt).getTime() : 0;
           const unreadCount = sortedMessages.filter(
-            (item) =>
-              item.sender_pharmacy === pharmacyId &&
-              new Date(item.created_at).getTime() > lastReadTime
+            (item) => !isOutgoingMessageForActor(item) && new Date(item.created_at).getTime() > lastReadTime
           ).length;
 
           return {
-            pharmacy,
+            participant,
             lastMessage,
             unreadCount,
-            isSaved: savedContactIds.includes(pharmacyId),
+            isSaved: savedContactKeys.includes(participantKey),
           };
         })
-        .filter((item): item is PharmacyConversationItem => Boolean(item))
+        .filter((item): item is MessageConversationItem => Boolean(item))
         .sort((left, right) => {
           const leftTime = left.lastMessage ? new Date(left.lastMessage.created_at).getTime() : 0;
           const rightTime = right.lastMessage ? new Date(right.lastMessage.created_at).getTime() : 0;
           return rightTime - leftTime;
         })
       : [];
-  const effectiveRecipientId = selectedConversationId || recipientPharmacyId;
-
-  const activeConversation = effectiveRecipientId ? pharmacyDirectory.get(Number(effectiveRecipientId)) ?? null : null;
-  const activeConversationMessages =
-    currentPharmacyId && activeConversation
-      ? pharmacyMessages
-        .filter(
-          (item) =>
-            (item.sender_pharmacy === currentPharmacyId && item.pharmacy === activeConversation.id) ||
-            (item.pharmacy === currentPharmacyId && item.sender_pharmacy === activeConversation.id)
-        )
-        .sort((left, right) => new Date(left.created_at).getTime() - new Date(right.created_at).getTime())
-      : [];
-  const unreadMessagesCount =
-    currentPharmacyId
-      ? pharmacyMessages.filter((item) => {
-        const createdAtTime = new Date(item.created_at).getTime();
-        const lastReadTime = lastReadMessageAt ? new Date(lastReadMessageAt).getTime() : 0;
-        return item.sender_pharmacy !== currentPharmacyId && createdAtTime > lastReadTime;
-      }).length
-      : 0;
+  const effectiveRecipientKey = selectedConversationKey || messageRecipientKey;
+  const activeConversation = effectiveRecipientKey ? messagingParticipantDirectory.get(effectiveRecipientKey) ?? null : null;
+  const activeConversationMessages = activeConversation
+    ? pharmacyMessages
+      .filter((item) => messageBelongsToParticipant(item, activeConversation))
+      .sort((left, right) => new Date(left.created_at).getTime() - new Date(right.created_at).getTime())
+    : [];
+  const unreadMessagesCount = messagingEnabled
+    ? pharmacyMessages.filter((item) => {
+      const createdAtTime = new Date(item.created_at).getTime();
+      const lastReadTime = lastReadMessageAt ? new Date(lastReadMessageAt).getTime() : 0;
+      return !isOutgoingMessageForActor(item) && createdAtTime > lastReadTime;
+    }).length
+    : 0;
 
   useEffect(() => {
     if (!conversationItems.length) {
       return;
     }
 
-    if (!effectiveRecipientId || !conversationItems.some((item) => String(item.pharmacy.id) === effectiveRecipientId)) {
-      const nextConversationId = String(conversationItems[0].pharmacy.id);
-      setSelectedConversationId(nextConversationId);
-      setRecipientPharmacyId(nextConversationId);
+    if (!effectiveRecipientKey || !conversationItems.some((item) => item.participant.key === effectiveRecipientKey)) {
+      const nextConversationKey = conversationItems[0].participant.key;
+      setSelectedConversationKey(nextConversationKey);
+      setMessageRecipientKey(nextConversationKey);
     }
-  }, [conversationItems, effectiveRecipientId]);
+  }, [conversationItems, effectiveRecipientKey]);
 
   useEffect(() => {
     if (!pharmacyInteractionError && !pharmacyInteractionSuccess) {
@@ -2389,48 +2527,54 @@ export default function Home() {
   }
 
   function markMessagesAsRead() {
-    if (!currentUser?.profile?.pharmacy) {
+    if (!currentMessagingActorKey) {
       return;
     }
 
     const nextValue = new Date().toISOString();
     setLastReadMessageAt(nextValue);
-    localStorage.setItem(`pharmigo.lastReadMessageAt.${currentUser.profile.pharmacy}`, nextValue);
+    localStorage.setItem(`pharmigo.lastReadMessageAt.${currentMessagingActorKey}`, nextValue);
   }
 
-  function persistSavedContacts(nextContactIds: number[]) {
-    setSavedContactIds(nextContactIds);
-    if (!currentUser?.profile?.pharmacy) {
+  function persistSavedContacts(nextContactKeys: string[]) {
+    setSavedContactKeys(nextContactKeys);
+    if (!currentMessagingActorKey) {
       return;
     }
-    localStorage.setItem(`pharmigo.savedContacts.${currentUser.profile.pharmacy}`, JSON.stringify(nextContactIds));
+    localStorage.setItem(`pharmigo.savedContacts.${currentMessagingActorKey}`, JSON.stringify(nextContactKeys));
   }
 
   function handleSaveContact() {
-    if (!contactPickerId) {
+    if (!contactPickerKey) {
       return;
     }
 
-    const pharmacyId = Number(contactPickerId);
-    if (!Number.isInteger(pharmacyId)) {
-      return;
+    if (!savedContactKeys.includes(contactPickerKey)) {
+      persistSavedContacts([...savedContactKeys, contactPickerKey]);
     }
-
-    if (!savedContactIds.includes(pharmacyId)) {
-      persistSavedContacts([...savedContactIds, pharmacyId]);
-    }
-    setSelectedConversationId(String(pharmacyId));
-    setRecipientPharmacyId(String(pharmacyId));
+    setSelectedConversationKey(contactPickerKey);
+    setMessageRecipientKey(contactPickerKey);
     setMessageError(null);
     setMessageSuccess(null);
   }
 
-  function handleSelectConversation(pharmacyId: number) {
-    setSelectedConversationId(String(pharmacyId));
-    setRecipientPharmacyId(String(pharmacyId));
+  function handleSelectConversation(participantKey: string) {
+    setSelectedConversationKey(participantKey);
+    setMessageRecipientKey(participantKey);
     setMessageError(null);
     setMessageSuccess(null);
     markMessagesAsRead();
+  }
+
+  function resolveConversationParticipantImage(participant: MessageParticipant) {
+    if (participant.role === "pharmacy" && participant.pharmacy) {
+      return resolvePharmacyProfileImageUrl(participant.pharmacy);
+    }
+    return resolveMediaUrl(participant.imageUrl ?? null);
+  }
+
+  function getConversationParticipantInitial(participant: MessageParticipant) {
+    return (participant.name || "P").slice(0, 1).toUpperCase();
   }
 
   function openModal(modal: Exclude<ModalType, null>) {
@@ -2873,11 +3017,12 @@ export default function Home() {
   async function handlePharmacyMessageSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessageSuccess(null);
-    const destinationId = effectiveRecipientId;
-    if (!destinationId || !messageBody.trim()) {
-      setMessageError("Choisissez une pharmacie et ecrivez un message.");
+    const destinationKey = effectiveRecipientKey;
+    const destination = destinationKey ? messagingParticipantDirectory.get(destinationKey) ?? null : null;
+    if (!destination || !messageBody.trim()) {
+      setMessageError("Choisissez un contact et ecrivez un message.");
       setMessageFieldErrors({
-        ...(destinationId ? {} : { pharmacy: "Selectionnez une pharmacie destinataire." }),
+        ...(destination ? {} : { pharmacy: "Selectionnez un contact destinataire." }),
         ...(messageBody.trim() ? {} : { message: "Le message est obligatoire." }),
       });
       return;
@@ -2888,16 +3033,32 @@ export default function Home() {
     setMessageSuccess(null);
     setMessageFieldErrors({});
     try {
+      const payload =
+        destination.role === "patient"
+          ? {
+            sender_name: currentUser?.profile?.pharmacy_name || currentUser?.username || "Pharmacie",
+            sender_role: "pharmacy" as const,
+            message: messageBody.trim(),
+            pharmacy: null,
+            recipient_user: destination.userId ?? null,
+          }
+          : {
+            sender_name:
+              currentUser?.profile?.role === "patient"
+                ? currentUser?.username || "Patient"
+                : currentUser?.profile?.pharmacy_name || currentUser?.username || "Pharmacie",
+            sender_role: (currentUser?.profile?.role === "patient" ? "patient" : "pharmacy") as "patient" | "pharmacy",
+            message: messageBody.trim(),
+            pharmacy: destination.pharmacy?.id ?? null,
+            recipient_user: null,
+          };
       const created = await postMessage({
-        sender_name: currentUser?.profile?.pharmacy_name || currentUser?.username || "Pharmacie",
-        sender_role: "pharmacy",
-        message: messageBody.trim(),
-        pharmacy: Number(destinationId),
+        ...payload,
       });
       setPharmacyMessages((current) => [...current, created]);
       setMessageBody("");
-      setRecipientPharmacyId(String(destinationId));
-      setSelectedConversationId(String(destinationId));
+      setMessageRecipientKey(destination.key);
+      setSelectedConversationKey(destination.key);
       setMessageError(null);
       setMessageFieldErrors({});
       setMessageSuccess("Message envoye avec succes.");
@@ -3324,7 +3485,7 @@ export default function Home() {
 
             {currentUser ? (
               <>
-                {currentUser.profile?.role === "pharmacy" ? (
+                {messagingEnabled ? (
                   <button
                     type="button"
                     className="landing-icon-trigger nav-desktop-only"
@@ -3332,7 +3493,7 @@ export default function Home() {
                       setIsProfileMenuOpen(false);
                       openModal("messages");
                     }}
-                    aria-label="Messagerie pharmacies"
+                    aria-label="Messagerie PharmiGo"
                   >
                     <MessageIcon />
                     <span>{chromeText.messages}</span>
@@ -3506,7 +3667,7 @@ export default function Home() {
               </button>
             </>
           ) : null}
-          {currentUser?.profile?.role === "pharmacy" ? (
+          {messagingEnabled ? (
             <button type="button" className="landing-mobile-link as-button mobile-message-link" onClick={() => openModal("messages")}>
               <span className="mobile-link-inline-icon"><MessageIcon /></span>
               <span>{chromeText.messages}</span>
@@ -4664,10 +4825,14 @@ export default function Home() {
         </ModalShell>
       ) : null}
 
-      {activeModal === "messages" && currentUser?.profile?.role === "pharmacy" ? (
+      {activeModal === "messages" && messagingEnabled && currentUser ? (
         <ModalShell
-          title={chromeText.messageModalTitle}
-          body={chromeText.messageModalBody}
+          title={currentUser.profile?.role === "patient" ? "Messagerie patient-pharmacie" : chromeText.messageModalTitle}
+          body={
+            currentUser.profile?.role === "patient"
+              ? "Ajoutez une pharmacie a vos contacts ou ecrivez-lui directement depuis la meme interface."
+              : "Discutez avec vos pharmacies et patients dans le meme espace."
+          }
           closeLabel={copy.modalClose}
           onClose={closeModal}
           className="landing-modal-card wide-chat-modal"
@@ -4681,22 +4846,28 @@ export default function Home() {
 
               <div className="pharmacy-chat-add-contact">
                 <select
-                  value={contactPickerId}
+                  value={contactPickerKey}
                   onChange={(event) => {
-                    setContactPickerId(event.target.value);
-                    setRecipientPharmacyId(event.target.value);
-                    setSelectedConversationId(event.target.value);
+                    setContactPickerKey(event.target.value);
+                    setMessageRecipientKey(event.target.value);
+                    setSelectedConversationKey(event.target.value);
                     setMessageError(null);
                     setMessageSuccess(null);
                   }}
-                  disabled={availableRecipientPharmacies.length === 0}
+                  disabled={availableRecipients.length === 0}
                 >
                   <option value="">
-                    {availableRecipientPharmacies.length === 0 ? chromeText.noPharmacyAvailable : chromeText.choosePharmacy}
+                    {availableRecipients.length === 0
+                      ? currentUser.profile?.role === "patient"
+                        ? "Aucune pharmacie disponible"
+                        : "Aucun contact disponible"
+                      : currentUser.profile?.role === "patient"
+                        ? "Choisissez une pharmacie"
+                        : "Choisissez un contact"}
                   </option>
-                  {availableRecipientPharmacies.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.name}
+                  {availableRecipients.map((item) => (
+                    <option key={item.key} value={item.key}>
+                      {item.role === "patient" ? `Patient · ${item.name}` : `Pharmacie · ${item.name}`}
                     </option>
                   ))}
                 </select>
@@ -4704,14 +4875,18 @@ export default function Home() {
                   type="button"
                   className="pharmigo-secondary-btn pharmacy-chat-add-button"
                   onClick={handleSaveContact}
-                  disabled={!contactPickerId}
+                  disabled={!contactPickerKey}
                 >
                   {chromeText.add}
                 </button>
               </div>
 
-              {availableRecipientPharmacies.length === 0 ? (
-                <p className="auth-helper-text">{chromeText.enableMessaging}</p>
+              {availableRecipients.length === 0 ? (
+                <p className="auth-helper-text">
+                  {currentUser.profile?.role === "patient"
+                    ? "Aucune pharmacie n'est disponible pour le moment."
+                    : "Ajoutez une pharmacie ou un patient deja lie a votre activite pour activer la messagerie."}
+                </p>
               ) : null}
 
               <div className="pharmacy-chat-conversation-list">
@@ -4720,25 +4895,25 @@ export default function Home() {
                 ) : (
                   conversationItems.map((item) => (
                     <button
-                      key={item.pharmacy.id}
+                      key={item.participant.key}
                       type="button"
-                      className={effectiveRecipientId === String(item.pharmacy.id) ? "pharmacy-chat-contact active" : "pharmacy-chat-contact"}
-                      onClick={() => handleSelectConversation(item.pharmacy.id)}
+                      className={effectiveRecipientKey === item.participant.key ? "pharmacy-chat-contact active" : "pharmacy-chat-contact"}
+                      onClick={() => handleSelectConversation(item.participant.key)}
                     >
                       <div className="pharmacy-chat-contact-avatar">
-                        {item.pharmacy.profile_image && !brokenPharmacyImages[item.pharmacy.id] ? (
+                        {resolveConversationParticipantImage(item.participant) && !brokenMessageParticipantImages[item.participant.key] ? (
                           <img
-                            src={resolveMediaUrl(item.pharmacy.profile_image) ?? ""}
-                            alt={item.pharmacy.name}
-                            onError={() => setBrokenPharmacyImages((current) => ({ ...current, [item.pharmacy.id]: true }))}
+                            src={resolveConversationParticipantImage(item.participant) ?? ""}
+                            alt={item.participant.name}
+                            onError={() => setBrokenMessageParticipantImages((current) => ({ ...current, [item.participant.key]: true }))}
                           />
                         ) : (
-                          <span>{item.pharmacy.name.slice(0, 1).toUpperCase()}</span>
+                          <span>{getConversationParticipantInitial(item.participant)}</span>
                         )}
                       </div>
                       <div className="pharmacy-chat-contact-copy">
                         <div className="pharmacy-chat-contact-line">
-                          <strong>{item.pharmacy.name}</strong>
+                          <strong>{item.participant.name}</strong>
                           {item.lastMessage ? <small>{formatExactDateTime(item.lastMessage.created_at, language)}</small> : null}
                         </div>
                         <p>{item.lastMessage?.message || chromeText.noMessageYet}</p>
@@ -4759,28 +4934,28 @@ export default function Home() {
                   <>
                     <div className="pharmacy-chat-thread-identity">
                       <div className="pharmacy-chat-thread-avatar">
-                        {activeConversation.profile_image && !brokenPharmacyImages[activeConversation.id] ? (
+                        {resolveConversationParticipantImage(activeConversation) && !brokenMessageParticipantImages[activeConversation.key] ? (
                           <img
-                            src={resolveMediaUrl(activeConversation.profile_image) ?? ""}
+                            src={resolveConversationParticipantImage(activeConversation) ?? ""}
                             alt={activeConversation.name}
-                            onError={() => setBrokenPharmacyImages((current) => ({ ...current, [activeConversation.id]: true }))}
+                            onError={() => setBrokenMessageParticipantImages((current) => ({ ...current, [activeConversation.key]: true }))}
                           />
                         ) : (
-                          <span>{activeConversation.name.slice(0, 1).toUpperCase()}</span>
+                          <span>{getConversationParticipantInitial(activeConversation)}</span>
                         )}
                       </div>
                       <div>
                         <strong>{activeConversation.name}</strong>
-                        <p>{formatPharmacyLocation(activeConversation)}</p>
+                        <p>{activeConversation.subtitle}</p>
                       </div>
                     </div>
                     <div className="pharmacy-chat-thread-status">
-                      <span>{activeConversation.phone_number || feedText.phoneMissing}</span>
+                      <span>{activeConversation.phoneNumber || (activeConversation.role === "patient" ? "Patient PharmiGo" : feedText.phoneMissing)}</span>
                     </div>
                   </>
                 ) : (
                   <div className="pharmacy-chat-thread-empty-head">
-                    <strong>{chromeText.choosePharmacy}</strong>
+                    <strong>{currentUser.profile?.role === "patient" ? "Choisissez une pharmacie" : "Choisissez un contact"}</strong>
                     <p>
                       {language === "en"
                         ? "Select a contact on the left to display the conversation."
@@ -4800,11 +4975,11 @@ export default function Home() {
                 {activeConversation ? (
                   activeConversationMessages.length ? (
                     activeConversationMessages.map((item) => {
-                      const isOutgoing = item.sender_pharmacy === currentUser.profile?.pharmacy;
+                      const isOutgoing = isOutgoingMessageForActor(item);
                       return (
                         <article key={item.id} className={isOutgoing ? "pharmacy-chat-bubble outgoing" : "pharmacy-chat-bubble incoming"}>
                           <div className="pharmacy-chat-bubble-card">
-                            <strong>{isOutgoing ? "Vous" : item.sender_pharmacy_name || item.sender_name}</strong>
+                            <strong>{isOutgoing ? "Vous" : item.sender_pharmacy_name || item.sender_user_name || item.sender_name}</strong>
                             <p>{item.message}</p>
                             <small>{new Date(item.created_at).toLocaleString()}</small>
                           </div>
@@ -4827,7 +5002,7 @@ export default function Home() {
                 <div className="pharmacy-chat-composer-field">
                   <textarea
                     rows={3}
-                    placeholder={activeConversation ? `Ecrire a ${activeConversation.name}...` : "Choisissez d'abord une pharmacie"}
+                    placeholder={activeConversation ? `Ecrire a ${activeConversation.name}...` : "Choisissez d'abord un contact"}
                     value={messageBody}
                     onChange={(event) => {
                       setMessageBody(event.target.value);
@@ -4835,12 +5010,12 @@ export default function Home() {
                       setMessageSuccess(null);
                       setMessageFieldErrors((current) => ({ ...current, message: "" }));
                     }}
-                    disabled={!effectiveRecipientId || availableRecipientPharmacies.length === 0}
+                    disabled={!effectiveRecipientKey || availableRecipients.length === 0}
                   />
                   <button
                     type="submit"
                     className="pharmigo-primary-btn pharmacy-chat-send-button"
-                    disabled={messageBusy || availableRecipientPharmacies.length === 0 || !effectiveRecipientId}
+                    disabled={messageBusy || availableRecipients.length === 0 || !effectiveRecipientKey}
                     aria-label={messageBusy ? "Envoi en cours" : "Envoyer le message"}
                   >
                     <SendIcon />

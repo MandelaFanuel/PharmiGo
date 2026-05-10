@@ -536,7 +536,9 @@ export async function fetchPrescriptionResponses(): Promise<PrescriptionResponse
   }
 }
 
-export async function postMessage(payload: Pick<ChatMessage, "sender_name" | "sender_role" | "message" | "pharmacy">): Promise<ChatMessage> {
+export async function postMessage(
+  payload: Pick<ChatMessage, "sender_name" | "sender_role" | "message" | "pharmacy" | "recipient_user">
+): Promise<ChatMessage> {
   const { data } = await api.post<ChatMessage>(API_ENDPOINTS.messages, payload);
   return data;
 }

@@ -54,8 +54,14 @@ export interface ChatMessage {
   pharmacy_name?: string;
   sender_pharmacy?: number | null;
   sender_pharmacy_name?: string;
+  recipient_user?: number | null;
+  recipient_user_name?: string;
+  recipient_user_profile_image?: string | null;
+  sender_user?: number | null;
+  sender_user_name?: string;
+  sender_user_profile_image?: string | null;
   sender_name: string;
-  sender_role: "customer" | "pharmacy";
+  sender_role: "customer" | "patient" | "pharmacy";
   message: string;
   created_at: string;
 }

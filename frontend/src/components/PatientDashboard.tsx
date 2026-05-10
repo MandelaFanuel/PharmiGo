@@ -1,7 +1,6 @@
 import { startTransition, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
 
-import DashboardScaffold, { DashboardPanel, EyeGlyph, MessageGlyph, RefreshGlyph } from "./DashboardScaffold";
+import DashboardScaffold, { DashboardPanel, EyeGlyph, RefreshGlyph } from "./DashboardScaffold";
 import InAppDocumentViewer from "./InAppDocumentViewer";
 import PublicPrescriptionSheet from "./PublicPrescriptionSheet";
 import { getApiOrigin } from "../config/endpoints";
@@ -103,7 +102,6 @@ function formatPresenceLabel(isOnline?: boolean, lastSeen?: string | null, langu
 
 export default function PatientDashboard() {
   const { language } = usePreferences();
-  const navigate = useNavigate();
   const [prescriptions, setPrescriptions] = useState<PrescriptionRecord[]>([]);
   const [profileName, setProfileName] = useState("Patient");
   const [profileMeta, setProfileMeta] = useState("");
@@ -449,15 +447,6 @@ export default function PatientDashboard() {
       highlights={highlights}
       topbarActions={
         <>
-          <button
-            className="dashboard-icon-button dashboard-message-button"
-            onClick={() => navigate("/chat")}
-            aria-label={language === "en" ? "Open messages" : language === "sw" ? "Fungua ujumbe" : language === "rn" ? "Fungura ubutumwa" : language === "ln" ? "Fungola bansango" : "Ouvrir les messages"}
-            title={language === "en" ? "Open messages" : language === "sw" ? "Fungua ujumbe" : language === "rn" ? "Fungura ubutumwa" : language === "ln" ? "Fungola bansango" : "Ouvrir les messages"}
-            type="button"
-          >
-            <MessageGlyph />
-          </button>
           <button
             className="dashboard-icon-button dashboard-refresh-button"
             onClick={() => void loadDashboardData()}

@@ -93,13 +93,57 @@ def filter_notifications_for_user(queryset, user):
     if user.profile.role == "pharmacy":
         allowed_channels.extend(["messages:pharmacy", "prescriptions:pharmacy"])
     elif user.profile.role == "patient":
-        allowed_channels.extend(["prescriptions:patient"])
+        allowed_channels.extend(["prescriptions:patient", "messages:patient"])
 
     target_filter = Q(recipient_user__isnull=True, recipient_pharmacy__isnull=True) | Q(recipient_user=user)
     if user.profile.role == "pharmacy" and user.profile.pharmacy_id:
         target_filter |= Q(recipient_pharmacy=user.profile.pharmacy)
 
     return queryset.filter(channel__in=allowed_channels).filter(target_filter).distinct()
+
+
+def filter_chat_messages_for_user(queryset, user):
+    if user is None or not hasattr(user, "profile"):
+        return queryset.none()
+
+    queryset = queryset.select_related("pharmacy", "sender_pharmacy", "recipient_user", "sender_user").exclude(
+        sender_name="Equipe PharmiGo"
+    ).exclude(
+        sender_name__startswith="Pharmacie Test "
+    ).exclude(
+        sender_name__startswith="Pharmacie Image "
+    ).exclude(
+        sender_pharmacy__name__startswith="Pharmacie Test "
+    ).exclude(
+        sender_pharmacy__name__startswith="Pharmacie Image "
+    ).exclude(
+        pharmacy__name__startswith="Pharmacie Test "
+    ).exclude(
+        pharmacy__name__startswith="Pharmacie Image "
+    )
+
+    if user.profile.role == "pharmacy" and user.profile.pharmacy is not None:
+        return queryset.filter(Q(sender_pharmacy=user.profile.pharmacy) | Q(pharmacy=user.profile.pharmacy)).order_by("created_at")
+
+    if user.profile.role == "patient":
+        return queryset.filter(Q(sender_user=user) | Q(recipient_user=user)).order_by("created_at")
+
+    return queryset.none()
+
+
+def pharmacy_can_message_patient(pharmacy, patient_user):
+    patient_profile = getattr(patient_user, "profile", None)
+    if pharmacy is None or patient_user is None or patient_profile is None or patient_profile.role != "patient":
+        return False
+
+    if ChatMessage.objects.filter(
+        Q(sender_user=patient_user, pharmacy=pharmacy) | Q(sender_pharmacy=pharmacy, recipient_user=patient_user)
+    ).exists():
+        return True
+
+    return Prescription.objects.filter(patient_user=patient_user).filter(
+        Q(pharmacy=pharmacy) | Q(responses__pharmacy=pharmacy)
+    ).exists()
 
 
 def is_admin_user(user):
@@ -513,47 +557,69 @@ class ChatMessageViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = get_request_user(self.request)
-        if user is None or not hasattr(user, "profile") or user.profile.role != "pharmacy" or user.profile.pharmacy is None:
-            return ChatMessage.objects.none()
-
-        return ChatMessage.objects.select_related("pharmacy", "sender_pharmacy").exclude(
-            sender_name="Equipe PharmiGo"
-        ).exclude(
-            sender_name__startswith="Pharmacie Test "
-        ).exclude(
-            sender_name__startswith="Pharmacie Image "
-        ).exclude(
-            sender_pharmacy__name__startswith="Pharmacie Test "
-        ).exclude(
-            sender_pharmacy__name__startswith="Pharmacie Image "
-        ).exclude(
-            pharmacy__name__startswith="Pharmacie Test "
-        ).exclude(
-            pharmacy__name__startswith="Pharmacie Image "
-        ).filter(
-            Q(sender_pharmacy=user.profile.pharmacy) | Q(pharmacy=user.profile.pharmacy)
-        ).order_by("created_at")
+        return filter_chat_messages_for_user(ChatMessage.objects.all(), user)
 
     def create(self, request, *args, **kwargs):
         user = get_request_user(request)
-        if user is None or not hasattr(user, "profile") or user.profile.role != "pharmacy" or user.profile.pharmacy is None:
-            return Response({"detail": "Connexion pharmacie requise."}, status=status.HTTP_401_UNAUTHORIZED)
-
         payload = request.data.copy()
-        payload["sender_pharmacy"] = user.profile.pharmacy_id
-        payload["sender_name"] = user.profile.pharmacy.name
-        payload["sender_role"] = "pharmacy"
+        if user is None or not hasattr(user, "profile"):
+            return Response({"detail": "Connexion requise."}, status=status.HTTP_401_UNAUTHORIZED)
+
+        recipient_pharmacy_id = payload.get("pharmacy")
+        recipient_user_id = payload.get("recipient_user")
+        if recipient_pharmacy_id and recipient_user_id:
+            return Response({"detail": "Choisissez soit une pharmacie soit un patient."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if user.profile.role == "patient":
+            if not recipient_pharmacy_id:
+                return Response({"pharmacy": ["Choisissez une pharmacie."]}, status=status.HTTP_400_BAD_REQUEST)
+            payload["sender_user"] = user.id
+            payload["sender_name"] = user.username
+            payload["sender_role"] = "patient"
+            payload["sender_pharmacy"] = None
+            payload["recipient_user"] = None
+        elif user.profile.role == "pharmacy" and user.profile.pharmacy is not None:
+            payload["sender_pharmacy"] = user.profile.pharmacy_id
+            payload["sender_name"] = user.profile.pharmacy.name
+            payload["sender_role"] = "pharmacy"
+            payload["sender_user"] = None
+
+            if recipient_user_id:
+                try:
+                    recipient_user = User.objects.select_related("profile").get(pk=recipient_user_id)
+                except User.DoesNotExist:
+                    return Response({"recipient_user": ["Patient introuvable."]}, status=status.HTTP_400_BAD_REQUEST)
+                if not pharmacy_can_message_patient(user.profile.pharmacy, recipient_user):
+                    return Response(
+                        {"recipient_user": ["Cette conversation patient n'est pas encore autorisee pour votre pharmacie."]},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                payload["pharmacy"] = None
+            elif recipient_pharmacy_id:
+                payload["recipient_user"] = None
+            else:
+                return Response({"detail": "Choisissez un destinataire."}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            return Response({"detail": "Connexion patient ou pharmacie requise."}, status=status.HTTP_401_UNAUTHORIZED)
 
         serializer = self.get_serializer(data=payload)
         serializer.is_valid(raise_exception=True)
         message = serializer.save()
 
-        create_targeted_notification(
-            title="Message pharmacie",
-            message=f"{message.sender_name} a envoye un message visible sur la plateforme.",
-            channel="messages:pharmacy",
-            recipient_pharmacy=message.pharmacy,
-        )
+        if message.recipient_user_id:
+            create_targeted_notification(
+                title="Message patient",
+                message=f"{message.sender_name} vous a envoye un message sur PharmiGo.",
+                channel="messages:patient",
+                recipient_user=message.recipient_user,
+            )
+        elif message.pharmacy_id:
+            create_targeted_notification(
+                title="Message pharmacie",
+                message=f"{message.sender_name} a envoye un message visible sur la plateforme.",
+                channel="messages:pharmacy",
+                recipient_pharmacy=message.pharmacy,
+            )
 
         serialized = self.get_serializer(message).data
         broadcast_feed_event("message.created", serialized)
@@ -849,10 +915,8 @@ def dashboard(request):
         many=True,
     ).data
     notification_data = NotificationSerializer(notification_queryset.order_by("-created_at")[:30], many=True).data
-    message_data = ChatMessageSerializer(
-        message_queryset.select_related("pharmacy", "sender_pharmacy").order_by("-created_at")[:40],
-        many=True,
-    ).data
+    filtered_messages = filter_chat_messages_for_user(message_queryset, user) if user else ChatMessage.objects.none()
+    message_data = ChatMessageSerializer(filtered_messages.order_by("-created_at")[:80], many=True).data
 
     kpis = {
         "response_time_minutes": round(float(response_queryset.aggregate(value=Avg("estimated_minutes")).get("value") or 0), 1),
@@ -1178,7 +1242,7 @@ def profile(request):
                 [dt for dt in [getattr(user.profile, "created_at", None), getattr(pharmacy, "created_at", None)] if dt is not None],
                 default=None,
             )
-            message_queryset = ChatMessage.objects.filter(sender_pharmacy=pharmacy).select_related("pharmacy", "sender_pharmacy")
+            message_queryset = filter_chat_messages_for_user(ChatMessage.objects.all(), user)
             response_queryset = PrescriptionResponse.objects.filter(pharmacy=pharmacy).select_related("pharmacy", "prescription")
             if pharmacy_start_at is not None:
                 message_queryset = message_queryset.filter(created_at__gte=pharmacy_start_at)
