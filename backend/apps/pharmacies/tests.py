@@ -1,10 +1,14 @@
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
+from django.test import SimpleTestCase
 from django.utils import timezone
 from rest_framework.test import APITestCase
 
+from apps.common.public_storage import PharmigoPublicMediaStorage
 from apps.notifications.models import Notification
 from apps.pharmacies.models import Pharmacy, PharmacySubscription, SubscriptionSystemSettings
 from apps.pharmacies.services.access import pharmacy_has_platform_access
@@ -13,6 +17,27 @@ from apps.users.models import UserProfile
 from apps.users.serializers import DEFAULT_ADMIN_EMAIL
 
 User = get_user_model()
+
+
+class PublicMediaStorageTests(SimpleTestCase):
+    def test_same_stem_suffix_fallback_finds_committed_public_pharmacy_image(self):
+        with TemporaryDirectory() as current_dir, TemporaryDirectory() as legacy_dir:
+            current_root = Path(current_dir)
+            legacy_root = Path(legacy_dir)
+            existing_file = legacy_root / "pharmacies" / "Screenshot_20250729-145733_Chrome.jpg"
+            existing_file.parent.mkdir(parents=True, exist_ok=True)
+            existing_file.write_bytes(b"pharmacy-image")
+
+            storage = PharmigoPublicMediaStorage()
+            storage.base_location = str(current_root)
+            storage.legacy_location = legacy_root
+
+            requested_name = "pharmacies/Screenshot_20250729-145733_Chrome_QhmxhdU.jpg"
+
+            self.assertTrue(storage.exists(requested_name))
+            self.assertEqual(storage.path(requested_name), str(existing_file))
+            with storage.open(requested_name, "rb") as handle:
+                self.assertEqual(handle.read(), b"pharmacy-image")
 
 
 class PharmacySubscriptionApiTests(APITestCase):

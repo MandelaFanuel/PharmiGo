@@ -217,3 +217,9 @@ Recommended Render disk mount example:
 - set `PHARMIGO_MEDIA_ROOT=/var/data/pharmigo/media`
 
 With this setup, public profile images remain available after redeploys and restarts.
+
+### Public pharmacy image fallback
+
+- `backend/media/pharmacies/` is intentionally versioned as a fallback for public pharmacy profile images
+- `backend/private_media/` and prescription uploads must remain untracked
+- if a production pharmacy still points to an older public image filename, the backend now also attempts a safe same-stem match in the public pharmacy image folder
