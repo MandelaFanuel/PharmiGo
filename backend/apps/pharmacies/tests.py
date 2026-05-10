@@ -76,6 +76,43 @@ class PharmacySubscriptionApiTests(APITestCase):
         self.assertFalse(subscription.is_active())
         self.assertFalse(pharmacy_has_platform_access(self.pharmacy))
 
+    def test_trial_pharmacy_is_visible_but_not_marked_verified(self):
+        PharmacySubscription.objects.create(
+            pharmacy=self.pharmacy,
+            subscription_status="trial",
+            is_trial_active=True,
+            trial_end_date=timezone.now() + timedelta(days=30),
+        )
+
+        self.client.force_authenticate(user=None)
+        response = self.client.get("/api/pharmacies/")
+
+        self.assertEqual(response.status_code, 200)
+        row = next(item for item in response.data if item["id"] == self.pharmacy.id)
+        self.assertEqual(row["subscription_status"], "trial")
+        self.assertFalse(row["is_official"])
+
+    def test_active_paid_pharmacy_is_visible_and_marked_verified_even_if_flag_was_stale(self):
+        PharmacySubscription.objects.create(
+            pharmacy=self.pharmacy,
+            subscription_status="active",
+            is_trial_active=False,
+            trial_end_date=timezone.now() + timedelta(days=30),
+            next_payment_due_date=timezone.now() + timedelta(days=30),
+        )
+        self.pharmacy.is_verified = False
+        self.pharmacy.save(update_fields=["is_verified"])
+
+        self.client.force_authenticate(user=None)
+        response = self.client.get("/api/pharmacies/")
+
+        self.assertEqual(response.status_code, 200)
+        row = next(item for item in response.data if item["id"] == self.pharmacy.id)
+        self.assertEqual(row["subscription_status"], "active")
+        self.assertTrue(row["is_official"])
+        self.pharmacy.refresh_from_db()
+        self.assertTrue(self.pharmacy.is_verified)
+
     def test_admin_can_update_global_trial_duration(self):
         admin_user = User.objects.create_user(
             username="admin",

@@ -15,7 +15,7 @@ from apps.notifications.serializers import NotificationSerializer
 from apps.pharmacies.models import Pharmacy, PharmacyComment, PharmacyEngagement
 from apps.pharmacies.payment_config import sanitize_payment_methods
 from apps.pharmacies.serializers import PharmacyCommentSerializer, PharmacySerializer, SubscriptionSystemSettingsSerializer
-from apps.pharmacies.services.access import PAYMENT_WALL_MESSAGE, get_active_partner_pharmacies, pharmacy_has_platform_access
+from apps.pharmacies.services.access import PAYMENT_WALL_MESSAGE, get_active_partner_pharmacies, pharmacy_has_platform_access, sync_pharmacy_access_flags
 from apps.pharmigo_chatbot.models import ChatbotLearningData, LearnedMedicalPattern, PharmiGoAIEventLog, PharmiGoAISettings
 from apps.pharmigo_chatbot.services import AIConfigService, AIEventLogger, GeminiChatService
 from apps.prescriptions.models import Prescription, PrescriptionComment, PrescriptionEngagement, PrescriptionResponse
@@ -127,12 +127,7 @@ def ensure_subscription_for_pharmacy(pharmacy):
 def sync_pharmacy_verification_with_subscription(pharmacy, subscription):
     if pharmacy is None or subscription is None:
         return
-
-    status = (subscription.subscription_status or "").strip().lower()
-    should_be_verified = status == "active"
-    if getattr(pharmacy, "is_verified", False) != should_be_verified:
-        pharmacy.is_verified = should_be_verified
-        pharmacy.save(update_fields=["is_verified"])
+    sync_pharmacy_access_flags(pharmacy, subscription)
 
 
 def sync_subscription_prices(settings_obj):

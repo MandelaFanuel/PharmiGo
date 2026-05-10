@@ -69,11 +69,7 @@ class PharmacySerializer(serializers.ModelSerializer):
             return None
 
         try:
-            image_path = reverse("pharmacy-profile-image", kwargs={"pk": obj.pk})
-            request = self.context.get("request")
-            if request is not None:
-                return request.build_absolute_uri(image_path)
-            return image_path
+            return reverse("pharmacy-profile-image", kwargs={"pk": obj.pk})
         except Exception:
             return None
 
@@ -96,7 +92,9 @@ class PharmacySerializer(serializers.ModelSerializer):
         return getattr(subscription, "subscription_status", None)
 
     def get_is_official(self, obj):
-        return is_pharmacy_partner_eligible(obj)
+        subscription = getattr(obj, "subscription", None)
+        status = getattr(subscription, "subscription_status", "")
+        return bool(is_pharmacy_partner_eligible(obj) and str(status).strip().lower() == "active")
 
     def get_trial_days_remaining(self, obj):
         subscription = getattr(obj, "subscription", None)

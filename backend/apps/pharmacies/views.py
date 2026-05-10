@@ -10,7 +10,7 @@ from datetime import timedelta
 from .models import Pharmacy, PharmacyContact, PharmacySubscription, SubscriptionPayment, SubscriptionSystemSettings
 from .serializers import PharmacySerializer, PharmacyContactSerializer, PharmacySubscriptionSerializer, SubscriptionPaymentSerializer
 from .payment_config import build_payment_details
-from .services.access import is_pharmacy_partner_eligible
+from .services.access import get_active_partner_pharmacies, is_pharmacy_partner_eligible
 from .services.exchange_rate_service import ExchangeRateService
 from pharmigo.api import broadcast_feed_event, create_targeted_notification, sync_pharmacy_verification_with_subscription
 
@@ -18,12 +18,24 @@ User = get_user_model()
 
 # Pharmacy CRUD
 class PharmacyListView(generics.ListCreateAPIView):
-    queryset = Pharmacy.objects.all()
     serializer_class = PharmacySerializer
 
+    def get_queryset(self):
+        queryset = Pharmacy.objects.select_related("subscription").all()
+        user = getattr(self.request, "user", None)
+        if user is not None and getattr(user, "is_authenticated", False) and getattr(user, "is_staff", False):
+            return queryset
+        return queryset.filter(id__in=get_active_partner_pharmacies().values("id"))
+
 class PharmacyDetailView(generics.RetrieveAPIView):
-    queryset = Pharmacy.objects.all()
     serializer_class = PharmacySerializer
+
+    def get_queryset(self):
+        queryset = Pharmacy.objects.select_related("subscription").all()
+        user = getattr(self.request, "user", None)
+        if user is not None and getattr(user, "is_authenticated", False) and getattr(user, "is_staff", False):
+            return queryset
+        return queryset.filter(id__in=get_active_partner_pharmacies().values("id"))
 
 
 class PharmacyProfileImageView(APIView):

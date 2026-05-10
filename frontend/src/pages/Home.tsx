@@ -3696,7 +3696,7 @@ export default function Home() {
                           <div className="pharmacy-showcase-title-wrap">
                             <h3 className="pharmacy-display-name pharmacy-name-row">
                               {pharmacy.name}
-                              {pharmacy.is_official || pharmacy.subscription_status === "active" ? (
+                              {pharmacy.is_official ? (
                                 <span className="verified-badge">Verified</span>
                               ) : null}
                             </h3>

@@ -134,11 +134,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
         if pharmacy is None or not getattr(pharmacy, "profile_image", None):
             return None
 
-        image_path = reverse("pharmacy-profile-image", kwargs={"pk": pharmacy.pk})
-        request = self.context.get("request")
-        if request is not None:
-            return request.build_absolute_uri(image_path)
-        return image_path
+        return reverse("pharmacy-profile-image", kwargs={"pk": pharmacy.pk})
 
     class Meta:
         model = UserProfile

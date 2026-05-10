@@ -34,6 +34,17 @@ def is_subscription_eligible(subscription: PharmacySubscription | None) -> bool:
     return False
 
 
+def sync_pharmacy_access_flags(pharmacy: Pharmacy | None, subscription: PharmacySubscription | None) -> None:
+    if pharmacy is None or subscription is None:
+        return
+
+    status = (subscription.subscription_status or "").strip().lower()
+    should_be_verified = bool(getattr(pharmacy, "is_active", True)) and status == "active" and is_subscription_eligible(subscription)
+    if getattr(pharmacy, "is_verified", False) != should_be_verified:
+        pharmacy.is_verified = should_be_verified
+        pharmacy.save(update_fields=["is_verified"])
+
+
 def refresh_subscription_state(subscription: PharmacySubscription | None) -> PharmacySubscription | None:
     if subscription is None:
         return None
@@ -74,14 +85,14 @@ def is_pharmacy_partner_eligible(pharmacy: Pharmacy | None) -> bool:
     except PharmacySubscription.DoesNotExist:
         return False
 
-    if not is_subscription_eligible(subscription):
+    eligible = is_subscription_eligible(subscription)
+    sync_pharmacy_access_flags(pharmacy, subscription)
+
+    if not eligible:
         return False
 
     status = (subscription.subscription_status or "").strip().lower()
-    if status == "active":
-        return bool(getattr(pharmacy, "is_verified", False))
-
-    return status == "trial"
+    return status in {"active", "trial"}
 
 
 def pharmacy_has_platform_access(pharmacy: Pharmacy | None) -> bool:
@@ -93,6 +104,7 @@ def pharmacy_has_platform_access(pharmacy: Pharmacy | None) -> bool:
         subscription = PharmacySubscription.objects.get(pharmacy_id=pharmacy.id)
     except PharmacySubscription.DoesNotExist:
         return False
+    sync_pharmacy_access_flags(pharmacy, subscription)
     return bool(getattr(pharmacy, "is_active", True)) and is_subscription_eligible(subscription)
 
 
@@ -103,7 +115,6 @@ def get_active_partner_pharmacies():
     now = timezone.now()
     return Pharmacy.objects.filter(is_active=True).filter(
         models.Q(
-            is_verified=True,
             subscription__subscription_status="active",
         )
         & (models.Q(subscription__next_payment_due_date__isnull=True) | models.Q(subscription__next_payment_due_date__gt=now))
