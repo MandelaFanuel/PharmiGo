@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core import mail
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
 from django.utils import timezone
 from rest_framework.test import APITestCase
@@ -229,6 +230,55 @@ class AuthenticationFlowTests(APITestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn("email", response.data)
+
+    def test_patient_profile_patch_can_store_profile_image(self):
+        user = User.objects.create_user(username="patient-photo", email="patient-photo@example.com", password="secret123")
+        UserProfile.objects.create(user=user, role="patient", phone_number="+25761000999", email_verified=True)
+        self.client.force_authenticate(user=user)
+
+        uploaded = SimpleUploadedFile("avatar.png", b"fake-patient-image", content_type="image/png")
+        response = self.client.patch(
+            "/api/profile/",
+            {
+                "username": "patient-photo",
+                "phone_number": "+25761000999",
+                "email": "patient-photo@example.com",
+                "profile_image": uploaded,
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        user.refresh_from_db()
+        self.assertTrue(bool(user.profile.profile_image))
+        self.assertIn("/api/users/", response.data["profile"]["profile_image"])
+
+    def test_admin_profile_patch_can_store_profile_image(self):
+        admin = User.objects.create_user(
+            username="admin-photo",
+            email="admin-photo@example.com",
+            password="secret123",
+            is_staff=True,
+            is_superuser=True,
+        )
+        UserProfile.objects.create(user=admin, role="admin", phone_number="", email_verified=True)
+        self.client.force_authenticate(user=admin)
+
+        uploaded = SimpleUploadedFile("admin.png", b"fake-admin-image", content_type="image/png")
+        response = self.client.patch(
+            "/api/profile/",
+            {
+                "username": "admin-photo",
+                "email": "admin-photo@example.com",
+                "profile_image": uploaded,
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        admin.refresh_from_db()
+        self.assertTrue(bool(admin.profile.profile_image))
+        self.assertIn("/api/users/", response.data["profile"]["profile_image"])
 
     def test_pharmacy_register_requires_email_and_creates_trial_subscription(self):
         response = self.client.post(

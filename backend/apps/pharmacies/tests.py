@@ -3,6 +3,7 @@ from tempfile import TemporaryDirectory
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.test import SimpleTestCase
 from django.utils import timezone
@@ -266,6 +267,29 @@ class PharmacySubscriptionApiTests(APITestCase):
         self.assertIn("pharmacy_created_at", response.data["profile"])
         self.assertEqual(len(response.data["history"]["responses"]), 1)
         self.assertEqual(response.data["history"]["responses"][0]["prescription"], new_prescription.id)
+
+    def test_pharmacy_profile_patch_can_store_profile_image(self):
+        uploaded = SimpleUploadedFile("pharmacy.png", b"fake-pharmacy-image", content_type="image/png")
+
+        response = self.client.patch(
+            "/api/profile/",
+            {
+                "pharmacy_name": self.pharmacy.name,
+                "address": self.pharmacy.address,
+                "city": self.pharmacy.city,
+                "phone_number": self.pharmacy.phone_number,
+                "email": "centrale@example.com",
+                "opening_hours": "08:00 - 20:00",
+                "delivery_supported": "false",
+                "pharmacy_image": uploaded,
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.pharmacy.refresh_from_db()
+        self.assertTrue(bool(self.pharmacy.profile_image))
+        self.assertIn("/api/pharmacies/", response.data["profile"]["pharmacy_image"])
 
     def test_subscription_payment_submission_notifies_admin(self):
         admin_user = User.objects.create_user(

@@ -734,8 +734,27 @@ export async function fetchProtectedDocument(documentUrl: string): Promise<strin
   return URL.createObjectURL(blob);
 }
 
-export async function updatePatientProfile(payload: { username: string; phone_number: string; email?: string }): Promise<AuthResponse["user"]> {
-  const { data } = await api.patch<AuthResponse["user"]>(API_ENDPOINTS.profile, payload);
+export async function updatePatientProfile(payload: {
+  username: string;
+  phone_number: string;
+  email?: string;
+  profile_image?: File | null;
+}): Promise<AuthResponse["user"]> {
+  const formData = new FormData();
+  formData.append("username", payload.username);
+  formData.append("phone_number", payload.phone_number);
+  if (payload.email) {
+    formData.append("email", payload.email);
+  }
+  if (payload.profile_image) {
+    formData.append("profile_image", payload.profile_image);
+  }
+
+  const { data } = await api.patch<AuthResponse["user"]>(API_ENDPOINTS.profile, formData, {
+    headers: {
+      "Content-Type": "multipart/form-data",
+    },
+  });
   return data;
 }
 

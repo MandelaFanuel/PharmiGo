@@ -1280,10 +1280,14 @@ def profile(request):
 
     if user.is_staff:
         username = str(data.get("username", user.username)).strip() or user.username
-        email = str(data.get("email", user.email)).strip()
+        email = str(data.get("email", user.email)).strip().lower()
 
         if User.objects.exclude(pk=user.pk).filter(username=username).exists():
             return Response({"username": ["Ce nom d'utilisateur est deja utilise."]}, status=status.HTTP_400_BAD_REQUEST)
+        if not email:
+            return Response({"email": ["L'adresse email est obligatoire."]}, status=status.HTTP_400_BAD_REQUEST)
+        if email_already_used(email, exclude_user_id=user.pk):
+            return Response({"email": ["Cette adresse email est deja utilisee."]}, status=status.HTTP_400_BAD_REQUEST)
 
         user.username = username
         user.email = email
@@ -1318,7 +1322,11 @@ def profile(request):
         user.email = email
         user.save(update_fields=["username", "email"])
         profile.phone_number = phone_number
-        profile.save(update_fields=["phone_number"])
+        if request.FILES.get("profile_image"):
+            profile.profile_image = request.FILES["profile_image"]
+            profile.save(update_fields=["phone_number", "profile_image"])
+        else:
+            profile.save(update_fields=["phone_number"])
         return Response(UserSerializer(user).data)
 
     if profile and profile.role == "pharmacy" and profile.pharmacy is not None:

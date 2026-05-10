@@ -104,6 +104,7 @@ type ProfileFormState = {
   phone_number: string;
   email: string;
   country_code: PhoneCountryCode;
+  profile_image: File | null;
 };
 
 type PharmacyProfileFormState = {
@@ -747,7 +748,7 @@ export default function Home() {
   const [profileError, setProfileError] = useState<string | null>(null);
   const [profileSuccess, setProfileSuccess] = useState<string | null>(null);
   const [profileFieldErrors, setProfileFieldErrors] = useState<FormFieldErrors>({});
-  const [profileForm, setProfileForm] = useState<ProfileFormState>({ username: "", phone_number: "", email: "", country_code: "bi" });
+  const [profileForm, setProfileForm] = useState<ProfileFormState>({ username: "", phone_number: "", email: "", country_code: "bi", profile_image: null });
   const [adminProfileForm, setAdminProfileForm] = useState<AdminProfileFormState>({
     username: "",
     email: "",
@@ -1958,7 +1959,7 @@ export default function Home() {
     }
 
     if (!currentUser || !getStoredCurrentUser()) {
-      setProfileForm({ username: "", phone_number: "", email: "", country_code: "bi" });
+      setProfileForm({ username: "", phone_number: "", email: "", country_code: "bi", profile_image: null });
       setAdminProfileForm({ username: "", email: "", profile_image: null });
       setPharmacyProfileForm({
         pharmacy_name: "",
@@ -2011,6 +2012,7 @@ export default function Home() {
           phone_number: patientPhone.localNumber,
           email: user.email ?? "",
           country_code: patientPhone.countryCode,
+          profile_image: null,
         });
         setAdminProfileForm({
           username: user.username ?? "",
@@ -2980,6 +2982,7 @@ export default function Home() {
             username: profileForm.username.trim(),
             phone_number: buildPhoneNumber(profileForm.country_code, profileForm.phone_number.trim()),
             email: profileForm.email.trim().toLowerCase(),
+            profile_image: profileForm.profile_image,
           })
           : await updatePharmacyProfile({
             pharmacy_name: pharmacyProfileForm.pharmacy_name.trim(),
@@ -2999,6 +3002,7 @@ export default function Home() {
         phone_number: patientPhone.localNumber,
         email: updated.email ?? "",
         country_code: patientPhone.countryCode,
+        profile_image: null,
       });
       setAdminProfileForm({
         username: updated.username ?? "",
@@ -4624,7 +4628,15 @@ export default function Home() {
           ) : currentUser.profile?.role === "patient" ? (
             <form className="auth-form inline-modal-form" onSubmit={handleProfileSubmit}>
               <div className="profile-summary patient-profile-summary">
-                <div className="profile-avatar-badge">{(currentUser.username || "P").slice(0, 1).toUpperCase()}</div>
+                {currentUser.profile?.profile_image ? (
+                  <img
+                    src={resolveMediaUrl(currentUser.profile.profile_image) ?? ""}
+                    alt={currentUser.username || "Patient"}
+                    className="profile-pharmacy-image"
+                  />
+                ) : (
+                  <div className="profile-avatar-badge">{(currentUser.username || "P").slice(0, 1).toUpperCase()}</div>
+                )}
                 <div className="profile-summary-grid">
                   <ProfileReadItem label="Nom d'utilisateur" value={currentUser.username || "Non renseigne"} />
                   <ProfileReadItem label="Numero" value={currentUser.profile?.phone_number || "Non renseigne"} />
@@ -4662,6 +4674,16 @@ export default function Home() {
                 />
                 {profileFieldErrors.email ? <small className="field-error">{profileFieldErrors.email}</small> : null}
                 <small className="field-help">Votre connexion patient reste basee sur le numero de telephone et le mot de passe.</small>
+              </label>
+              <label>
+                <span>Photo de profil</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(event) =>
+                    setProfileForm((current) => ({ ...current, profile_image: event.target.files?.[0] ?? null }))
+                  }
+                />
               </label>
               {profileError ? <p className="form-feedback error">{profileError}</p> : null}
               {profileSuccess ? <p className="form-feedback success">{profileSuccess}</p> : null}

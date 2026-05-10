@@ -1,4 +1,5 @@
 import logging
+import mimetypes
 
 from django.contrib.auth import logout
 from django.contrib.auth import get_user_model
@@ -6,7 +7,9 @@ from django.contrib.auth.tokens import default_token_generator
 from django.utils.encoding import force_str
 from django.utils.http import urlsafe_base64_decode
 from django.conf import settings
+from django.http import FileResponse, Http404
 from rest_framework import generics, status
+from rest_framework import permissions
 from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -132,6 +135,29 @@ class LogoutView(APIView):
             logout(raw_request)
 
         return Response({"message": "Deconnexion reussie."}, status=status.HTTP_200_OK)
+
+
+class UserProfileImageView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, pk: int):
+        user = User.objects.select_related("profile").filter(pk=pk, is_active=True).first()
+        if user is None or not hasattr(user, "profile"):
+            raise Http404("Utilisateur introuvable.")
+
+        image_field = user.profile.profile_image
+        if not image_field or not image_field.name:
+            raise Http404("Image indisponible.")
+
+        storage = image_field.storage
+        if not storage.exists(image_field.name):
+            raise Http404("Fichier image introuvable.")
+
+        content_type, _ = mimetypes.guess_type(image_field.name)
+        image_file = storage.open(image_field.name, "rb")
+        response = FileResponse(image_file, content_type=content_type or "application/octet-stream")
+        response["Cache-Control"] = "public, max-age=3600"
+        return response
 
 
 class PasswordResetRequestView(APIView):

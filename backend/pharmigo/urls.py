@@ -12,6 +12,7 @@ from apps.users.views import (
     PasswordResetRequestView,
     RegisterView,
     ResendVerificationEmailView,
+    UserProfileImageView,
     VerifyEmailView,
 )
 from pharmigo.api import (
@@ -52,6 +53,7 @@ urlpatterns = [
     path("api/dashboard/", dashboard, name="dashboard"),
     path("api/admin/dashboard/", admin_dashboard, name="admin-dashboard"),
     path("api/profile/", profile, name="profile"),
+    path("api/users/<int:pk>/profile-image/", UserProfileImageView.as_view(), name="user-profile-image"),
     path("api/endpoints/", endpoints, name="endpoints"),
     path("api/upload-prescription/", PrescriptionUploadView.as_view(), name="upload-prescription-root"),
     path("api/confirm-prescription/", ConfirmPrescriptionView.as_view(), name="confirm-prescription-root"),

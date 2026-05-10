@@ -104,7 +104,7 @@ def phone_number_already_used(phone_number: str, *, exclude_profile_id: int | No
 
 
 class UserProfileSerializer(serializers.ModelSerializer):
-    profile_image = serializers.ImageField(read_only=True)
+    profile_image = serializers.SerializerMethodField()
     pharmacy_name = serializers.CharField(source="pharmacy.name", read_only=True)
     pharmacy_image = serializers.SerializerMethodField()
     pharmacy_created_at = serializers.DateTimeField(source="pharmacy.created_at", read_only=True)
@@ -128,6 +128,15 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
     def get_google_connected(self, obj):
         return bool(obj.google_sub)
+
+    def get_profile_image(self, obj):
+        if not obj.profile_image:
+            return None
+
+        try:
+            return reverse("user-profile-image", kwargs={"pk": obj.user_id})
+        except Exception:
+            return None
 
     def get_pharmacy_image(self, obj):
         pharmacy = getattr(obj, "pharmacy", None)
