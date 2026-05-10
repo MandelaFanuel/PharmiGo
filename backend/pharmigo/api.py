@@ -146,6 +146,14 @@ def pharmacy_can_message_patient(pharmacy, patient_user):
     ).exists()
 
 
+def parse_request_boolean(value, default=False):
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    return str(value).strip().lower() in {"true", "1", "yes", "on"}
+
+
 def is_admin_user(user):
     return user is not None and getattr(user, "is_staff", False)
 
@@ -474,6 +482,131 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
         serialized = self.get_serializer(prescription).data
         broadcast_feed_event("prescription.engagement.updated", serialized)
         return Response(serialized, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["post"], url_path="share-inbox")
+    def share_inbox(self, request, pk=None):
+        user = get_request_user(request)
+        if user is None or not hasattr(user, "profile") or user.profile.role not in {"pharmacy", "patient"}:
+            return Response({"detail": "Connexion requise."}, status=status.HTTP_401_UNAUTHORIZED)
+
+        prescription = self.get_object()
+        confirmed_medications = list(prescription.extracted_medications.filter(confirmed=True).order_by("id"))
+        if not confirmed_medications:
+            return Response(
+                {"detail": "Aucun medicament confirme n'est disponible pour ce partage."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        recipient_pharmacy = None
+        recipient_user = None
+        recipient_pharmacy_id = request.data.get("pharmacy")
+        recipient_user_id = request.data.get("recipient_user")
+
+        if recipient_pharmacy_id and recipient_user_id:
+            return Response({"detail": "Choisissez soit une pharmacie soit un patient."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if user.profile.role == "patient":
+            if not recipient_pharmacy_id:
+                return Response({"pharmacy": ["Choisissez une pharmacie destinataire."]}, status=status.HTTP_400_BAD_REQUEST)
+            try:
+                recipient_pharmacy = Pharmacy.objects.get(pk=recipient_pharmacy_id)
+            except Pharmacy.DoesNotExist:
+                return Response({"pharmacy": ["Pharmacie introuvable."]}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            if user.profile.pharmacy is None:
+                return Response({"detail": "Connexion pharmacie requise."}, status=status.HTTP_401_UNAUTHORIZED)
+            if recipient_user_id:
+                try:
+                    recipient_user = User.objects.select_related("profile").get(pk=recipient_user_id)
+                except User.DoesNotExist:
+                    return Response({"recipient_user": ["Patient introuvable."]}, status=status.HTTP_400_BAD_REQUEST)
+                if not pharmacy_can_message_patient(user.profile.pharmacy, recipient_user):
+                    return Response(
+                        {"recipient_user": ["Cette conversation patient n'est pas encore autorisee pour votre pharmacie."]},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+            elif recipient_pharmacy_id:
+                try:
+                    recipient_pharmacy = Pharmacy.objects.get(pk=recipient_pharmacy_id)
+                except Pharmacy.DoesNotExist:
+                    return Response({"pharmacy": ["Pharmacie introuvable."]}, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                return Response({"detail": "Choisissez un destinataire."}, status=status.HTTP_400_BAD_REQUEST)
+
+        reference = prescription.public_reference or f"ORD-{prescription.pk:06d}"
+        medication_lines = []
+        for item in confirmed_medications[:8]:
+            parts = [item.name]
+            if item.dosage:
+                parts.append(item.dosage)
+            if item.form:
+                parts.append(item.form)
+            medication_lines.append(" - ".join(parts))
+
+        message_body = (
+            f"Je vous partage l'ordonnance {reference} avec les medicaments confirmes suivants:\n"
+            + "\n".join(f"- {line}" for line in medication_lines)
+        )
+        if len(confirmed_medications) > 8:
+            message_body += f"\n- et {len(confirmed_medications) - 8} autre(s) medicament(s)"
+        message_body += "\n\nConsultez votre conversation PharmiGo pour poursuivre l'echange."
+
+        if user.profile.role == "patient":
+            message = ChatMessage.objects.create(
+                pharmacy=recipient_pharmacy,
+                sender_user=user,
+                sender_name=user.username,
+                sender_role="patient",
+                message=message_body,
+            )
+            create_targeted_notification(
+                title="Ordonnance partagee",
+                message=f"{user.username} a partage une ordonnance confirmee avec votre pharmacie.",
+                channel="messages:pharmacy",
+                recipient_pharmacy=recipient_pharmacy,
+            )
+            engagement_lookup = {"user": user}
+            engagement_defaults = {"user": user}
+        else:
+            message = ChatMessage.objects.create(
+                pharmacy=recipient_pharmacy,
+                sender_pharmacy=user.profile.pharmacy,
+                recipient_user=recipient_user,
+                sender_name=user.profile.pharmacy.name,
+                sender_role="pharmacy",
+                message=message_body,
+            )
+            if recipient_user is not None:
+                create_targeted_notification(
+                    title="Ordonnance partagee",
+                    message=f"{user.profile.pharmacy.name} vous a partage une ordonnance confirmee.",
+                    channel="messages:patient",
+                    recipient_user=recipient_user,
+                )
+            elif recipient_pharmacy is not None:
+                create_targeted_notification(
+                    title="Ordonnance partagee",
+                    message=f"{user.profile.pharmacy.name} a partage une ordonnance confirmee avec votre pharmacie.",
+                    channel="messages:pharmacy",
+                    recipient_pharmacy=recipient_pharmacy,
+                )
+            engagement_lookup = {"pharmacy": user.profile.pharmacy}
+            engagement_defaults = {"pharmacy": user.profile.pharmacy, "user": None}
+
+        engagement, _ = PrescriptionEngagement.objects.get_or_create(
+            prescription=prescription,
+            defaults=engagement_defaults,
+            **engagement_lookup,
+        )
+        engagement.mark_shared()
+        engagement.save()
+
+        serialized_message = ChatMessageSerializer(message, context={"request": request}).data
+        broadcast_feed_event("message.created", serialized_message)
+        prescription.refresh_from_db()
+        serialized_prescription = self.get_serializer(prescription, context={"request": request}).data
+        broadcast_feed_event("prescription.engagement.updated", serialized_prescription)
+        return Response({"message": serialized_message, "prescription": serialized_prescription}, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["post"], url_path="comments")
     def comments(self, request, pk=None):
@@ -1348,7 +1481,14 @@ def profile(request):
         pharmacy.phone_number = phone_number
         pharmacy.email = email
         pharmacy.opening_hours = str(data.get("opening_hours", pharmacy.opening_hours)).strip() or pharmacy.opening_hours
-        pharmacy.delivery_supported = str(data.get("delivery_supported", pharmacy.delivery_supported)).lower() in {"true", "1", "yes", "on"}
+        pharmacy.delivery_supported = parse_request_boolean(data.get("delivery_supported", pharmacy.delivery_supported), pharmacy.delivery_supported)
+        pharmacy.wholesale_supported = parse_request_boolean(data.get("wholesale_supported", pharmacy.wholesale_supported), pharmacy.wholesale_supported)
+        pharmacy.retail_supported = parse_request_boolean(data.get("retail_supported", pharmacy.retail_supported), pharmacy.retail_supported)
+        if not pharmacy.wholesale_supported and not pharmacy.retail_supported:
+            return Response(
+                {"retail_supported": ["Choisissez au moins un mode de vente: gros ou detail."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         if request.FILES.get("pharmacy_image"):
             pharmacy.profile_image = request.FILES["pharmacy_image"]
         pharmacy.save()

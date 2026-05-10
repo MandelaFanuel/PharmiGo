@@ -45,6 +45,7 @@ import {
   register,
   sendPresenceHeartbeat,
   sendPresenceOffline,
+  sharePrescriptionToInbox,
   updatePharmacyEngagement,
   updatePrescriptionEngagement,
   updateAdminProfile,
@@ -96,6 +97,8 @@ type PharmacyRegisterFormState = {
   address: string;
   password: string;
   pharmacy_image: File | null;
+  wholesale_supported: boolean;
+  retail_supported: boolean;
   country_code: PhoneCountryCode;
 };
 
@@ -115,6 +118,8 @@ type PharmacyProfileFormState = {
   email: string;
   opening_hours: string;
   delivery_supported: boolean;
+  wholesale_supported: boolean;
+  retail_supported: boolean;
   pharmacy_image: File | null;
   country_code: PhoneCountryCode;
 };
@@ -165,6 +170,7 @@ type ShareMenuState = {
   title: string;
   text: string;
   url: string;
+  recipientKey?: string;
 };
 
 type ShareChannel = "whatsapp" | "facebook" | "instagram" | "telegram" | "tiktok" | "copy" | "platform";
@@ -762,6 +768,8 @@ export default function Home() {
     email: "",
     opening_hours: "",
     delivery_supported: false,
+    wholesale_supported: false,
+    retail_supported: true,
     pharmacy_image: null,
     country_code: "bi",
   });
@@ -799,6 +807,8 @@ export default function Home() {
     address: "",
     password: "",
     pharmacy_image: null,
+    wholesale_supported: false,
+    retail_supported: true,
     country_code: "bi",
   });
   const [showLoginPassword, setShowLoginPassword] = useState(false);
@@ -835,6 +845,7 @@ export default function Home() {
   const [activePrescriptionPreview, setActivePrescriptionPreview] = useState<{ src: string; alt: string } | null>(null);
   const [directorySearchTerm, setDirectorySearchTerm] = useState("");
   const [shareMenu, setShareMenu] = useState<ShareMenuState | null>(null);
+  const [shareBusy, setShareBusy] = useState(false);
   const [isCompactHomeView, setIsCompactHomeView] = useState(() =>
     typeof window !== "undefined" ? window.innerWidth < HOME_MOBILE_BREAKPOINT : false
   );
@@ -1969,6 +1980,8 @@ export default function Home() {
         email: "",
         opening_hours: "",
         delivery_supported: false,
+        wholesale_supported: false,
+        retail_supported: true,
         pharmacy_image: null,
         country_code: "bi",
       });
@@ -2027,6 +2040,8 @@ export default function Home() {
           email: user.profile?.pharmacy_email ?? "",
           opening_hours: user.profile?.pharmacy_opening_hours ?? "",
           delivery_supported: Boolean(user.profile?.pharmacy_delivery_supported),
+          wholesale_supported: Boolean(user.profile?.pharmacy_wholesale_supported),
+          retail_supported: user.profile?.pharmacy_retail_supported !== false,
           pharmacy_image: null,
           country_code: pharmacyPhone.countryCode,
         });
@@ -2592,6 +2607,18 @@ export default function Home() {
     return (participant.name || "P").slice(0, 1).toUpperCase();
   }
 
+  function getPharmacySalesModeLabel(pharmacy: Pick<Pharmacy, "wholesale_supported" | "retail_supported">) {
+    const sellsWholesale = Boolean(pharmacy.wholesale_supported);
+    const sellsRetail = pharmacy.retail_supported !== false;
+    if (sellsWholesale && sellsRetail) {
+      return "Vente en gros et en detail";
+    }
+    if (sellsWholesale) {
+      return "Vente en gros uniquement";
+    }
+    return "Vente au detail";
+  }
+
   function openModal(modal: Exclude<ModalType, null>) {
     if (currentUser && (modal === "login" || modal === "register")) {
       setActiveModal("profile");
@@ -2833,6 +2860,8 @@ export default function Home() {
     const pharmacyEmail = pharmacyRegisterForm.email.trim().toLowerCase();
     const pharmacyAddress = pharmacyRegisterForm.address.trim();
     const pharmacyPassword = pharmacyRegisterForm.password;
+    const pharmacySellsWholesale = pharmacyRegisterForm.wholesale_supported;
+    const pharmacySellsRetail = pharmacyRegisterForm.retail_supported;
     const patientFullPhone = buildPhoneNumber(patientRegisterForm.country_code, patientPhone);
     const pharmacyFullPhone = buildPhoneNumber(pharmacyRegisterForm.country_code, pharmacyPhone);
     const patientPhoneValidationError = validateInternationalPhoneNumber(patientFullPhone);
@@ -2885,6 +2914,12 @@ export default function Home() {
         setAuthFieldErrors({ phone_number: pharmacyPhoneValidationError });
         return;
       }
+
+      if (!pharmacySellsWholesale && !pharmacySellsRetail) {
+        setAuthError("Choisissez au moins un mode de vente: gros ou detail.");
+        setAuthFieldErrors({ retail_supported: "Choisissez au moins un mode de vente: gros ou detail." });
+        return;
+      }
     }
 
     setAuthBusy(true);
@@ -2913,6 +2948,8 @@ export default function Home() {
         address: pharmacyAddress,
         password: pharmacyPassword,
         pharmacy_image: pharmacyRegisterForm.pharmacy_image,
+        wholesale_supported: pharmacySellsWholesale,
+        retail_supported: pharmacySellsRetail,
       });
       setPharmacyRegisterForm({
         pharmacy_name: "",
@@ -2921,6 +2958,8 @@ export default function Home() {
         address: "",
         password: "",
         pharmacy_image: null,
+        wholesale_supported: false,
+        retail_supported: true,
         country_code: pharmacyRegisterForm.country_code,
       });
       setShowPharmacyRegisterPassword(false);
@@ -2970,6 +3009,15 @@ export default function Home() {
     setProfileFieldErrors({});
 
     try {
+      if (
+        currentUser.profile?.role === "pharmacy" &&
+        !pharmacyProfileForm.wholesale_supported &&
+        !pharmacyProfileForm.retail_supported
+      ) {
+        setProfileError("Choisissez au moins un mode de vente: gros ou detail.");
+        setProfileFieldErrors({ retail_supported: "Choisissez au moins un mode de vente: gros ou detail." });
+        return;
+      }
       const updated =
         currentUser.is_staff || currentUser.profile?.role === "admin"
           ? await updateAdminProfile({
@@ -2992,6 +3040,8 @@ export default function Home() {
             email: pharmacyProfileForm.email.trim(),
             opening_hours: pharmacyProfileForm.opening_hours.trim(),
             delivery_supported: pharmacyProfileForm.delivery_supported,
+            wholesale_supported: pharmacyProfileForm.wholesale_supported,
+            retail_supported: pharmacyProfileForm.retail_supported,
             pharmacy_image: pharmacyProfileForm.pharmacy_image,
           });
       persistCurrentUser(updated);
@@ -3018,6 +3068,8 @@ export default function Home() {
         email: updated.profile?.pharmacy_email ?? current.email,
         opening_hours: updated.profile?.pharmacy_opening_hours ?? current.opening_hours,
         delivery_supported: Boolean(updated.profile?.pharmacy_delivery_supported),
+        wholesale_supported: Boolean(updated.profile?.pharmacy_wholesale_supported),
+        retail_supported: updated.profile?.pharmacy_retail_supported !== false,
         pharmacy_image: null,
         country_code: pharmacyPhone.countryCode,
       }));
@@ -3167,6 +3219,7 @@ export default function Home() {
           title: updatedPrescription.medication_name || "Ordonnance",
           text: `Ordonnance ${updatedPrescription.public_reference || `ORD-${String(prescription.id).padStart(6, "0")}`} partagee sur PharmiGo.`,
           url: shareUrl,
+          recipientKey: availableRecipients[0]?.key ?? "",
         });
         setResponseSuccess(feedText.shared);
         return;
@@ -3325,6 +3378,55 @@ export default function Home() {
       }
     } finally {
       setShareMenu(null);
+    }
+  }
+
+  async function handleShareToInbox() {
+    if (!shareMenu || shareMenu.kind !== "prescription") {
+      return;
+    }
+    if (!currentUser) {
+      openModal("login");
+      setAuthError("Connectez-vous pour partager cette ordonnance dans l'inbox PharmiGo.");
+      return;
+    }
+    if (!shareMenu.recipientKey) {
+      setResponseError("Choisissez un destinataire interne avant l'envoi.");
+      return;
+    }
+
+    const recipient = messagingParticipantDirectory.get(shareMenu.recipientKey) ?? null;
+    if (!recipient) {
+      setResponseError("Destinataire introuvable.");
+      return;
+    }
+
+    setShareBusy(true);
+    setResponseError(null);
+    setResponseSuccess(null);
+    try {
+      const result = await sharePrescriptionToInbox(
+        shareMenu.id,
+        recipient.role === "patient"
+          ? { recipient_user: recipient.userId ?? null }
+          : { pharmacy: recipient.pharmacy?.id ?? null }
+      );
+      setPharmacyMessages((current) => [...current, result.message]);
+      setDashboard((current) => mergePrescriptionRecords(current, result.prescription));
+      if (!savedContactKeys.includes(recipient.key)) {
+        persistSavedContacts([...savedContactKeys, recipient.key]);
+      }
+      setSelectedConversationKey(recipient.key);
+      setMessageRecipientKey(recipient.key);
+      setContactPickerKey(recipient.key);
+      setShareMenu(null);
+      setResponseSuccess("Ordonnance envoyee dans l'inbox PharmiGo avec succes.");
+      void fetchMessages().then((items) => setPharmacyMessages(items)).catch(() => undefined);
+    } catch (error) {
+      const parsedError = parseApiError(error, "Impossible de partager cette ordonnance dans l'inbox.");
+      setResponseError(parsedError.message);
+    } finally {
+      setShareBusy(false);
     }
   }
 
@@ -3916,6 +4018,7 @@ export default function Home() {
                           ) : (
                             <span className="pharmacy-showcase-tag">{feedText.pickupOnsite}</span>
                           )}
+                          <span className="pharmacy-showcase-tag subtle">{getPharmacySalesModeLabel(pharmacy)}</span>
                           <span className="pharmacy-showcase-tag subtle">
                             {pharmacy.response_count ?? 0} {feedText.servedCount}
                           </span>
@@ -4511,6 +4614,33 @@ export default function Home() {
                     }
                   />
                 </label>
+                <div className="card-row">
+                  <label className="checkbox-field">
+                    <input
+                      type="checkbox"
+                      checked={pharmacyRegisterForm.wholesale_supported}
+                      onChange={(event) => {
+                        setAuthError(null);
+                        clearAuthFieldError("retail_supported");
+                        setPharmacyRegisterForm((current) => ({ ...current, wholesale_supported: event.target.checked }));
+                      }}
+                    />
+                    <span>La pharmacie vend en gros</span>
+                  </label>
+                  <label className="checkbox-field">
+                    <input
+                      type="checkbox"
+                      checked={pharmacyRegisterForm.retail_supported}
+                      onChange={(event) => {
+                        setAuthError(null);
+                        clearAuthFieldError("retail_supported");
+                        setPharmacyRegisterForm((current) => ({ ...current, retail_supported: event.target.checked }));
+                      }}
+                    />
+                    <span>La pharmacie vend au detail</span>
+                  </label>
+                </div>
+                {authFieldErrors.retail_supported ? <small className="field-error">{authFieldErrors.retail_supported}</small> : null}
                 <label>
                   <span>{copy.authPassword}</span>
                   <div className={authFieldErrors.password ? "password-field password-field-error" : "password-field"}>
@@ -4803,6 +4933,25 @@ export default function Home() {
                   <span>Livraison disponible</span>
                 </label>
               </div>
+              <div className="card-row">
+                <label className="checkbox-field">
+                  <input
+                    type="checkbox"
+                    checked={pharmacyProfileForm.wholesale_supported}
+                    onChange={(event) => setPharmacyProfileForm((current) => ({ ...current, wholesale_supported: event.target.checked }))}
+                  />
+                  <span>Vente en gros</span>
+                </label>
+                <label className="checkbox-field">
+                  <input
+                    type="checkbox"
+                    checked={pharmacyProfileForm.retail_supported}
+                    onChange={(event) => setPharmacyProfileForm((current) => ({ ...current, retail_supported: event.target.checked }))}
+                  />
+                  <span>Vente au detail</span>
+                </label>
+              </div>
+              {profileFieldErrors.retail_supported ? <small className="field-error">{profileFieldErrors.retail_supported}</small> : null}
               <label>
                 <span>Image de la pharmacie</span>
                 <input
@@ -5214,6 +5363,29 @@ export default function Home() {
               <button type="button" className="pharmigo-secondary-btn share-channel-button" onClick={() => void handleShareChannel("copy")}><CopyLinkIcon />{localizedUi.shareCopy}</button>
               <button type="button" className="pharmigo-secondary-btn share-channel-button" onClick={() => void handleShareChannel("platform")}><InternalShareIcon />{localizedUi.shareRepublish}</button>
             </div>
+            {shareMenu.kind === "prescription" && currentUser && availableRecipients.length ? (
+              <div className="pharmacy-chat-add-contact" style={{ marginTop: 16 }}>
+                <select
+                  value={shareMenu.recipientKey ?? ""}
+                  onChange={(event) => setShareMenu((current) => (current ? { ...current, recipientKey: event.target.value } : current))}
+                >
+                  <option value="">Choisissez un destinataire interne</option>
+                  {availableRecipients.map((item) => (
+                    <option key={item.key} value={item.key}>
+                      {item.role === "patient" ? `Patient · ${item.name}` : `Pharmacie · ${item.name}`}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className="pharmigo-primary-btn pharmacy-chat-add-button"
+                  onClick={() => void handleShareToInbox()}
+                  disabled={shareBusy || !(shareMenu.recipientKey ?? "")}
+                >
+                  {shareBusy ? "Envoi..." : "Envoyer dans l'inbox"}
+                </button>
+              </div>
+            ) : null}
         </ModalTransition>
       ) : null}
 

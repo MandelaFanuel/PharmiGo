@@ -291,6 +291,48 @@ class PharmacySubscriptionApiTests(APITestCase):
         self.assertTrue(bool(self.pharmacy.profile_image))
         self.assertIn("/api/pharmacies/", response.data["profile"]["pharmacy_image"])
 
+    def test_pharmacy_profile_patch_can_update_sales_modes(self):
+        response = self.client.patch(
+            "/api/profile/",
+            {
+                "pharmacy_name": self.pharmacy.name,
+                "address": self.pharmacy.address,
+                "city": self.pharmacy.city,
+                "phone_number": self.pharmacy.phone_number,
+                "email": "centrale@example.com",
+                "opening_hours": "08:00 - 20:00",
+                "delivery_supported": "false",
+                "wholesale_supported": "true",
+                "retail_supported": "false",
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.pharmacy.refresh_from_db()
+        self.assertTrue(self.pharmacy.wholesale_supported)
+        self.assertFalse(self.pharmacy.retail_supported)
+
+    def test_pharmacy_profile_patch_requires_at_least_one_sales_mode(self):
+        response = self.client.patch(
+            "/api/profile/",
+            {
+                "pharmacy_name": self.pharmacy.name,
+                "address": self.pharmacy.address,
+                "city": self.pharmacy.city,
+                "phone_number": self.pharmacy.phone_number,
+                "email": "centrale@example.com",
+                "opening_hours": "08:00 - 20:00",
+                "delivery_supported": "false",
+                "wholesale_supported": "false",
+                "retail_supported": "false",
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("retail_supported", response.data)
+
     def test_subscription_payment_submission_notifies_admin(self):
         admin_user = User.objects.create_user(
             username="admin-payment",

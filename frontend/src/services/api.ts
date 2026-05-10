@@ -108,6 +108,8 @@ function normalizePharmacy(value: unknown): Pharmacy {
       : typeof value.delivery_available === "boolean"
         ? value.delivery_available
         : false;
+  const wholesaleSupported = typeof value.wholesale_supported === "boolean" ? value.wholesale_supported : false;
+  const retailSupported = typeof value.retail_supported === "boolean" ? value.retail_supported : true;
 
   return {
     id: typeof value.id === "number" ? value.id : 0,
@@ -119,6 +121,8 @@ function normalizePharmacy(value: unknown): Pharmacy {
     email: typeof value.email === "string" ? value.email : "",
     opening_hours: typeof value.opening_hours === "string" ? value.opening_hours : "",
     delivery_supported: deliverySupported,
+    wholesale_supported: wholesaleSupported,
+    retail_supported: retailSupported,
     delivery_available: deliverySupported,
     latitude: typeof value.latitude === "number" || value.latitude === null ? value.latitude : null,
     longitude: typeof value.longitude === "number" || value.longitude === null ? value.longitude : null,
@@ -543,6 +547,17 @@ export async function postMessage(
   return data;
 }
 
+export async function sharePrescriptionToInbox(
+  prescriptionId: number,
+  payload: { pharmacy?: number | null; recipient_user?: number | null }
+): Promise<{ message: ChatMessage; prescription: PrescriptionRecord }> {
+  const { data } = await api.post<{ message: ChatMessage; prescription: PrescriptionRecord }>(
+    `${API_ENDPOINTS.prescriptions}${prescriptionId}/share-inbox/`,
+    payload
+  );
+  return data;
+}
+
 export async function submitPrescription(payload: PrescriptionPayload): Promise<PrescriptionUploadReceipt> {
   const formData = new FormData();
   const token = getStoredAuthToken();
@@ -647,6 +662,8 @@ export async function register(payload: {
   pharmacy_name?: string;
   address?: string;
   pharmacy_image?: File | null;
+  wholesale_supported?: boolean;
+  retail_supported?: boolean;
   latitude?: number;
   longitude?: number;
   location_city?: string;
@@ -661,6 +678,8 @@ export async function register(payload: {
     formData.append("phone_number", payload.phone_number ?? "");
     formData.append("email", payload.email ?? "");
     formData.append("address", payload.address ?? "");
+    formData.append("wholesale_supported", payload.wholesale_supported ? "true" : "false");
+    formData.append("retail_supported", payload.retail_supported === false ? "false" : "true");
     if (typeof payload.latitude === "number") {
       formData.append("latitude", String(payload.latitude));
     }
@@ -675,6 +694,12 @@ export async function register(payload: {
     }
     formData.append("pharmacy_image", payload.pharmacy_image);
     body = formData;
+  } else if (payload.account_type === "pharmacy") {
+    body = {
+      ...payload,
+      wholesale_supported: Boolean(payload.wholesale_supported),
+      retail_supported: payload.retail_supported !== false,
+    };
   }
 
   return postWithFallback<AuthResponse>(API_ENDPOINTS.authRegister, API_ENDPOINTS.authRegisterFallback, body);
@@ -796,6 +821,8 @@ export async function updatePharmacyProfile(payload: {
   email: string;
   opening_hours: string;
   delivery_supported: boolean;
+  wholesale_supported: boolean;
+  retail_supported: boolean;
   pharmacy_image?: File | null;
 }): Promise<AuthResponse["user"]> {
   const formData = new FormData();
@@ -806,6 +833,8 @@ export async function updatePharmacyProfile(payload: {
   formData.append("email", payload.email);
   formData.append("opening_hours", payload.opening_hours);
   formData.append("delivery_supported", payload.delivery_supported ? "true" : "false");
+  formData.append("wholesale_supported", payload.wholesale_supported ? "true" : "false");
+  formData.append("retail_supported", payload.retail_supported ? "true" : "false");
   if (payload.pharmacy_image) {
     formData.append("pharmacy_image", payload.pharmacy_image);
   }

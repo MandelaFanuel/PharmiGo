@@ -17,6 +17,8 @@ class Pharmacy(models.Model):
     email = models.EmailField(blank=True)
     opening_hours = models.CharField(max_length=120, default="08:00 - 20:00")
     delivery_supported = models.BooleanField(default=False)
+    wholesale_supported = models.BooleanField(default=False)
+    retail_supported = models.BooleanField(default=True)
     latitude = models.FloatField(blank=True, null=True)
     longitude = models.FloatField(blank=True, null=True)
     is_active = models.BooleanField(default=True)

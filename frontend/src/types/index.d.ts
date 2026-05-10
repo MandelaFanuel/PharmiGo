@@ -8,6 +8,8 @@ export interface Pharmacy {
   email: string;
   opening_hours: string;
   delivery_supported: boolean;
+  wholesale_supported?: boolean;
+  retail_supported?: boolean;
   delivery_available?: boolean;
   latitude: number | null;
   longitude: number | null;
@@ -528,6 +530,8 @@ export interface AuthUserProfile {
   pharmacy_email?: string;
   pharmacy_opening_hours?: string;
   pharmacy_delivery_supported?: boolean;
+  pharmacy_wholesale_supported?: boolean;
+  pharmacy_retail_supported?: boolean;
   pharmacy_phone_number?: string;
 }
 

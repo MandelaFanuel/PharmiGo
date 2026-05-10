@@ -72,6 +72,27 @@ class AuthenticationFlowTests(APITestCase):
         self.assertEqual(profile.latitude, -3.3822)
         self.assertEqual(profile.longitude, 29.3644)
 
+    def test_pharmacy_register_persists_sales_modes(self):
+        response = self.client.post(
+            "/api/auth/register/",
+            {
+                "account_type": "pharmacy",
+                "pharmacy_name": "Pharmacie Gros",
+                "phone_number": "+25761000088",
+                "email": "gros@example.com",
+                "password": "secret123",
+                "address": "Rohero II",
+                "wholesale_supported": True,
+                "retail_supported": False,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        user = User.objects.get(email="gros@example.com")
+        self.assertTrue(user.profile.pharmacy.wholesale_supported)
+        self.assertFalse(user.profile.pharmacy.retail_supported)
+
     def test_email_verification_with_valid_token_marks_email_verified(self):
         self.client.post(
             "/api/auth/register/",

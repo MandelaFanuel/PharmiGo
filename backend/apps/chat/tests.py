@@ -7,6 +7,7 @@ from rest_framework.test import APITestCase
 from apps.chat.models import ChatMessage
 from apps.notifications.models import Notification
 from apps.pharmacies.models import Pharmacy, PharmacySubscription
+from apps.prescriptions.models import MedicationExtraction, Prescription
 from apps.users.models import UserProfile
 
 User = get_user_model()
@@ -124,3 +125,68 @@ class ChatMessageApiTests(APITestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn("recipient_user", response.data)
+
+    def test_patient_can_share_confirmed_prescription_to_pharmacy_inbox(self):
+        prescription = Prescription.objects.create(
+            patient_name="Patient Chat",
+            patient_email="patient-chat@example.com",
+            patient_user=self.patient_user,
+            status="confirmed",
+        )
+        MedicationExtraction.objects.create(
+            prescription=prescription,
+            name="Paracetamol",
+            dosage="500mg",
+            confirmed=True,
+        )
+
+        self.client.force_authenticate(user=self.patient_user)
+        response = self.client.post(
+            f"/api/prescriptions/{prescription.id}/share-inbox/",
+            {"pharmacy": self.pharmacy.id},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["message"]["pharmacy"], self.pharmacy.id)
+        self.assertEqual(response.data["message"]["sender_user"], self.patient_user.id)
+        self.assertTrue(ChatMessage.objects.filter(pharmacy=self.pharmacy, sender_user=self.patient_user).exists())
+
+    def test_pharmacy_can_share_confirmed_prescription_to_patient_inbox(self):
+        prescription = Prescription.objects.create(
+            patient_name="Patient Chat",
+            patient_email="patient-chat@example.com",
+            patient_user=self.patient_user,
+            pharmacy=self.pharmacy,
+            status="confirmed",
+        )
+        MedicationExtraction.objects.create(
+            prescription=prescription,
+            name="Amoxicilline",
+            dosage="1g",
+            confirmed=True,
+        )
+        ChatMessage.objects.create(
+            pharmacy=self.pharmacy,
+            sender_user=self.patient_user,
+            sender_name=self.patient_user.username,
+            sender_role="patient",
+            message="Bonjour",
+        )
+
+        self.client.force_authenticate(user=self.pharmacy_user)
+        response = self.client.post(
+            f"/api/prescriptions/{prescription.id}/share-inbox/",
+            {"recipient_user": self.patient_user.id},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["message"]["recipient_user"], self.patient_user.id)
+        self.assertEqual(response.data["message"]["sender_pharmacy"], self.pharmacy.id)
+        self.assertTrue(
+            Notification.objects.filter(
+                channel="messages:patient",
+                recipient_user=self.patient_user,
+            ).exists()
+        )

@@ -114,6 +114,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
     pharmacy_email = serializers.EmailField(source="pharmacy.email", read_only=True)
     pharmacy_opening_hours = serializers.CharField(source="pharmacy.opening_hours", read_only=True)
     pharmacy_delivery_supported = serializers.BooleanField(source="pharmacy.delivery_supported", read_only=True)
+    pharmacy_wholesale_supported = serializers.BooleanField(source="pharmacy.wholesale_supported", read_only=True)
+    pharmacy_retail_supported = serializers.BooleanField(source="pharmacy.retail_supported", read_only=True)
     pharmacy_phone_number = serializers.CharField(source="pharmacy.phone_number", read_only=True)
     google_connected = serializers.SerializerMethodField()
 
@@ -171,6 +173,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "pharmacy_email",
             "pharmacy_opening_hours",
             "pharmacy_delivery_supported",
+            "pharmacy_wholesale_supported",
+            "pharmacy_retail_supported",
             "pharmacy_phone_number",
             "email_verified",
             "google_connected",
@@ -196,6 +200,8 @@ class RegisterSerializer(serializers.Serializer):
     pharmacy_name = serializers.CharField(required=False, allow_blank=True, max_length=255)
     address = serializers.CharField(required=False, allow_blank=True, max_length=255)
     pharmacy_image = serializers.ImageField(required=False, allow_null=True)
+    wholesale_supported = serializers.BooleanField(required=False, default=False)
+    retail_supported = serializers.BooleanField(required=False, default=True)
     latitude = serializers.FloatField(required=False, allow_null=True)
     longitude = serializers.FloatField(required=False, allow_null=True)
     location_city = serializers.CharField(required=False, allow_blank=True, max_length=120)
@@ -234,6 +240,10 @@ class RegisterSerializer(serializers.Serializer):
                 raise serializers.ValidationError({"phone_number": "Le numero de telephone est obligatoire."})
             if phone_number_already_used(phone_number):
                 raise serializers.ValidationError({"phone_number": "Ce numero de telephone est deja utilise."})
+            if not attrs.get("wholesale_supported", False) and not attrs.get("retail_supported", True):
+                raise serializers.ValidationError(
+                    {"retail_supported": "Choisissez au moins un mode de vente: gros ou detail."}
+                )
 
         return attrs
 
@@ -282,6 +292,8 @@ class RegisterSerializer(serializers.Serializer):
             email=validated_data["email"],
             opening_hours="08:00 - 20:00",
             delivery_supported=False,
+            wholesale_supported=validated_data.get("wholesale_supported", False),
+            retail_supported=validated_data.get("retail_supported", True),
             latitude=latitude,
             longitude=longitude,
         )
