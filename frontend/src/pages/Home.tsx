@@ -1920,11 +1920,24 @@ export default function Home() {
 
     const params = new URLSearchParams(location.search);
     const requestedModal = params.get("modal");
+    const canOpenMessages = currentUser?.profile?.role === "pharmacy" || currentUser?.profile?.role === "patient";
 
     if (requestedModal === "dashboard" && currentUser && activeModal !== "dashboard") {
       setActiveModal("dashboard");
+      return;
     }
-  }, [activeModal, authBootstrapped, currentUser, location.search]);
+
+    if (requestedModal === "messages") {
+      if (!currentUser) {
+        navigate("/login", { replace: true, state: { from: "/?modal=messages" } });
+        return;
+      }
+
+      if (canOpenMessages && activeModal !== "messages") {
+        setActiveModal("messages");
+      }
+    }
+  }, [activeModal, authBootstrapped, currentUser, location.search, navigate]);
 
   useEffect(() => {
     if (!authBootstrapped) {

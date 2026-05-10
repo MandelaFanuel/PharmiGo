@@ -84,7 +84,10 @@ export function getChatWebSocketUrl(roomName: string) {
   if (explicitBase) {
     const normalizedBase = explicitBase.replace(/\/$/, "");
     if (/^wss?:\/\//.test(normalizedBase)) {
-      return `${normalizedBase}/chat/${roomName}/`;
+      if (/\/ws$/i.test(normalizedBase)) {
+        return `${normalizedBase}/chat/${roomName}/`;
+      }
+      return `${normalizedBase}/ws/chat/${roomName}/`;
     }
     if (normalizedBase === "/ws" || normalizedBase === "ws") {
       return `/ws/chat/${roomName}/`;

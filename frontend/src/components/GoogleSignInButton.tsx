@@ -27,6 +27,8 @@ declare global {
 }
 
 const GOOGLE_SCRIPT_SRC = "https://accounts.google.com/gsi/client";
+let googleCredentialHandler: ((credential: string) => void) | null = null;
+let initializedGoogleClientId: string | null = null;
 
 function loadGoogleScript() {
   return new Promise<void>((resolve, reject) => {
@@ -43,6 +45,24 @@ function loadGoogleScript() {
     script.onerror = () => reject(new Error("Impossible de charger Google Sign-In."));
     document.head.appendChild(script);
   });
+}
+
+function initializeGoogleIdentityClient(clientId: string) {
+  if (!window.google?.accounts.id) {
+    return;
+  }
+
+  if (initializedGoogleClientId === clientId) {
+    return;
+  }
+
+  window.google.accounts.id.initialize({
+    client_id: clientId,
+    callback: ({ credential }) => {
+      googleCredentialHandler?.(credential);
+    },
+  });
+  initializedGoogleClientId = clientId;
 }
 
 export default function GoogleSignInButton({
@@ -95,6 +115,7 @@ export default function GoogleSignInButton({
     }
 
     let cancelled = false;
+    googleCredentialHandler = onCredential;
 
     loadGoogleScript()
       .then(() => {
@@ -102,10 +123,7 @@ export default function GoogleSignInButton({
           return;
         }
         buttonRef.current.innerHTML = "";
-        window.google.accounts.id.initialize({
-          client_id: clientId,
-          callback: ({ credential }) => onCredential(credential),
-        });
+        initializeGoogleIdentityClient(clientId);
         window.google.accounts.id.renderButton(buttonRef.current, {
           type: "standard",
           theme: "outline",
