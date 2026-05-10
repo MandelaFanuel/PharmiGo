@@ -2159,6 +2159,12 @@ export default function Home() {
 
     return filteredPublishedPrescriptions.filter((prescription) => prescriptionHasConfirmedMedications(prescription));
   }, [currentUser?.profile?.role, filteredPublishedPrescriptions]);
+  const patientHomePrescriptions = useMemo(() => {
+    if (currentUser?.profile?.role !== "patient") {
+      return [];
+    }
+    return patientConfirmedPrescriptions.length ? patientConfirmedPrescriptions : publicVisiblePrescriptions;
+  }, [currentUser?.profile?.role, patientConfirmedPrescriptions, publicVisiblePrescriptions]);
   const homePharmacyPageSize = isCompactHomeView ? 20 : 30;
   const homePrescriptionPageSize = isCompactHomeView ? 20 : 30;
   const totalPharmacyPages = Math.max(1, Math.ceil(filteredPharmacies.length / homePharmacyPageSize));
@@ -2167,7 +2173,7 @@ export default function Home() {
     () => filteredPharmacies.slice((safePharmacyPage - 1) * homePharmacyPageSize, safePharmacyPage * homePharmacyPageSize),
     [filteredPharmacies, homePharmacyPageSize, safePharmacyPage]
   );
-  const homeVisiblePrescriptions = currentUser?.profile?.role === "patient" ? patientConfirmedPrescriptions : publicVisiblePrescriptions;
+  const homeVisiblePrescriptions = currentUser?.profile?.role === "patient" ? patientHomePrescriptions : publicVisiblePrescriptions;
   const totalHomePrescriptionPages = Math.max(1, Math.ceil(homeVisiblePrescriptions.length / homePrescriptionPageSize));
   const safeHomePrescriptionPage = Math.min(homePrescriptionPage, totalHomePrescriptionPages);
   const pagedHomePrescriptions = useMemo(
@@ -4241,17 +4247,20 @@ export default function Home() {
           </div>
         </div>
         {currentUser?.profile?.role === "patient" ? (
-          patientConfirmedPrescriptions.length ? (
+          homeVisiblePrescriptions.length ? (
             <div className="prescription-live-list prescription-grid-two-up">
               {pagedHomePrescriptions.map((prescription) => renderInteractivePrescriptionSheet(prescription))}
             </div>
           ) : (
             <article className="landing-confidentiality-card">
-              <span className="landing-section-kicker">Mes ordonnances confirmees</span>
+              <span className="landing-section-kicker">
+                {patientConfirmedPrescriptions.length ? "Mes ordonnances confirmees" : "Ordonnances confirmees disponibles"}
+              </span>
               <h3>Aucune fiche ordonnance n'est encore prete.</h3>
               <p>
-                Une fois vos medicaments confirmes, ils apparaitront ici sous forme de fiche numerique
-                avec votre reference publique, pour vous et la pharmacie choisie.
+                {patientConfirmedPrescriptions.length
+                  ? "Une fois vos medicaments confirmes, ils apparaitront ici sous forme de fiche numerique avec votre reference publique, pour vous et la pharmacie choisie."
+                  : "Dès qu'une ordonnance publique avec medicaments confirmes est disponible, elle apparaitra ici. Vos propres ordonnances confirmees restent aussi prioritaires."}
               </p>
             </article>
           )
