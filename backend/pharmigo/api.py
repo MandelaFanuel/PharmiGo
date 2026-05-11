@@ -29,6 +29,7 @@ from apps.pharmacies.models import PharmacySubscription, SubscriptionPayment, Su
 from apps.pharmacies.services.exchange_rate_service import ExchangeRateService
 from apps.users.serializers import ensure_default_admin_user
 from apps.pharmigo_chatbot.utils import normalize_text
+from apps.common.profile_images import apply_profile_image_backup
 
 User = get_user_model()
 
@@ -1436,8 +1437,10 @@ def profile(request):
         user.save(update_fields=["username", "email"])
 
         if profile is not None and request.FILES.get("profile_image"):
-            profile.profile_image = request.FILES["profile_image"]
-            profile.save(update_fields=["profile_image"])
+            uploaded_profile_image = request.FILES["profile_image"]
+            profile.profile_image = uploaded_profile_image
+            apply_profile_image_backup(profile, uploaded_profile_image)
+            profile.save(update_fields=["profile_image", "profile_image_blob", "profile_image_content_type", "profile_image_original_name"])
 
         return Response(UserSerializer(user).data)
 
@@ -1465,8 +1468,10 @@ def profile(request):
         user.save(update_fields=["username", "email"])
         profile.phone_number = phone_number
         if request.FILES.get("profile_image"):
-            profile.profile_image = request.FILES["profile_image"]
-            profile.save(update_fields=["phone_number", "profile_image"])
+            uploaded_profile_image = request.FILES["profile_image"]
+            profile.profile_image = uploaded_profile_image
+            apply_profile_image_backup(profile, uploaded_profile_image)
+            profile.save(update_fields=["phone_number", "profile_image", "profile_image_blob", "profile_image_content_type", "profile_image_original_name"])
         else:
             profile.save(update_fields=["phone_number"])
         return Response(UserSerializer(user).data)
@@ -1499,7 +1504,9 @@ def profile(request):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         if request.FILES.get("pharmacy_image"):
-            pharmacy.profile_image = request.FILES["pharmacy_image"]
+            uploaded_pharmacy_image = request.FILES["pharmacy_image"]
+            pharmacy.profile_image = uploaded_pharmacy_image
+            apply_profile_image_backup(pharmacy, uploaded_pharmacy_image)
         pharmacy.save()
         if email:
             user.email = email

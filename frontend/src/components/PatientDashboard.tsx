@@ -100,7 +100,13 @@ function formatPresenceLabel(isOnline?: boolean, lastSeen?: string | null, langu
   return `Vu le ${label}`;
 }
 
-export default function PatientDashboard() {
+export default function PatientDashboard({
+  onRequestNewPrescription,
+  onRequestProfileOpen,
+}: {
+  onRequestNewPrescription?: () => void;
+  onRequestProfileOpen?: () => void;
+}) {
   const { language } = usePreferences();
   const [prescriptions, setPrescriptions] = useState<PrescriptionRecord[]>([]);
   const [profileName, setProfileName] = useState("Patient");
@@ -118,7 +124,7 @@ export default function PatientDashboard() {
   });
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [documentViewer, setDocumentViewer] = useState<{ src: string; title: string } | null>(null);
+  const [documentViewer, setDocumentViewer] = useState<{ src: string; title: string; contentType?: string | null; fileName?: string | null } | null>(null);
   const refreshInFlightRef = useRef(false);
 
   const labels = {
@@ -300,15 +306,33 @@ export default function PatientDashboard() {
     }
 
     try {
-      const sourceUrl = await fetchProtectedDocument(documentUrl);
+      const protectedDocument = await fetchProtectedDocument(documentUrl);
       setDocumentViewer({
-        src: sourceUrl,
+        src: protectedDocument.src,
         title: `${prescription.medication_name || "Ordonnance medicale"} • ${getPrescriptionReference(prescription)}`,
+        contentType: protectedDocument.contentType,
+        fileName: protectedDocument.fileName,
       });
     } catch (documentError) {
       void documentError;
       logClientError("L'ouverture du document ordonnance patient a echoue.");
     }
+  }
+
+  function triggerNewPrescriptionFlow() {
+    if (onRequestNewPrescription) {
+      onRequestNewPrescription();
+      return;
+    }
+    window.dispatchEvent(new CustomEvent("open-upload-modal"));
+  }
+
+  function triggerProfileFlow() {
+    if (onRequestProfileOpen) {
+      onRequestProfileOpen();
+      return;
+    }
+    window.dispatchEvent(new CustomEvent("open-profile-modal"));
   }
 
   function buildKpis(items: PrescriptionRecord[], dashboard: DashboardData): KPIShape {
@@ -397,7 +421,7 @@ export default function PatientDashboard() {
     {
       title: language === "en" ? "Actions" : "Actions",
       items: [
-        { id: "patient-new", label: labels.newPrescription, active: activeSection === "new-prescription", onClick: () => setActiveSection("new-prescription") },
+        { id: "patient-new", label: labels.newPrescription, active: false, onClick: triggerNewPrescriptionFlow },
         { id: "patient-config", label: labels.configuration, active: activeSection === "configuration", onClick: () => setActiveSection("configuration") },
       ],
     },
@@ -510,7 +534,7 @@ export default function PatientDashboard() {
           className="dashboard-panel-span-3"
         >
           <div className="dashboard-action-stack">
-            <button className="primary-button" onClick={() => window.dispatchEvent(new CustomEvent("open-upload-modal"))}>
+            <button type="button" className="primary-button" onClick={triggerNewPrescriptionFlow}>
               {labels.newPrescription}
             </button>
           </div>
@@ -540,7 +564,7 @@ export default function PatientDashboard() {
               <span>Ordonnances suivies</span>
               <strong>{kpis.total_prescriptions}</strong>
             </div>
-            <button type="button" className="primary-button" onClick={() => window.dispatchEvent(new CustomEvent("open-profile-modal"))}>
+            <button type="button" className="primary-button" onClick={triggerProfileFlow}>
               Mon profil
             </button>
           </div>
@@ -551,6 +575,8 @@ export default function PatientDashboard() {
         <InAppDocumentViewer
           title={documentViewer.title}
           src={documentViewer.src}
+          contentType={documentViewer.contentType}
+          fileName={documentViewer.fileName}
           onClose={() => setDocumentViewer(null)}
         />
       ) : null}

@@ -11,6 +11,9 @@ from .payment_config import get_default_payment_methods
 class Pharmacy(models.Model):
     name = models.CharField(max_length=255)
     profile_image = models.ImageField(upload_to="pharmacies/", storage=public_media_storage, blank=True, null=True)
+    profile_image_blob = models.BinaryField(blank=True, null=True, editable=False)
+    profile_image_content_type = models.CharField(max_length=120, blank=True, default="")
+    profile_image_original_name = models.CharField(max_length=255, blank=True, default="")
     city = models.CharField(max_length=120)
     address = models.CharField(max_length=255)
     phone_number = models.CharField(max_length=30)

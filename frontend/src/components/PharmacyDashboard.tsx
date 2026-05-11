@@ -215,7 +215,7 @@ export default function PharmacyDashboard() {
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [stockActionBusyId, setStockActionBusyId] = useState<number | null>(null);
-  const [documentViewer, setDocumentViewer] = useState<{ src: string; title: string } | null>(null);
+  const [documentViewer, setDocumentViewer] = useState<{ src: string; title: string; contentType?: string | null; fileName?: string | null } | null>(null);
   const [showActivationForm, setShowActivationForm] = useState(false);
   const [activationBusy, setActivationBusy] = useState(false);
   const [activationError, setActivationError] = useState<string | null>(null);
@@ -496,10 +496,12 @@ export default function PharmacyDashboard() {
     }
 
     try {
-      const sourceUrl = await fetchProtectedDocument(documentUrl);
+      const protectedDocument = await fetchProtectedDocument(documentUrl);
       setDocumentViewer({
-        src: sourceUrl,
+        src: protectedDocument.src,
         title: `${prescription.medication_name || "Ordonnance medicale"} • ${getPrescriptionReference(prescription)}`,
+        contentType: protectedDocument.contentType,
+        fileName: protectedDocument.fileName,
       });
     } catch (documentError) {
       void documentError;
@@ -1268,6 +1270,8 @@ export default function PharmacyDashboard() {
         <InAppDocumentViewer
           title={documentViewer.title}
           src={documentViewer.src}
+          contentType={documentViewer.contentType}
+          fileName={documentViewer.fileName}
           onClose={() => setDocumentViewer(null)}
         />
       ) : null}

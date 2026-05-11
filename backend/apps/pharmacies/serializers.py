@@ -65,7 +65,7 @@ class PharmacySerializer(serializers.ModelSerializer):
         return True
 
     def get_profile_image(self, obj):
-        if not obj.profile_image:
+        if not obj.profile_image and not obj.profile_image_blob:
             return None
 
         try:

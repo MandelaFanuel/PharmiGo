@@ -12,6 +12,7 @@ from rest_framework import serializers
 from apps.pharmacies.models import Pharmacy, PharmacySubscription, SubscriptionSystemSettings
 from apps.users.models import UserProfile
 from apps.users.phone_numbers import normalize_phone_number
+from apps.common.profile_images import apply_profile_image_backup
 from apps.users.services import build_unique_username, verify_google_credential
 
 User = get_user_model()
@@ -132,7 +133,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
         return bool(obj.google_sub)
 
     def get_profile_image(self, obj):
-        if not obj.profile_image:
+        if not obj.profile_image and not obj.profile_image_blob:
             return None
 
         try:
@@ -142,7 +143,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
     def get_pharmacy_image(self, obj):
         pharmacy = getattr(obj, "pharmacy", None)
-        if pharmacy is None or not getattr(pharmacy, "profile_image", None):
+        if pharmacy is None or (not getattr(pharmacy, "profile_image", None) and not getattr(pharmacy, "profile_image_blob", None)):
             return None
 
         return reverse("pharmacy-profile-image", kwargs={"pk": pharmacy.pk})
@@ -297,6 +298,9 @@ class RegisterSerializer(serializers.Serializer):
             latitude=latitude,
             longitude=longitude,
         )
+        if validated_data.get("pharmacy_image"):
+            apply_profile_image_backup(pharmacy, validated_data["pharmacy_image"])
+            pharmacy.save(update_fields=["profile_image_blob", "profile_image_content_type", "profile_image_original_name"])
         user = User.objects.create_user(username=unique_username, email=validated_data["email"], password=password)
         UserProfile.objects.create(
             user=user,

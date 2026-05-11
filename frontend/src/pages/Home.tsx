@@ -5235,7 +5235,16 @@ export default function Home() {
           className="landing-modal-card wide-modal"
         >
           <div className="dashboard-container">
-            {currentUser.is_staff ? <AdminDashboard /> : currentUser.profile?.role === "patient" ? <PatientDashboard /> : <PharmacyDashboard />}
+            {currentUser.is_staff ? (
+              <AdminDashboard />
+            ) : currentUser.profile?.role === "patient" ? (
+              <PatientDashboard
+                onRequestNewPrescription={handleOpenUpload}
+                onRequestProfileOpen={() => openModal("profile")}
+              />
+            ) : (
+              <PharmacyDashboard />
+            )}
           </div>
         </ModalShell>
       ) : null}

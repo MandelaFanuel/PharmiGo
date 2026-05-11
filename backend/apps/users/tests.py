@@ -272,6 +272,9 @@ class AuthenticationFlowTests(APITestCase):
         self.assertEqual(response.status_code, 200)
         user.refresh_from_db()
         self.assertTrue(bool(user.profile.profile_image))
+        self.assertEqual(user.profile.profile_image_blob, b"fake-patient-image")
+        self.assertEqual(user.profile.profile_image_content_type, "image/png")
+        self.assertEqual(user.profile.profile_image_original_name, "avatar.png")
         self.assertIn("/api/users/", response.data["profile"]["profile_image"])
 
     def test_admin_profile_patch_can_store_profile_image(self):
@@ -299,6 +302,9 @@ class AuthenticationFlowTests(APITestCase):
         self.assertEqual(response.status_code, 200)
         admin.refresh_from_db()
         self.assertTrue(bool(admin.profile.profile_image))
+        self.assertEqual(admin.profile.profile_image_blob, b"fake-admin-image")
+        self.assertEqual(admin.profile.profile_image_content_type, "image/png")
+        self.assertEqual(admin.profile.profile_image_original_name, "admin.png")
         self.assertIn("/api/users/", response.data["profile"]["profile_image"])
 
     def test_pharmacy_register_requires_email_and_creates_trial_subscription(self):

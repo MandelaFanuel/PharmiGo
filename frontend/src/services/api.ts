@@ -750,13 +750,27 @@ export async function fetchProfile(): Promise<AuthResponse["user"]> {
   return data;
 }
 
-export async function fetchProtectedDocument(documentUrl: string): Promise<string> {
+export async function fetchProtectedDocument(documentUrl: string): Promise<{
+  src: string;
+  contentType: string;
+  fileName: string | null;
+}> {
   const { data, headers } = await api.get<Blob>(documentUrl, {
     responseType: "blob",
   });
   const contentType = typeof headers["content-type"] === "string" ? headers["content-type"] : undefined;
   const blob = data instanceof Blob ? data : new Blob([data], { type: contentType });
-  return URL.createObjectURL(blob);
+  const contentDisposition = typeof headers["content-disposition"] === "string" ? headers["content-disposition"] : "";
+  const utf8FileNameMatch = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
+  const asciiFileNameMatch = contentDisposition.match(/filename=\"?([^\";]+)\"?/i);
+  const rawFileName = utf8FileNameMatch?.[1] ?? asciiFileNameMatch?.[1] ?? null;
+  const fileName = rawFileName ? decodeURIComponent(rawFileName) : null;
+
+  return {
+    src: URL.createObjectURL(blob),
+    contentType: blob.type || contentType || "application/octet-stream",
+    fileName,
+  };
 }
 
 export async function updatePatientProfile(payload: {

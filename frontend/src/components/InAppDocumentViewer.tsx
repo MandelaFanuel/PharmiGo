@@ -5,18 +5,26 @@ import ModalTransition from "./ModalTransition";
 type InAppDocumentViewerProps = {
   title: string;
   src: string | null;
+  contentType?: string | null;
+  fileName?: string | null;
   onClose: () => void;
 };
 
-function isImageDocument(url: string) {
-  return /\.(png|jpe?g|gif|webp|bmp|svg)(\?.*)?$/i.test(url);
+function isImageDocument(url: string, contentType?: string | null, fileName?: string | null) {
+  if (contentType?.startsWith("image/")) {
+    return true;
+  }
+  return /\.(png|jpe?g|gif|webp|bmp|svg)(\?.*)?$/i.test(fileName || url);
 }
 
-function isPdfDocument(url: string) {
-  return /\.pdf(\?.*)?$/i.test(url);
+function isPdfDocument(url: string, contentType?: string | null, fileName?: string | null) {
+  if (contentType?.includes("pdf")) {
+    return true;
+  }
+  return /\.pdf(\?.*)?$/i.test(fileName || url);
 }
 
-export default function InAppDocumentViewer({ title, src, onClose }: InAppDocumentViewerProps) {
+export default function InAppDocumentViewer({ title, src, contentType, fileName, onClose }: InAppDocumentViewerProps) {
   useEffect(() => {
     return () => {
       if (src?.startsWith("blob:")) {
@@ -29,15 +37,16 @@ export default function InAppDocumentViewer({ title, src, onClose }: InAppDocume
     return null;
   }
 
-  const imageDocument = isImageDocument(src);
-  const pdfDocument = isPdfDocument(src);
+  const imageDocument = isImageDocument(src, contentType, fileName);
+  const pdfDocument = isPdfDocument(src, contentType, fileName);
+  const viewerTitle = fileName || title;
 
   return (
     <ModalTransition overlayClassName="document-viewer-overlay" panelClassName="document-viewer-dialog" ariaLabel={title}>
         <div className="document-viewer-head">
           <div>
             <span className="document-viewer-kicker">Ordonnance originale</span>
-            <strong>{title}</strong>
+            <strong>{viewerTitle}</strong>
           </div>
           <button type="button" className="secondary-button" onClick={onClose}>
             Fermer
@@ -48,7 +57,9 @@ export default function InAppDocumentViewer({ title, src, onClose }: InAppDocume
           {imageDocument ? (
             <img src={src} alt={title} className="document-viewer-image" />
           ) : pdfDocument ? (
-            <iframe src={src} title={title} className="document-viewer-frame" />
+            <object data={src} type={contentType || "application/pdf"} className="document-viewer-frame">
+              <iframe src={src} title={title} className="document-viewer-frame" />
+            </object>
           ) : (
             <iframe src={src} title={title} className="document-viewer-frame" />
           )}

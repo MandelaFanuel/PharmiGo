@@ -289,7 +289,23 @@ class PharmacySubscriptionApiTests(APITestCase):
         self.assertEqual(response.status_code, 200)
         self.pharmacy.refresh_from_db()
         self.assertTrue(bool(self.pharmacy.profile_image))
+        self.assertEqual(self.pharmacy.profile_image_blob, b"fake-pharmacy-image")
+        self.assertEqual(self.pharmacy.profile_image_content_type, "image/png")
+        self.assertEqual(self.pharmacy.profile_image_original_name, "pharmacy.png")
         self.assertIn("/api/pharmacies/", response.data["profile"]["pharmacy_image"])
+
+    def test_pharmacy_profile_image_view_can_fallback_to_database_blob(self):
+        self.pharmacy.profile_image = "pharmacies/missing-karibu.png"
+        self.pharmacy.profile_image_blob = b"fallback-image"
+        self.pharmacy.profile_image_content_type = "image/png"
+        self.pharmacy.profile_image_original_name = "karibu.png"
+        self.pharmacy.save(update_fields=["profile_image", "profile_image_blob", "profile_image_content_type", "profile_image_original_name"])
+
+        response = self.client.get(f"/api/pharmacies/{self.pharmacy.pk}/profile-image/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "image/png")
+        self.assertEqual(response.content, b"fallback-image")
 
     def test_pharmacy_profile_patch_can_update_sales_modes(self):
         response = self.client.patch(

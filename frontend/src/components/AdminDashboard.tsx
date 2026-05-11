@@ -226,6 +226,8 @@ type PaymentProofPreview = {
 type DocumentViewerState = {
   src: string;
   title: string;
+  contentType?: string | null;
+  fileName?: string | null;
 };
 
 export default function AdminDashboard() {
@@ -629,10 +631,12 @@ export default function AdminDashboard() {
     try {
       setError(null);
       setFeedback(null);
-      const sourceUrl = await fetchProtectedDocument(documentUrl);
+      const protectedDocument = await fetchProtectedDocument(documentUrl);
       setDocumentViewer({
-        src: sourceUrl,
+        src: protectedDocument.src,
         title: `${prescription.medication_name || "Ordonnance medicale"} • ${getPrescriptionReference(prescription)}`,
+        contentType: protectedDocument.contentType,
+        fileName: protectedDocument.fileName,
       });
     } catch (documentError) {
       void documentError;
@@ -1720,6 +1724,8 @@ export default function AdminDashboard() {
         <InAppDocumentViewer
           title={documentViewer.title}
           src={documentViewer.src}
+          contentType={documentViewer.contentType}
+          fileName={documentViewer.fileName}
           onClose={() => setDocumentViewer(null)}
         />
       ) : null}

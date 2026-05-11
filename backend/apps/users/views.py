@@ -7,7 +7,7 @@ from django.contrib.auth.tokens import default_token_generator
 from django.utils.encoding import force_str
 from django.utils.http import urlsafe_base64_decode
 from django.conf import settings
-from django.http import FileResponse, Http404
+from django.http import FileResponse, Http404, HttpResponse
 from rest_framework import generics, status
 from rest_framework import permissions
 from rest_framework.authtoken.models import Token
@@ -146,18 +146,26 @@ class UserProfileImageView(APIView):
             raise Http404("Utilisateur introuvable.")
 
         image_field = user.profile.profile_image
-        if not image_field or not image_field.name:
-            raise Http404("Image indisponible.")
+        if image_field and image_field.name:
+            storage = image_field.storage
+            if storage.exists(image_field.name):
+                content_type, _ = mimetypes.guess_type(image_field.name)
+                image_file = storage.open(image_field.name, "rb")
+                response = FileResponse(image_file, content_type=content_type or "application/octet-stream")
+                response["Cache-Control"] = "public, max-age=3600"
+                return response
 
-        storage = image_field.storage
-        if not storage.exists(image_field.name):
-            raise Http404("Fichier image introuvable.")
+        if user.profile.profile_image_blob:
+            response = HttpResponse(
+                user.profile.profile_image_blob,
+                content_type=user.profile.profile_image_content_type or "application/octet-stream",
+            )
+            response["Cache-Control"] = "public, max-age=3600"
+            if user.profile.profile_image_original_name:
+                response["Content-Disposition"] = f'inline; filename="{user.profile.profile_image_original_name}"'
+            return response
 
-        content_type, _ = mimetypes.guess_type(image_field.name)
-        image_file = storage.open(image_field.name, "rb")
-        response = FileResponse(image_file, content_type=content_type or "application/octet-stream")
-        response["Cache-Control"] = "public, max-age=3600"
-        return response
+        raise Http404("Fichier image introuvable.")
 
 
 class PasswordResetRequestView(APIView):

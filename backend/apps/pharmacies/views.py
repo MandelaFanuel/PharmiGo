@@ -1,7 +1,7 @@
 import mimetypes
 
 from django.contrib.auth import get_user_model
-from django.http import FileResponse, Http404
+from django.http import FileResponse, Http404, HttpResponse
 from rest_framework import generics, permissions, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -57,18 +57,26 @@ class PharmacyProfileImageView(APIView):
             raise Http404("Image indisponible.")
 
         image_field = pharmacy.profile_image
-        if not image_field or not image_field.name:
-            raise Http404("Image indisponible.")
+        if image_field and image_field.name:
+            storage = image_field.storage
+            if storage.exists(image_field.name):
+                content_type, _ = mimetypes.guess_type(image_field.name)
+                image_file = storage.open(image_field.name, "rb")
+                response = FileResponse(image_file, content_type=content_type or "application/octet-stream")
+                response["Cache-Control"] = "public, max-age=3600"
+                return response
 
-        storage = image_field.storage
-        if not storage.exists(image_field.name):
-            raise Http404("Fichier image introuvable.")
+        if pharmacy.profile_image_blob:
+            response = HttpResponse(
+                pharmacy.profile_image_blob,
+                content_type=pharmacy.profile_image_content_type or "application/octet-stream",
+            )
+            response["Cache-Control"] = "public, max-age=3600"
+            if pharmacy.profile_image_original_name:
+                response["Content-Disposition"] = f'inline; filename="{pharmacy.profile_image_original_name}"'
+            return response
 
-        content_type, _ = mimetypes.guess_type(image_field.name)
-        image_file = storage.open(image_field.name, "rb")
-        response = FileResponse(image_file, content_type=content_type or "application/octet-stream")
-        response["Cache-Control"] = "public, max-age=3600"
-        return response
+        raise Http404("Fichier image introuvable.")
 
 # Contact management
 class PharmacyContactListView(generics.ListCreateAPIView):
