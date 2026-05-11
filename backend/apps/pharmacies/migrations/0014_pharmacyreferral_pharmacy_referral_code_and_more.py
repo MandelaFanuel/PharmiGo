@@ -22,6 +22,15 @@ def populate_referral_codes(apps, schema_editor):
         pharmacy.save(update_fields=["referral_code"])
 
 
+def cleanup_partial_referral_indexes(apps, schema_editor):
+    if schema_editor.connection.vendor != "postgresql":
+        return
+
+    with schema_editor.connection.cursor() as cursor:
+        cursor.execute("DROP INDEX IF EXISTS pharmacies_pharmacy_referral_code_16059722_like;")
+        cursor.execute("DROP INDEX IF EXISTS pharmacies_pharmacy_referral_code_16059722;")
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -30,6 +39,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.RunPython(cleanup_partial_referral_indexes, migrations.RunPython.noop),
         migrations.CreateModel(
             name='PharmacyReferral',
             fields=[
