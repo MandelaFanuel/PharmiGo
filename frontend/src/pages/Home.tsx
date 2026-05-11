@@ -2148,23 +2148,19 @@ export default function Home() {
       return visibleStatuses.has(prescription.status) || prescriptionHasConfirmedMedications(prescription);
     });
   }, [currentUser?.profile?.role, publishedPrescriptions]);
-  const patientProfilePrescriptions = useMemo(
-    () => patientConfirmedPrescriptions.slice(0, 4),
-    [patientConfirmedPrescriptions]
-  );
   const publicVisiblePrescriptions = useMemo(() => {
-    if (currentUser?.profile?.role === "patient") {
-      return [];
-    }
-
     return filteredPublishedPrescriptions.filter((prescription) => prescriptionHasConfirmedMedications(prescription));
-  }, [currentUser?.profile?.role, filteredPublishedPrescriptions]);
+  }, [filteredPublishedPrescriptions]);
   const patientHomePrescriptions = useMemo(() => {
     if (currentUser?.profile?.role !== "patient") {
       return [];
     }
     return patientConfirmedPrescriptions.length ? patientConfirmedPrescriptions : publicVisiblePrescriptions;
   }, [currentUser?.profile?.role, patientConfirmedPrescriptions, publicVisiblePrescriptions]);
+  const patientProfilePrescriptions = useMemo(
+    () => patientHomePrescriptions.slice(0, 4),
+    [patientHomePrescriptions]
+  );
   const homePharmacyPageSize = isCompactHomeView ? 20 : 30;
   const homePrescriptionPageSize = isCompactHomeView ? 20 : 30;
   const totalPharmacyPages = Math.max(1, Math.ceil(filteredPharmacies.length / homePharmacyPageSize));
@@ -4841,8 +4837,12 @@ export default function Home() {
               </button>
               <div className="profile-prescription-showcase">
                 <div className="profile-prescription-showcase-head">
-                  <strong>Mes ordonnances confirmees</strong>
-                  <small>Je peux liker, commenter et partager ces fiches directement depuis mon profil.</small>
+                  <strong>{patientConfirmedPrescriptions.length ? "Mes ordonnances confirmees" : "Ordonnances confirmees disponibles"}</strong>
+                  <small>
+                    {patientConfirmedPrescriptions.length
+                      ? "Je peux liker, commenter et partager ces fiches directement depuis mon profil."
+                      : "En attendant mes propres confirmations, je peux deja consulter les ordonnances publiques confirmees ici."}
+                  </small>
                 </div>
                 {patientProfilePrescriptions.length ? (
                   <div className="profile-prescription-grid">
@@ -4854,7 +4854,7 @@ export default function Home() {
                   <div className="pharmacy-message-feed">
                     <article className="landing-notification-item">
                       <strong>Aucune ordonnance confirmee</strong>
-                      <p>Confirmez vos medicaments pour voir vos fiches ordonnance apparaitre ici.</p>
+                      <p>Confirmez vos medicaments ou attendez une ordonnance publique confirmee pour la voir apparaitre ici.</p>
                     </article>
                   </div>
                 )}

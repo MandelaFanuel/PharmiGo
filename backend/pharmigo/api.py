@@ -1002,17 +1002,26 @@ def dashboard(request):
         .exclude(patient_name__in=excluded_prescription_names)
         .exclude(status__in=["error", "cancelled"])
     )
+    public_visible_statuses = [
+        "confirmed",
+        "searching",
+        "pharmacy_selected",
+        "preparing",
+        "ready",
+        "served",
+        "patient_confirmed",
+        "completed",
+    ]
     if user is None:
-        prescription_queryset = prescription_queryset.filter(
-            status__in=["confirmed", "searching", "pharmacy_selected", "preparing", "ready", "served", "patient_confirmed", "completed"]
-        )
+        prescription_queryset = prescription_queryset.filter(status__in=public_visible_statuses)
     elif is_admin_user(user):
         pass
     elif hasattr(user, "profile") and user.profile.role == "patient":
         patient_start_at = getattr(user.profile, "created_at", None)
-        prescription_queryset = prescription_queryset.filter(patient_user=user)
+        own_filter = Q(patient_user=user)
         if patient_start_at is not None:
-            prescription_queryset = prescription_queryset.filter(created_at__gte=patient_start_at)
+            own_filter &= Q(created_at__gte=patient_start_at)
+        prescription_queryset = prescription_queryset.filter(own_filter | Q(status__in=public_visible_statuses)).distinct()
     elif hasattr(user, "profile") and user.profile.role == "pharmacy":
         prescription_queryset = prescription_queryset.filter(
             status__in=[
