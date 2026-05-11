@@ -62,7 +62,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='pharmacy',
             name='referral_code',
-            field=models.CharField(blank=True, db_index=True, default='', max_length=24),
+            field=models.CharField(blank=True, default='', max_length=24),
         ),
         migrations.AddField(
             model_name='subscriptionsystemsettings',
