@@ -91,7 +91,7 @@ def build_referral_link(pharmacy: Pharmacy | None) -> str:
     referral_code = ensure_pharmacy_referral_code(pharmacy)
     frontend_url = getattr(settings, "FRONTEND_URL", "").strip().rstrip("/")
     base_url = frontend_url or ""
-    return f"{base_url}/?role=pharmacy&ref={referral_code}"
+    return f"{base_url}/register?ref={referral_code}"
 
 
 def build_request_fingerprint(request) -> str:

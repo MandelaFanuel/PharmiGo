@@ -656,4 +656,4 @@ class PharmacySubscriptionApiTests(APITestCase):
         self.pharmacy.refresh_from_db()
         self.assertTrue(self.pharmacy.referral_code)
         self.assertEqual(payload["referral_code"], self.pharmacy.referral_code)
-        self.assertIn(f"ref={self.pharmacy.referral_code}", payload["referral_link"])
+        self.assertTrue(payload["referral_link"].endswith(f"/register?ref={self.pharmacy.referral_code}"))

@@ -1143,19 +1143,17 @@ export default function PharmacyDashboard({
       {activeSection === "ambassador" ? (
         <DashboardPanel
           title="Section ambassadeur"
-          description="Lien unique de parrainage, guide officiel partageable et suivi des pharmacies filleules."
+          description="Un seul lien unique par pharmacie pour parrainer, suivre et activer de nouvelles pharmacies dans le reseau."
           className="dashboard-panel-span-3 dashboard-keep-visible"
         >
           <div className="dashboard-summary-stack dashboard-ambassador-grid">
             <div className="dashboard-data-block dashboard-ambassador-stat">
-              <span>Code de parrainage unique</span>
-              <strong>{subscription?.reward_program?.referral_code || "Indisponible"}</strong>
-              <small>Chaque inscription faite avec ce code ou ce lien est rattachee a votre pharmacie.</small>
-            </div>
-            <div className="dashboard-data-block dashboard-ambassador-stat">
               <span>Lien officiel de parrainage</span>
               <strong className="dashboard-mono-text">{subscription?.reward_program?.referral_link || "Lien indisponible"}</strong>
-              <small>Partagez ce lien a une nouvelle pharmacie pour marquer automatiquement le parrainage.</small>
+              <small>
+                Ce lien unique contient deja votre code de parrainage. Toute nouvelle pharmacie inscrite via ce lien sera marquee comme
+                parrainee par votre pharmacie.
+              </small>
             </div>
             <div className="dashboard-data-block dashboard-ambassador-stat">
               <span>Progression</span>
@@ -1182,19 +1180,6 @@ export default function PharmacyDashboard({
                 }
               >
                 Copier le lien
-              </button>
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={() =>
-                  void copyRewardValue(
-                    subscription?.reward_program?.referral_code || "",
-                    "Code de parrainage copie !",
-                    "Code indisponible."
-                  )
-                }
-              >
-                Copier le code
               </button>
               <button
                 type="button"

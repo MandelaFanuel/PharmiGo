@@ -1,4 +1,4 @@
-import { type FormEvent, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 
 import GoogleSignInButton from "../components/GoogleSignInButton";
@@ -97,6 +97,7 @@ export default function AuthPage() {
     address: "",
     password: "",
     pharmacy_image: null as File | null,
+    referral_code: "",
   });
   const [showPatientPassword, setShowPatientPassword] = useState(false);
   const [showPharmacyPassword, setShowPharmacyPassword] = useState(false);
@@ -109,11 +110,33 @@ export default function AuthPage() {
     return searchParams.get("mode") === "register" ? "register" : "login";
   }, [location.search]);
 
+  const referralCodeFromUrl = useMemo(() => {
+    const searchParams = new URLSearchParams(location.search);
+    return (searchParams.get("ref") || "").trim().toUpperCase();
+  }, [location.search]);
+
+  useEffect(() => {
+    if (!referralCodeFromUrl) {
+      return;
+    }
+
+    setAccountType("pharmacy");
+    setPharmacyForm((current) => (
+      current.referral_code === referralCodeFromUrl
+        ? current
+        : {
+            ...current,
+            referral_code: referralCodeFromUrl,
+          }
+    ));
+  }, [referralCodeFromUrl]);
+
   function switchMode(nextMode: AuthMode) {
     if (nextMode === mode) {
       return;
     }
-    navigate(nextMode === "register" ? "/login?mode=register" : "/login");
+    const preservedRef = referralCodeFromUrl ? `&ref=${encodeURIComponent(referralCodeFromUrl)}` : "";
+    navigate(nextMode === "register" ? `/login?mode=register${preservedRef}` : "/login");
   }
 
   async function handleCaptureLocation() {
@@ -273,6 +296,7 @@ export default function AuthPage() {
       const email = pharmacyForm.email.trim().toLowerCase();
       const address = pharmacyForm.address.trim();
       const password = pharmacyForm.password.trim();
+      const referralCode = pharmacyForm.referral_code.trim().toUpperCase();
       const emailValidationError = validateEmailValue(email);
 
       if (!pharmacyName || !phoneNumber || !email || !address || !password || emailValidationError) {
@@ -309,6 +333,7 @@ export default function AuthPage() {
         address,
         password: pharmacyForm.password,
         pharmacy_image: pharmacyForm.pharmacy_image,
+        referral_code: referralCode || undefined,
         latitude: registrationLocation?.latitude,
         longitude: registrationLocation?.longitude,
       });
@@ -331,7 +356,12 @@ export default function AuthPage() {
   }
 
   if (location.pathname === "/register") {
-    return <Navigate to="/login?mode=register" replace />;
+    const redirectSearch = new URLSearchParams();
+    redirectSearch.set("mode", "register");
+    if (referralCodeFromUrl) {
+      redirectSearch.set("ref", referralCodeFromUrl);
+    }
+    return <Navigate to={`/login?${redirectSearch.toString()}`} replace />;
   }
 
   return (
@@ -464,11 +494,11 @@ export default function AuthPage() {
                 >
                   Patient
                 </button>
-                <button
-                  type="button"
-                  className={accountType === "pharmacy" ? "auth-mode-chip auth-account-chip active" : "auth-mode-chip auth-account-chip"}
-                  onClick={() => setAccountType("pharmacy")}
-                >
+                  <button
+                    type="button"
+                    className={accountType === "pharmacy" ? "auth-mode-chip auth-account-chip active" : "auth-mode-chip auth-account-chip"}
+                    onClick={() => setAccountType("pharmacy")}
+                  >
                   Pharmacie
                 </button>
               </div>
@@ -549,6 +579,17 @@ export default function AuthPage() {
                         onChange={(event) => setPharmacyForm((current) => ({ ...current, pharmacy_name: event.target.value }))}
                       />
                       {registerFieldErrors.pharmacy_name ? <small className="field-error">{registerFieldErrors.pharmacy_name}</small> : null}
+                    </label>
+                    <label className="login-field">
+                      <span>Lien / code de parrainage</span>
+                      <input
+                        value={pharmacyForm.referral_code}
+                        onChange={(event) => setPharmacyForm((current) => ({ ...current, referral_code: event.target.value.toUpperCase() }))}
+                        placeholder="Ex: 5CZSYK"
+                      />
+                      <small className="auth-location-note">
+                        Si vous arrivez via un lien ambassadeur, ce code est applique automatiquement a votre inscription pharmacie.
+                      </small>
                     </label>
                     <PhoneNumberField
                       label="Numero de telephone"
