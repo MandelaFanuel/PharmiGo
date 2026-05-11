@@ -201,6 +201,10 @@ function parseValidDate(value?: string | null) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+function buildAmbassadorShareMessage(link: string) {
+  return `Rejoignez PharmiGo via ce lien officiel de parrainage pharmacie : ${link}`;
+}
+
 export default function PharmacyDashboard({
   onRequestProfileOpen,
 }: {
@@ -255,6 +259,53 @@ export default function PharmacyDashboard({
     } catch {
       setCopyFeedback("Impossible de copier pour le moment.");
     }
+  }
+
+  function openSocialShare(platform: "whatsapp" | "facebook" | "telegram" | "linkedin") {
+    const link = subscription?.reward_program?.referral_link || "";
+    if (!link) {
+      setCopyFeedback("Lien indisponible.");
+      return;
+    }
+
+    const encodedUrl = encodeURIComponent(link);
+    const encodedText = encodeURIComponent(buildAmbassadorShareMessage(link));
+    const shareUrls = {
+      whatsapp: `https://wa.me/?text=${encodedText}`,
+      facebook: `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`,
+      telegram: `https://t.me/share/url?url=${encodedUrl}&text=${encodedText}`,
+      linkedin: `https://www.linkedin.com/sharing/share-offsite/?url=${encodedUrl}`,
+    } as const;
+
+    window.open(shareUrls[platform], "_blank", "noopener,noreferrer");
+    setCopyFeedback(`Partage ${platform} lance.`);
+  }
+
+  async function handleNativeShare() {
+    const link = subscription?.reward_program?.referral_link || "";
+    if (!link) {
+      setCopyFeedback("Lien indisponible.");
+      return;
+    }
+
+    const sharePayload = {
+      title: "Parrainage PharmiGo",
+      text: buildAmbassadorShareMessage(link),
+      url: link,
+    };
+
+    if (navigator.share) {
+      try {
+        await navigator.share(sharePayload);
+        setCopyFeedback("Partage lance.");
+        return;
+      } catch {
+        setCopyFeedback("Le partage a ete annule ou a echoue.");
+        return;
+      }
+    }
+
+    await copyRewardValue(link, "Lien de parrainage copie !", "Lien indisponible.");
   }
 
   const labels = {
@@ -1180,6 +1231,21 @@ export default function PharmacyDashboard({
                 }
               >
                 Copier le lien
+              </button>
+              <button type="button" className="secondary-button" onClick={() => void handleNativeShare()}>
+                Partager
+              </button>
+              <button type="button" className="secondary-button" onClick={() => openSocialShare("whatsapp")}>
+                WhatsApp
+              </button>
+              <button type="button" className="secondary-button" onClick={() => openSocialShare("facebook")}>
+                Facebook
+              </button>
+              <button type="button" className="secondary-button" onClick={() => openSocialShare("telegram")}>
+                Telegram
+              </button>
+              <button type="button" className="secondary-button" onClick={() => openSocialShare("linkedin")}>
+                LinkedIn
               </button>
               <button
                 type="button"
