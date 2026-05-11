@@ -186,12 +186,6 @@ export default function DashboardScaffold({
             </section>
           ))}
         </div>
-        <div className="dashboard-sidebar-footer">
-          <button type="button" className="dashboard-sidebar-link" onClick={() => setIsMobileNavOpen(false)}>
-            <span className="dashboard-sidebar-link-dot" aria-hidden="true" />
-            <span>Configuration</span>
-          </button>
-        </div>
       </aside>
 
       {isMobileNavOpen ? (

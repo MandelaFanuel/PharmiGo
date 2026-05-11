@@ -10,12 +10,31 @@ interface MedicationStock {
   generic_name: string | null;
   dosage: string | null;
   quantity: number;
+  sale_scope: "retail" | "wholesale";
   unit: string;
   price: number;
   currency: "BIF" | "FC" | "TSH";
   last_updated: string;
   is_available: boolean;
 }
+
+const RETAIL_UNITS = ["comprimé", "gélule", "flacon", "ampoule", "tube", "boîte", "sachet"] as const;
+const WHOLESALE_UNITS = ["carton", "caisse", "lot", "palette", "boîte"] as const;
+const UNIT_ALIASES: Record<string, string> = {
+  "comprimés": "comprimé",
+  "gelules": "gélule",
+  "gélules": "gélule",
+  "flacons": "flacon",
+  "ampoules": "ampoule",
+  "tubes": "tube",
+  "boites": "boîte",
+  "boîtes": "boîte",
+  "sachets": "sachet",
+  "cartons": "carton",
+  "caisses": "caisse",
+  "lots": "lot",
+  "palettes": "palette",
+};
 
 const PHONE_CURRENCY_MAP: Record<string, "BIF" | "FC" | "TSH"> = {
   "+257": "BIF",
@@ -31,6 +50,19 @@ function inferCurrencyFromPhoneNumber(phoneNumber?: string | null): "BIF" | "FC"
     }
   }
   return "BIF";
+}
+
+function getSaleScopeLabel(scope: "retail" | "wholesale") {
+  return scope === "wholesale" ? "Gros" : "Détail";
+}
+
+function getUnitsForSaleScope(scope: "retail" | "wholesale") {
+  return scope === "wholesale" ? WHOLESALE_UNITS : RETAIL_UNITS;
+}
+
+function normalizeUnitValue(unit?: string | null) {
+  const normalized = String(unit ?? "").trim().toLowerCase();
+  return UNIT_ALIASES[normalized] ?? normalized;
 }
 
 function normalizeStockItem(item: unknown): MedicationStock {
@@ -53,7 +85,8 @@ function normalizeStockItem(item: unknown): MedicationStock {
     generic_name: typeof record.generic_name === "string" || record.generic_name === null ? record.generic_name : null,
     dosage: typeof record.dosage === "string" || record.dosage === null ? record.dosage : null,
     quantity: parseNumeric(record.quantity, 0),
-    unit: typeof record.unit === "string" ? record.unit : "",
+    sale_scope: record.sale_scope === "wholesale" ? "wholesale" : "retail",
+    unit: typeof record.unit === "string" ? normalizeUnitValue(record.unit) : "",
     price: parseNumeric(record.price, 0),
     currency: record.currency === "FC" || record.currency === "TSH" || record.currency === "BIF" ? record.currency : "BIF",
     last_updated: typeof record.last_updated === "string" ? record.last_updated : "",
@@ -66,6 +99,7 @@ interface MedicationForm {
   generic_name: string;
   dosage: string;
   quantity: number;
+  sale_scope: "retail" | "wholesale";
   unit: string;
   price: number;
   currency: "BIF" | "FC" | "TSH";
@@ -83,6 +117,10 @@ export default function PharmacyStockManager({
   const [isLoading, setIsLoading] = useState(false);
   const [busyStockId, setBusyStockId] = useState<number | null>(null);
   const [detectedCurrency, setDetectedCurrency] = useState<"BIF" | "FC" | "TSH">("BIF");
+  const [salesCapabilities, setSalesCapabilities] = useState<{ wholesale: boolean; retail: boolean }>({
+    wholesale: false,
+    retail: true,
+  });
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -92,11 +130,19 @@ export default function PharmacyStockManager({
     generic_name: "",
     dosage: "",
     quantity: 1,
-    unit: "comprimés",
+    sale_scope: "retail",
+    unit: "comprimé",
     price: 0,
     currency: "BIF",
     is_available: true,
   });
+
+  const availableSaleScopes = salesCapabilities.wholesale && salesCapabilities.retail
+    ? (["retail", "wholesale"] as const)
+    : salesCapabilities.wholesale
+      ? (["wholesale"] as const)
+      : (["retail"] as const);
+  const availableUnits = getUnitsForSaleScope(formData.sale_scope);
 
   useEffect(() => {
     void loadStock();
@@ -169,8 +215,21 @@ export default function PharmacyStockManager({
         profile.profile?.phone_number ||
         "";
       const inferredCurrency = inferCurrencyFromPhoneNumber(phoneNumber);
+      const wholesale = Boolean(profile.profile?.pharmacy_wholesale_supported);
+      const retail = profile.profile?.pharmacy_retail_supported !== false;
+      const allowedScopes = wholesale && retail ? ["retail", "wholesale"] : wholesale ? ["wholesale"] : ["retail"];
+      const inferredScope: "retail" | "wholesale" = wholesale && !retail ? "wholesale" : "retail";
       setDetectedCurrency(inferredCurrency);
-      setFormData((current) => ({ ...current, currency: inferredCurrency }));
+      setSalesCapabilities({ wholesale, retail });
+      setFormData((current) => {
+        const nextScope = allowedScopes.includes(current.sale_scope) ? current.sale_scope : inferredScope;
+        return {
+          ...current,
+          currency: inferredCurrency,
+          sale_scope: nextScope,
+          unit: getUnitsForSaleScope(nextScope)[0],
+        };
+      });
     } catch (err) {
       void err;
     }
@@ -197,7 +256,9 @@ export default function PharmacyStockManager({
     } catch (err) {
       const payload = (err as { response?: { data?: Record<string, unknown> } })?.response?.data;
       const currencyError = Array.isArray(payload?.currency) ? String(payload?.currency[0]) : typeof payload?.currency === "string" ? payload.currency : null;
-      setError(currencyError || "Erreur lors de l'enregistrement");
+      const unitError = Array.isArray(payload?.unit) ? String(payload?.unit[0]) : typeof payload?.unit === "string" ? payload.unit : null;
+      const saleScopeError = Array.isArray(payload?.sale_scope) ? String(payload?.sale_scope[0]) : typeof payload?.sale_scope === "string" ? payload.sale_scope : null;
+      setError(currencyError || unitError || saleScopeError || "Erreur lors de l'enregistrement");
       void err;
       logClientError("L'enregistrement du stock a echoue.");
     } finally {
@@ -231,6 +292,7 @@ export default function PharmacyStockManager({
       generic_name: item.generic_name || "",
       dosage: item.dosage || "",
       quantity: item.quantity,
+      sale_scope: item.sale_scope,
       unit: item.unit,
       price: item.price,
       currency: item.currency,
@@ -245,7 +307,8 @@ export default function PharmacyStockManager({
       generic_name: "",
       dosage: "",
       quantity: 1,
-      unit: "comprimés",
+      sale_scope: salesCapabilities.wholesale && !salesCapabilities.retail ? "wholesale" : "retail",
+      unit: salesCapabilities.wholesale && !salesCapabilities.retail ? "carton" : "comprimé",
       price: 0,
       currency: detectedCurrency,
       is_available: true,
@@ -335,18 +398,42 @@ export default function PharmacyStockManager({
 
             <div className="form-row">
               <label>
-                <span>Unité</span>
+                <span>Type de vente</span>
+                <select
+                  value={formData.sale_scope}
+                  onChange={(e) => {
+                    const nextScope = e.target.value as "retail" | "wholesale";
+                    setFormData({ ...formData, sale_scope: nextScope, unit: getUnitsForSaleScope(nextScope)[0] });
+                  }}
+                  disabled={availableSaleScopes.length === 1}
+                >
+                  {availableSaleScopes.map((scope) => (
+                    <option key={scope} value={scope}>
+                      {scope === "wholesale" ? "Vente en gros" : "Vente au détail"}
+                    </option>
+                  ))}
+                </select>
+                <small>
+                  {availableSaleScopes.length === 1
+                    ? `Cette pharmacie vend uniquement en ${formData.sale_scope === "wholesale" ? "gros" : "detail"}.`
+                    : "Choisissez si ce prix est en gros ou au détail."}
+                </small>
+              </label>
+            </div>
+
+            <div className="form-row">
+              <label>
+                <span>Catégorie / unité</span>
                 <select value={formData.unit} onChange={(e) => setFormData({ ...formData, unit: e.target.value })}>
-                  <option value="comprimés">Comprimés</option>
-                  <option value="gélules">Gélules</option>
-                  <option value="flacons">Flacons</option>
-                  <option value="ampoules">Ampoules</option>
-                  <option value="tubes">Tubes</option>
-                  <option value="boîtes">Boîtes</option>
+                  {availableUnits.map((unit) => (
+                    <option key={unit} value={unit}>
+                      {unit.charAt(0).toUpperCase() + unit.slice(1)}
+                    </option>
+                  ))}
                 </select>
               </label>
               <label>
-                <span>Prix ({formData.currency}) *</span>
+                <span>Prix par {formData.unit} ({formData.currency}) *</span>
                 <div className="stock-price-row">
                   <select
                     value={formData.currency}
@@ -417,6 +504,7 @@ export default function PharmacyStockManager({
                       </button>
                     </div>
                     <span className="stock-row-unit">{item.unit}</span>
+                    <span className="badge info">{getSaleScopeLabel(item.sale_scope)}</span>
                     <span className="stock-row-price">{item.price.toFixed(2)} {item.currency}</span>
                     <span className={`badge ${item.is_available ? "success" : "warning"}`}>{item.is_available ? "Disponible" : "Indisponible"}</span>
                     <div className="stock-row-actions">

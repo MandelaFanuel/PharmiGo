@@ -2680,8 +2680,15 @@ export default function Home() {
     setProfileSuccess(null);
     setProfileFieldErrors({});
 
-    if (activeModal === "dashboard") {
+    const dashboardRouteIsPinned =
+      location.pathname.startsWith("/dashboard") ||
+      new URLSearchParams(location.search).get("modal") === "dashboard";
+
+    if (activeModal === "dashboard" || dashboardRouteIsPinned) {
       setActiveModal(null);
+      if (dashboardRouteIsPinned) {
+        navigate("/", { replace: true });
+      }
       window.setTimeout(() => {
         openModal("profile");
       }, 0);

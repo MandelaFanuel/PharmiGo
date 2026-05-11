@@ -147,6 +147,8 @@ function buildSearchIndex(parts: Array<string | number | null | undefined>, date
     }
 
     return SEARCH_LOCALES.flatMap((locale) => [
+      parsedDate.toISOString(),
+      parsedDate.toISOString().slice(0, 10),
       parsedDate.toLocaleDateString(locale),
       parsedDate.toLocaleString(locale, { month: "long" }),
       parsedDate.toLocaleString(locale, { month: "short" }),
@@ -980,6 +982,8 @@ export default function AdminDashboard({
             item.status,
             item.pharmacy_name,
             item.geo_zone,
+            item.document_access_url,
+            item.prescription_image,
             ...getConfirmedMedicationSummary(item),
           ],
           [item.created_at]

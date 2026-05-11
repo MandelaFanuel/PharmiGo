@@ -27,6 +27,7 @@ interface StockItem {
   generic_name: string | null;
   dosage: string | null;
   quantity: number;
+  sale_scope: "retail" | "wholesale";
   unit: string;
   price: number;
   currency: "BIF" | "FC" | "TSH";
@@ -158,6 +159,10 @@ function formatCurrencyValue(value: unknown, currency = "BIF") {
   const parsed = typeof value === "number" ? value : Number.parseFloat(String(value ?? 0));
   const amount = Number.isFinite(parsed) ? parsed.toFixed(2) : "0.00";
   return `${amount} ${currency}`;
+}
+
+function formatSaleScopeLabel(scope: "retail" | "wholesale") {
+  return scope === "wholesale" ? "Vente en gros" : "Vente au détail";
 }
 
 function formatPresenceLabel(isOnline?: boolean, lastSeen?: string | null, language = "fr") {
@@ -721,9 +726,16 @@ export default function PharmacyDashboard({
   const filteredStock = useMemo(
     () =>
       stock.filter((item) =>
-        buildSearchIndex([item.medication_name, item.generic_name ?? "", item.dosage ?? "", item.unit, item.price, item.quantity]).includes(
-          normalizedSearchTerm
-        )
+        buildSearchIndex([
+          item.medication_name,
+          item.generic_name ?? "",
+          item.dosage ?? "",
+          item.unit,
+          item.price,
+          item.quantity,
+          item.sale_scope === "wholesale" ? "gros" : "detail",
+          item.sale_scope,
+        ]).includes(normalizedSearchTerm)
       ),
     [normalizedSearchTerm, stock]
   );
@@ -920,7 +932,8 @@ export default function PharmacyDashboard({
                     {item.dosage ? <span>{item.dosage}</span> : null}
                     <div className="stock-item-details">
                       <span>Quantite: {item.quantity} {item.unit}</span>
-                      <span>Prix: {formatCurrencyValue(item.price, item.currency)}</span>
+                      <span>{formatSaleScopeLabel(item.sale_scope)}</span>
+                      <span>Prix: {formatCurrencyValue(item.price, item.currency)} / {item.unit}</span>
                     </div>
                     <div className="dashboard-stock-inline-actions">
                       <div className="stock-quantity-controls">

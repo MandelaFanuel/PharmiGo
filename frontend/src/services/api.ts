@@ -506,6 +506,7 @@ export async function fetchPharmacyStock() {
     return {
       ...item,
       quantity: parseNumeric(item.quantity, 0),
+      sale_scope: item.sale_scope === "wholesale" ? "wholesale" : "retail",
       price: parseNumeric(item.price, 0),
       currency: item.currency === "FC" || item.currency === "TSH" || item.currency === "BIF" ? item.currency : "BIF",
       is_available: typeof item.is_available === "boolean" ? item.is_available : Boolean(item.is_available),

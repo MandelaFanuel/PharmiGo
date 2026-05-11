@@ -205,6 +205,7 @@ export interface PharmacyStockItem {
   generic_name?: string | null;
   dosage?: string | null;
   quantity: number;
+  sale_scope: "retail" | "wholesale";
   unit: string;
   price: number;
   currency: "BIF" | "FC" | "TSH";

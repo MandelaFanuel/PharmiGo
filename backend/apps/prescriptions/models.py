@@ -352,6 +352,10 @@ class PharmacyStock(models.Model):
         ("FC", "FC"),
         ("TSH", "TSH"),
     ]
+    SALE_SCOPE_CHOICES = [
+        ("retail", "Detail"),
+        ("wholesale", "Gros"),
+    ]
 
     pharmacy = models.ForeignKey(
         Pharmacy,
@@ -362,6 +366,7 @@ class PharmacyStock(models.Model):
     generic_name = models.CharField(max_length=255, blank=True, null=True)
     dosage = models.CharField(max_length=100, blank=True, null=True)
     quantity = models.IntegerField(default=0)
+    sale_scope = models.CharField(max_length=20, choices=SALE_SCOPE_CHOICES, default="retail")
     unit = models.CharField(max_length=50, default="comprimés")
     price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     currency = models.CharField(max_length=4, choices=CURRENCY_CHOICES, default="BIF")
@@ -370,7 +375,7 @@ class PharmacyStock(models.Model):
     
     class Meta:
         ordering = ["-last_updated"]
-        unique_together = ["pharmacy", "medication_name", "dosage"]
+        unique_together = ["pharmacy", "medication_name", "dosage", "sale_scope", "unit"]
     
     def __str__(self) -> str:
         return f"{self.pharmacy.name} - {self.medication_name} ({self.quantity})"

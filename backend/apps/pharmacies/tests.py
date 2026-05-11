@@ -336,7 +336,8 @@ class PharmacySubscriptionApiTests(APITestCase):
                 "medication_name": "Paracetamol",
                 "dosage": "500mg",
                 "quantity": 4,
-                "unit": "boîtes",
+                "sale_scope": "retail",
+                "unit": "comprimé",
                 "price": "2500",
                 "is_available": True,
             },
@@ -353,7 +354,8 @@ class PharmacySubscriptionApiTests(APITestCase):
                 "medication_name": "Amoxicilline",
                 "dosage": "500mg",
                 "quantity": 2,
-                "unit": "boîtes",
+                "sale_scope": "retail",
+                "unit": "comprimé",
                 "price": "1500",
                 "currency": "TSH",
                 "is_available": True,
@@ -363,6 +365,51 @@ class PharmacySubscriptionApiTests(APITestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn("currency", response.data)
+
+    def test_wholesale_only_pharmacy_stock_requires_wholesale_sale_scope(self):
+        self.pharmacy.wholesale_supported = True
+        self.pharmacy.retail_supported = False
+        self.pharmacy.save(update_fields=["wholesale_supported", "retail_supported"])
+
+        response = self.client.post(
+            "/api/prescriptions/pharmacy-stock/",
+            {
+                "medication_name": "Ceftriaxone",
+                "dosage": "1g",
+                "quantity": 2,
+                "sale_scope": "retail",
+                "unit": "flacon",
+                "price": "45000",
+                "is_available": True,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("sale_scope", response.data)
+
+    def test_wholesale_only_pharmacy_stock_accepts_carton_pricing(self):
+        self.pharmacy.wholesale_supported = True
+        self.pharmacy.retail_supported = False
+        self.pharmacy.save(update_fields=["wholesale_supported", "retail_supported"])
+
+        response = self.client.post(
+            "/api/prescriptions/pharmacy-stock/",
+            {
+                "medication_name": "Ceftriaxone",
+                "dosage": "1g",
+                "quantity": 3,
+                "sale_scope": "wholesale",
+                "unit": "carton",
+                "price": "120000",
+                "is_available": True,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["sale_scope"], "wholesale")
+        self.assertEqual(response.data["unit"], "carton")
 
     def test_pharmacy_profile_patch_requires_at_least_one_sales_mode(self):
         response = self.client.patch(

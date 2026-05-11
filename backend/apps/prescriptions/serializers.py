@@ -20,6 +20,40 @@ PHONE_CURRENCY_MAP = {
     "+255": "TSH",
 }
 
+RETAIL_UNIT_CHOICES = {
+    "comprimé",
+    "gélule",
+    "flacon",
+    "ampoule",
+    "tube",
+    "boîte",
+    "sachet",
+}
+
+WHOLESALE_UNIT_CHOICES = {
+    "carton",
+    "caisse",
+    "lot",
+    "palette",
+    "boîte",
+}
+
+UNIT_ALIASES = {
+    "comprimés": "comprimé",
+    "gelules": "gélule",
+    "gélules": "gélule",
+    "flacons": "flacon",
+    "ampoules": "ampoule",
+    "tubes": "tube",
+    "boites": "boîte",
+    "boîtes": "boîte",
+    "sachets": "sachet",
+    "cartons": "carton",
+    "caisses": "caisse",
+    "lots": "lot",
+    "palettes": "palette",
+}
+
 
 def infer_currency_from_phone_number(phone_number: str | None) -> str | None:
     normalized = str(phone_number or "").strip()
@@ -276,6 +310,7 @@ class PharmacyStockSerializer(serializers.ModelSerializer):
             "generic_name",
             "dosage",
             "quantity",
+            "sale_scope",
             "unit",
             "price",
             "currency",
@@ -323,6 +358,40 @@ class PharmacyStockSerializer(serializers.ModelSerializer):
                         f"Cette pharmacie utilise la devise {expected_currency} selon son numéro {pharmacy.phone_number}."
                     )
                 }
+            )
+
+        sale_scope = attrs.get("sale_scope")
+        if sale_scope is None and getattr(self, "instance", None) is not None:
+            sale_scope = getattr(self.instance, "sale_scope", None)
+        if sale_scope is None:
+            if pharmacy and pharmacy.wholesale_supported and not pharmacy.retail_supported:
+                sale_scope = "wholesale"
+            else:
+                sale_scope = "retail"
+            attrs["sale_scope"] = sale_scope
+
+        if pharmacy is not None:
+            supports_wholesale = bool(getattr(pharmacy, "wholesale_supported", False))
+            supports_retail = getattr(pharmacy, "retail_supported", True) is not False
+            if sale_scope == "wholesale" and not supports_wholesale:
+                raise serializers.ValidationError(
+                    {"sale_scope": "Cette pharmacie n'est pas configuree pour la vente en gros."}
+                )
+            if sale_scope == "retail" and not supports_retail:
+                raise serializers.ValidationError(
+                    {"sale_scope": "Cette pharmacie n'est pas configuree pour la vente au detail."}
+                )
+
+        unit = str(attrs.get("unit") or getattr(getattr(self, "instance", None), "unit", "") or "").strip().lower()
+        unit = UNIT_ALIASES.get(unit, unit)
+        if unit:
+            attrs["unit"] = unit
+        allowed_units = WHOLESALE_UNIT_CHOICES if sale_scope == "wholesale" else RETAIL_UNIT_CHOICES
+        if unit and unit not in allowed_units:
+            allowed_label = ", ".join(sorted(allowed_units))
+            mode_label = "gros" if sale_scope == "wholesale" else "detail"
+            raise serializers.ValidationError(
+                {"unit": f"Pour la vente en {mode_label}, utilisez une categorie adaptee: {allowed_label}."}
             )
 
         return attrs
