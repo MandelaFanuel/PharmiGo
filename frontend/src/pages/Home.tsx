@@ -4262,21 +4262,9 @@ export default function Home() {
           )
         ) : canViewPrescriptionBoard ? (
           publicVisiblePrescriptions.length ? (
-            !currentUser ? (
-              <div className="prescription-live-list prescription-grid-two-up">
-                {pagedHomePrescriptions.map((prescription) => (
-                  <PublicPrescriptionSheet
-                    key={prescription.id}
-                    prescription={prescription}
-                    title={prescription.medication_name || "Ordonnance confirmee"}
-                  />
-                ))}
-              </div>
-            ) : (
-              <div className="prescription-live-list prescription-grid-two-up">
-                {pagedHomePrescriptions.map((prescription) => renderInteractivePrescriptionSheet(prescription))}
-              </div>
-            )
+            <div className="prescription-live-list prescription-grid-two-up">
+              {pagedHomePrescriptions.map((prescription) => renderInteractivePrescriptionSheet(prescription))}
+            </div>
           ) : (
             <div className="empty-state">
               <p>{normalizedDirectorySearchTerm ? feedText.noPrescriptionSearchResult : feedText.noPrescription}</p>
