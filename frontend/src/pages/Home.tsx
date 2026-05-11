@@ -95,6 +95,7 @@ type PharmacyRegisterFormState = {
   phone_number: string;
   email: string;
   address: string;
+  referral_code: string;
   password: string;
   pharmacy_image: File | null;
   wholesale_supported: boolean;
@@ -805,6 +806,7 @@ export default function Home() {
     phone_number: "",
     email: "",
     address: "",
+    referral_code: "",
     password: "",
     pharmacy_image: null,
     wholesale_supported: false,
@@ -2884,6 +2886,7 @@ export default function Home() {
     const pharmacyPhone = pharmacyRegisterForm.phone_number.trim();
     const pharmacyEmail = pharmacyRegisterForm.email.trim().toLowerCase();
     const pharmacyAddress = pharmacyRegisterForm.address.trim();
+    const pharmacyReferralCode = pharmacyRegisterForm.referral_code.trim().toUpperCase();
     const pharmacyPassword = pharmacyRegisterForm.password;
     const pharmacySellsWholesale = pharmacyRegisterForm.wholesale_supported;
     const pharmacySellsRetail = pharmacyRegisterForm.retail_supported;
@@ -2971,6 +2974,7 @@ export default function Home() {
         phone_number: pharmacyFullPhone,
         email: pharmacyEmail,
         address: pharmacyAddress,
+        referral_code: pharmacyReferralCode,
         password: pharmacyPassword,
         pharmacy_image: pharmacyRegisterForm.pharmacy_image,
         wholesale_supported: pharmacySellsWholesale,
@@ -2981,6 +2985,7 @@ export default function Home() {
         phone_number: "",
         email: "",
         address: "",
+        referral_code: "",
         password: "",
         pharmacy_image: null,
         wholesale_supported: false,
@@ -4616,6 +4621,22 @@ export default function Home() {
                     }}
                   />
                   {authFieldErrors.address ? <small className="field-error">{authFieldErrors.address}</small> : null}
+                </label>
+                <label>
+                  <span>Code de parrainage pharmacie</span>
+                  <input
+                    name="pharmacy_referral_code"
+                    type="text"
+                    placeholder="Ex: KARIBU6666"
+                    value={pharmacyRegisterForm.referral_code}
+                    onChange={(event) =>
+                      setPharmacyRegisterForm((current) => ({
+                        ...current,
+                        referral_code: event.target.value.toUpperCase(),
+                      }))
+                    }
+                  />
+                  <small className="field-help">Optionnel. Renseignez-le si cette pharmacie a ete orientee par une pharmacie partenaire.</small>
                 </label>
                 <label>
                   <span>Image de la pharmacie</span>

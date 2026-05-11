@@ -376,6 +376,13 @@ export async function updateAdminSettings(payload: {
     semantic_search?: boolean;
     local_reasoning?: boolean;
   };
+  reward_event_start_date?: string | null;
+  reward_event_end_date?: string | null;
+  reward_referral_threshold?: number;
+  reward_min_activity_count?: number;
+  reward_device_daily_limit?: number;
+  reward_bonus_days?: number;
+  reward_instructions?: string;
 }): Promise<AdminDashboardData> {
   const { data } = await api.patch<AdminDashboardData>(API_ENDPOINTS.adminDashboard, {
     ...payload,
@@ -666,6 +673,7 @@ export async function register(payload: {
   pharmacy_image?: File | null;
   wholesale_supported?: boolean;
   retail_supported?: boolean;
+  referral_code?: string;
   latitude?: number;
   longitude?: number;
   location_city?: string;
@@ -682,6 +690,9 @@ export async function register(payload: {
     formData.append("address", payload.address ?? "");
     formData.append("wholesale_supported", payload.wholesale_supported ? "true" : "false");
     formData.append("retail_supported", payload.retail_supported === false ? "false" : "true");
+    if (payload.referral_code) {
+      formData.append("referral_code", payload.referral_code);
+    }
     if (typeof payload.latitude === "number") {
       formData.append("latitude", String(payload.latitude));
     }

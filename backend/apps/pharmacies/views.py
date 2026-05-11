@@ -12,6 +12,7 @@ from .serializers import PharmacySerializer, PharmacyContactSerializer, Pharmacy
 from .payment_config import build_payment_details
 from .services.access import get_active_partner_pharmacies, is_pharmacy_partner_eligible
 from .services.exchange_rate_service import ExchangeRateService
+from .services.rewards import build_pharmacy_reward_payload, safe_mark_payment_validated_for_pharmacy
 from pharmigo.api import broadcast_feed_event, create_targeted_notification, sync_pharmacy_verification_with_subscription
 
 User = get_user_model()
@@ -144,6 +145,7 @@ class PharmacySubscriptionView(APIView):
                 if subscription.subscription_status == "trial"
                 else ""
             )
+            payload["reward_program"] = build_pharmacy_reward_payload(pharmacy)
             return Response(payload, status=status.HTTP_200_OK)
         except Exception as e:
             return Response(
@@ -247,6 +249,11 @@ class SubscriptionPaymentDetailView(generics.RetrieveUpdateAPIView):
                 ]
             )
             sync_pharmacy_verification_with_subscription(pharmacy, subscription)
+            safe_mark_payment_validated_for_pharmacy(
+                pharmacy,
+                verified_by=request.user,
+                payment_reference=payment.transaction_reference,
+            )
 
             create_targeted_notification(
                 "Paiement valide",

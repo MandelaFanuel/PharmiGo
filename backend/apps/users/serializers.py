@@ -14,6 +14,7 @@ from apps.users.models import UserProfile
 from apps.users.phone_numbers import normalize_phone_number
 from apps.common.profile_images import apply_profile_image_backup
 from apps.users.services import build_unique_username, verify_google_credential
+from apps.pharmacies.services.rewards import safe_register_referral_from_code
 
 User = get_user_model()
 
@@ -203,6 +204,7 @@ class RegisterSerializer(serializers.Serializer):
     pharmacy_image = serializers.ImageField(required=False, allow_null=True)
     wholesale_supported = serializers.BooleanField(required=False, default=False)
     retail_supported = serializers.BooleanField(required=False, default=True)
+    referral_code = serializers.CharField(required=False, allow_blank=True, max_length=24)
     latitude = serializers.FloatField(required=False, allow_null=True)
     longitude = serializers.FloatField(required=False, allow_null=True)
     location_city = serializers.CharField(required=False, allow_blank=True, max_length=120)
@@ -297,6 +299,10 @@ class RegisterSerializer(serializers.Serializer):
             retail_supported=validated_data.get("retail_supported", True),
             latitude=latitude,
             longitude=longitude,
+        )
+        safe_register_referral_from_code(
+            referral_code=validated_data.get("referral_code", ""),
+            referee=pharmacy,
         )
         if validated_data.get("pharmacy_image"):
             apply_profile_image_backup(pharmacy, validated_data["pharmacy_image"])

@@ -29,6 +29,7 @@ from apps.pharmigo_chatbot.orchestrator import PharmiGoChatbotOrchestrator
 from apps.pharmigo_chatbot.models import ChatbotLearningData
 from apps.pharmacies.permissions import IsPharmacySubscriptionActiveOrTrial
 from apps.pharmacies.services.access import PAYMENT_WALL_MESSAGE, is_pharmacy_partner_eligible, pharmacy_has_platform_access
+from apps.pharmacies.services.rewards import safe_record_activity_for_referral
 from pharmigo.api import broadcast_feed_event, create_targeted_notification, get_request_user, pharmacy_subscription_is_active
 
 logger = logging.getLogger(__name__)
@@ -819,6 +820,12 @@ class PrescriptionPharmacyConfirmView(views.APIView):
                 "served_at": prescription.served_at.isoformat() if prescription.served_at else None,
             },
         )
+        safe_record_activity_for_referral(
+            prescription.pharmacy,
+            prescription,
+            request=request,
+            source_label="pharmacy_served",
+        )
         
         return Response({
             'prescription_id': prescription.id,
@@ -892,6 +899,13 @@ class PrescriptionPatientConfirmView(views.APIView):
                 "confirmed": bool(confirmed),
             },
         )
+        if confirmed:
+            safe_record_activity_for_referral(
+                prescription.pharmacy,
+                prescription,
+                request=request,
+                source_label="patient_confirmed",
+            )
 
         return Response({
             'prescription_id': prescription.id,

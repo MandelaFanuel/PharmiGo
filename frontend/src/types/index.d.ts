@@ -463,6 +463,78 @@ export interface AdminDashboardAILogItem {
   created_at: string;
 }
 
+export interface RewardReferralItem {
+  id: number;
+  pharmacy_name?: string;
+  referrer_name?: string;
+  referee_name?: string;
+  status: string;
+  payment_validated_at?: string | null;
+  validated_activity_count: number;
+  created_at: string;
+  updated_at?: string;
+  reward_granted_at?: string | null;
+  fraud_blocked_at?: string | null;
+  payment_reference?: string;
+  payment_validated_by_name?: string | null;
+}
+
+export interface RewardFraudAlertItem {
+  id: number;
+  referral_id: number;
+  pharmacy_id: number;
+  pharmacy_name: string;
+  device_fingerprint: string;
+  repeated_dates: string[];
+  message: string;
+  status: string;
+  created_at: string;
+}
+
+export interface RewardProgramSettings {
+  reward_guide_title?: string;
+  reward_event_start_date?: string | null;
+  reward_event_end_date?: string | null;
+  reward_referral_threshold: number;
+  reward_min_activity_count: number;
+  reward_device_daily_limit: number;
+  reward_bonus_days: number;
+  reward_instructions: string;
+}
+
+export interface RewardProgramAdminPayload {
+  settings: RewardProgramSettings;
+  summary: {
+    referrals_total: number;
+    validated_referrals_total: number;
+    fraud_alerts_open: number;
+  };
+  referrals: Array<RewardReferralItem & {
+    referrer_id: number;
+    referrer_name: string;
+    referee_id: number;
+    referee_name: string;
+  }>;
+  fraud_alerts: RewardFraudAlertItem[];
+}
+
+export interface RewardProgramPharmacyPayload {
+  enabled: boolean;
+  guide_title?: string;
+  referral_code: string;
+  referral_link: string;
+  threshold: number;
+  bonus_days: number;
+  validated_count: number;
+  progress_ratio: number;
+  instructions: string;
+  event_window: {
+    start?: string | null;
+    end?: string | null;
+  };
+  referrals: RewardReferralItem[];
+}
+
 export interface AdminDashboardData {
   generated_at: string;
   settings: SubscriptionSystemSettings;
@@ -487,6 +559,7 @@ export interface AdminDashboardData {
   ai_health: AdminDashboardAIHealth;
   ai_learning_audit: AdminDashboardAILearningAuditItem[];
   ai_recent_logs: AdminDashboardAILogItem[];
+  reward_program: RewardProgramAdminPayload;
 }
 
 export interface AppProductConfig {

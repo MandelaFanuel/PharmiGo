@@ -45,6 +45,7 @@ type AdminSection =
   | "payment-modes"
   | "subscriptions"
   | "ai-pharmigo"
+  | "ambassador"
   | "configurations";
 
 const PHARMACY_PAGE_SIZE = 4;
@@ -243,6 +244,13 @@ export default function AdminDashboard({
   const [trialDays, setTrialDays] = useState("180");
   const [monthlyPriceUsd, setMonthlyPriceUsd] = useState("5");
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodConfig[]>([]);
+  const [rewardEventStartDate, setRewardEventStartDate] = useState("");
+  const [rewardEventEndDate, setRewardEventEndDate] = useState("");
+  const [rewardThreshold, setRewardThreshold] = useState("20");
+  const [rewardMinActivity, setRewardMinActivity] = useState("10");
+  const [rewardDeviceDailyLimit, setRewardDeviceDailyLimit] = useState("3");
+  const [rewardBonusDays, setRewardBonusDays] = useState("90");
+  const [rewardInstructions, setRewardInstructions] = useState("");
   const [aiSettings, setAiSettings] = useState<AdminDashboardAISettings>({
     human_layer: true,
     learning_passif: true,
@@ -553,6 +561,20 @@ export default function AdminDashboard({
   }, [data?.settings]);
 
   useEffect(() => {
+    const rewardSettings = data?.reward_program?.settings;
+    if (!rewardSettings) {
+      return;
+    }
+    setRewardEventStartDate(rewardSettings.reward_event_start_date ? rewardSettings.reward_event_start_date.slice(0, 16) : "");
+    setRewardEventEndDate(rewardSettings.reward_event_end_date ? rewardSettings.reward_event_end_date.slice(0, 16) : "");
+    setRewardThreshold(String(rewardSettings.reward_referral_threshold ?? 20));
+    setRewardMinActivity(String(rewardSettings.reward_min_activity_count ?? 10));
+    setRewardDeviceDailyLimit(String(rewardSettings.reward_device_daily_limit ?? 3));
+    setRewardBonusDays(String(rewardSettings.reward_bonus_days ?? 90));
+    setRewardInstructions(rewardSettings.reward_instructions ?? "");
+  }, [data?.reward_program]);
+
+  useEffect(() => {
     if (data?.ai_settings) {
       setAiSettings(data.ai_settings);
     }
@@ -701,6 +723,81 @@ export default function AdminDashboard({
       setError("Impossible de mettre a jour la configuration IA PharmiGo.");
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function handleRewardSettingsSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsSaving(true);
+    setError(null);
+    setFeedback(null);
+    try {
+      const payload = await updateAdminSettings({
+        reward_event_start_date: rewardEventStartDate ? new Date(rewardEventStartDate).toISOString() : null,
+        reward_event_end_date: rewardEventEndDate ? new Date(rewardEventEndDate).toISOString() : null,
+        reward_referral_threshold: Number.parseInt(rewardThreshold, 10),
+        reward_min_activity_count: Number.parseInt(rewardMinActivity, 10),
+        reward_device_daily_limit: Number.parseInt(rewardDeviceDailyLimit, 10),
+        reward_bonus_days: Number.parseInt(rewardBonusDays, 10),
+        reward_instructions: rewardInstructions,
+      });
+      setData(payload);
+      setFeedback("Le programme ambassadeur a ete mis a jour.");
+    } catch {
+      logClientError("La mise a jour du programme ambassadeur a echoue.");
+      setError("Impossible de mettre a jour le programme ambassadeur.");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function handleRewardGuideBroadcast() {
+    const guideBody = rewardInstructions.trim();
+    if (!guideBody) {
+      setError("Le guide officiel ne peut pas etre vide.");
+      return;
+    }
+
+    const guideTitle = data?.reward_program?.settings.reward_guide_title || "Guide officiel de la promotion ambassadeur PharmiGo";
+    const eventDates = [
+      rewardEventStartDate ? `Debut: ${new Date(rewardEventStartDate).toLocaleString()}` : null,
+      rewardEventEndDate ? `Fin: ${new Date(rewardEventEndDate).toLocaleString()}` : null,
+    ].filter(Boolean);
+    const message = `${guideBody}${eventDates.length ? `\n\n${eventDates.join(" • ")}` : ""}`;
+
+    setIsSending(true);
+    setError(null);
+    setFeedback(null);
+    try {
+      await broadcastNotifications({
+        title: guideTitle,
+        message,
+        audience: "pharmacies",
+      });
+      setFeedback("Le guide officiel a ete envoye a toutes les pharmacies.");
+    } catch {
+      logClientError("L'envoi du guide officiel du programme ambassadeur a echoue.");
+      setError("Impossible d'envoyer le guide officiel aux pharmacies.");
+    } finally {
+      setIsSending(false);
+    }
+  }
+
+  async function handleRewardGuideCopy() {
+    const guideBody = rewardInstructions.trim();
+    if (!guideBody) {
+      setError("Le guide officiel ne peut pas etre vide.");
+      return;
+    }
+
+    const guideTitle = data?.reward_program?.settings.reward_guide_title || "Guide officiel de la promotion ambassadeur PharmiGo";
+    try {
+      await navigator.clipboard.writeText(`${guideTitle}\n\n${guideBody}`);
+      setFeedback("Le guide officiel a ete copie.");
+      setError(null);
+    } catch {
+      logClientError("La copie du guide officiel a echoue.");
+      setError("Impossible de copier le guide officiel.");
     }
   }
 
@@ -1062,6 +1159,7 @@ export default function AdminDashboard({
       items: [
         { id: "admin-settings", label: labels.settings, active: activeSection === "settings", onClick: () => setActiveSection("settings") },
         { id: "admin-ai", label: "IA PharmiGo", active: activeSection === "ai-pharmigo", onClick: () => setActiveSection("ai-pharmigo") },
+        { id: "admin-ambassador", label: "Ambassadeur", active: activeSection === "ambassador", onClick: () => setActiveSection("ambassador") },
         { id: "admin-status", label: labels.status, active: activeSection === "status", onClick: () => setActiveSection("status") },
         { id: "admin-active", label: labels.activity, active: activeSection === "active-system", onClick: () => setActiveSection("active-system") },
         { id: "admin-config", label: labels.configurations, active: activeSection === "configurations", onClick: () => setActiveSection("configurations") },
@@ -1416,6 +1514,87 @@ export default function AdminDashboard({
                 </section>
               </div>
             </div>
+          </div>
+        </DashboardPanel>
+      ) : null}
+
+      {activeSection === "ambassador" ? (
+        <DashboardPanel title="Evenement ambassadeur" description="Reglages de l'evenement, guide officiel partageable, audit des parrainages et alertes fraude." className="dashboard-panel-span-3 dashboard-keep-visible">
+          <form className="admin-settings-form" onSubmit={handleRewardSettingsSubmit}>
+            <label>
+              <span>Debut de l'evenement</span>
+              <input type="datetime-local" value={rewardEventStartDate} onChange={(event) => setRewardEventStartDate(event.target.value)} />
+            </label>
+            <label>
+              <span>Fin de l'evenement</span>
+              <input type="datetime-local" value={rewardEventEndDate} onChange={(event) => setRewardEventEndDate(event.target.value)} />
+            </label>
+            <label>
+              <span>Seuil de parrainages valides</span>
+              <input type="number" min="1" value={rewardThreshold} onChange={(event) => setRewardThreshold(event.target.value)} />
+            </label>
+            <label>
+              <span>Activite minimale</span>
+              <input type="number" min="1" value={rewardMinActivity} onChange={(event) => setRewardMinActivity(event.target.value)} />
+            </label>
+            <label>
+              <span>Limite appareil / jour</span>
+              <input type="number" min="1" value={rewardDeviceDailyLimit} onChange={(event) => setRewardDeviceDailyLimit(event.target.value)} />
+            </label>
+            <label>
+              <span>Jours gratuits accordes</span>
+              <input type="number" min="1" value={rewardBonusDays} onChange={(event) => setRewardBonusDays(event.target.value)} />
+            </label>
+            <label className="admin-settings-form-span-2">
+              <span>{data?.reward_program?.settings.reward_guide_title || "Guide officiel de la promotion ambassadeur PharmiGo"}</span>
+              <textarea value={rewardInstructions} onChange={(event) => setRewardInstructions(event.target.value)} rows={8} />
+            </label>
+            <div className="dashboard-action-stack">
+              <button type="submit" className="primary-button" disabled={isSaving}>
+                {isSaving ? "Mise a jour..." : "Enregistrer l'evenement"}
+              </button>
+              <button type="button" className="secondary-button" disabled={isSending} onClick={() => void handleRewardGuideBroadcast()}>
+                {isSending ? "Envoi..." : "Envoyer aux pharmacies"}
+              </button>
+              <button type="button" className="secondary-button" onClick={() => void handleRewardGuideCopy()}>
+                Copier le guide
+              </button>
+            </div>
+          </form>
+
+          <div className="admin-table-grid dashboard-mobile-single-stack">
+            <article className="admin-data-card">
+              <strong>Parrainages valides</strong>
+              <p>{data?.reward_program?.summary.validated_referrals_total ?? 0} / {data?.reward_program?.summary.referrals_total ?? 0}</p>
+              <small>Vue globale de l'evenement.</small>
+            </article>
+            <article className="admin-data-card">
+              <strong>Alertes fraude ouvertes</strong>
+              <p>{data?.reward_program?.summary.fraud_alerts_open ?? 0}</p>
+              <small>Blocage automatique au-dessus du seuil appareil/jour sur plusieurs dates.</small>
+            </article>
+          </div>
+
+          <div className="admin-table-grid dashboard-mobile-single-stack">
+            {(data?.reward_program?.referrals ?? []).slice(0, 12).map((item) => (
+              <article key={`admin-referral-${item.id}`} className="admin-data-card">
+                <strong>{item.referrer_name} → {item.referee_name}</strong>
+                <span className="badge info">{item.status}</span>
+                <p>Activite: {item.validated_activity_count}</p>
+                <small>Paiement: {item.payment_validated_at ? formatExactDateTime(item.payment_validated_at, language) : "En attente"}</small>
+              </article>
+            ))}
+          </div>
+
+          <div className="pharmacy-message-feed">
+            {(data?.reward_program?.fraud_alerts ?? []).slice(0, 10).map((alert) => (
+              <article key={`fraud-alert-${alert.id}`} className="landing-notification-item">
+                <strong>{alert.pharmacy_name}</strong>
+                <p>{alert.message}</p>
+                <small>{alert.repeated_dates.join(", ")} • {formatExactDateTime(alert.created_at, language)}</small>
+              </article>
+            ))}
+            {!data?.reward_program?.fraud_alerts?.length ? <div className="empty-state">Aucune alerte fraude pour le moment.</div> : null}
           </div>
         </DashboardPanel>
       ) : null}

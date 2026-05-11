@@ -19,7 +19,7 @@ import {
   fetchSubscriptionPayments,
   patchPharmacyStockItem,
 } from "../services/api";
-import type { PrescriptionRecord } from "../types";
+import type { PrescriptionRecord, RewardProgramPharmacyPayload } from "../types";
 
 interface StockItem {
   id: number;
@@ -65,6 +65,7 @@ interface SubscriptionData {
       instructions: string;
     }>;
   };
+  reward_program?: RewardProgramPharmacyPayload;
 }
 
 interface PaymentRecord {
@@ -94,6 +95,7 @@ type PharmacySection =
   | "subscription"
   | "payment-history"
   | "activity-history"
+  | "ambassador"
   | "manage-stock"
   | "configuration"
   | "activate"
@@ -231,6 +233,7 @@ export default function PharmacyDashboard({
   const [activationBusy, setActivationBusy] = useState(false);
   const [activationError, setActivationError] = useState<string | null>(null);
   const [activationSuccess, setActivationSuccess] = useState<string | null>(null);
+  const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
   const [activationForm, setActivationForm] = useState({
     payer_name: "",
     payer_address: "",
@@ -240,6 +243,19 @@ export default function PharmacyDashboard({
     proof_image: null as File | null,
   });
   const refreshInFlightRef = useRef(false);
+
+  async function copyRewardValue(value: string, successMessage: string, emptyMessage: string) {
+    if (!value.trim()) {
+      setCopyFeedback(emptyMessage);
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopyFeedback(successMessage);
+    } catch {
+      setCopyFeedback("Impossible de copier pour le moment.");
+    }
+  }
 
   const labels = {
     fr: {
@@ -652,6 +668,15 @@ export default function PharmacyDashboard({
     return () => window.clearTimeout(timer);
   }, [activationError, activationSuccess]);
 
+  useEffect(() => {
+    if (!copyFeedback) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => setCopyFeedback(null), 2500);
+    return () => window.clearTimeout(timer);
+  }, [copyFeedback]);
+
   const enabledPaymentMethods = (subscription?.payment_details?.payment_methods ?? []).filter((item) => item.enabled);
   const selectedPaymentMethod = enabledPaymentMethods.find((item) => item.code === activationForm.payment_method) ?? null;
   const isTrialSubscription = subscription?.subscription_status === "trial";
@@ -819,6 +844,12 @@ export default function PharmacyDashboard({
           label: labels.paymentHistory,
           active: activeSection === "payment-history",
           onClick: () => setActiveSection("payment-history"),
+        },
+        {
+          id: "pharm-ambassador",
+          label: "Ambassadeur",
+          active: activeSection === "ambassador",
+          onClick: () => setActiveSection("ambassador"),
         },
         {
           id: "pharm-activity-history",
@@ -1106,6 +1137,111 @@ export default function PharmacyDashboard({
           ) : (
             <div className="empty-state">Aucun paiement enregistre pour le moment.</div>
           )}
+        </DashboardPanel>
+      ) : null}
+
+      {activeSection === "ambassador" ? (
+        <DashboardPanel
+          title="Section ambassadeur"
+          description="Lien unique de parrainage, guide officiel partageable et suivi des pharmacies filleules."
+          className="dashboard-panel-span-3 dashboard-keep-visible"
+        >
+          <div className="dashboard-summary-stack dashboard-ambassador-grid">
+            <div className="dashboard-data-block dashboard-ambassador-stat">
+              <span>Code de parrainage unique</span>
+              <strong>{subscription?.reward_program?.referral_code || "Indisponible"}</strong>
+              <small>Chaque inscription faite avec ce code ou ce lien est rattachee a votre pharmacie.</small>
+            </div>
+            <div className="dashboard-data-block dashboard-ambassador-stat">
+              <span>Lien officiel de parrainage</span>
+              <strong className="dashboard-mono-text">{subscription?.reward_program?.referral_link || "Lien indisponible"}</strong>
+              <small>Partagez ce lien a une nouvelle pharmacie pour marquer automatiquement le parrainage.</small>
+            </div>
+            <div className="dashboard-data-block dashboard-ambassador-stat">
+              <span>Progression</span>
+              <strong>
+                {subscription?.reward_program?.validated_count ?? 0} / {subscription?.reward_program?.threshold ?? 20} pharmacies validees
+              </strong>
+              <div className="dashboard-chart-progress" aria-hidden="true">
+                <span
+                  className="dashboard-chart-progress-fill"
+                  style={{ width: `${Math.round((subscription?.reward_program?.progress_ratio ?? 0) * 100)}%` }}
+                />
+              </div>
+            </div>
+            <div className="dashboard-record-actions dashboard-ambassador-actions">
+              <button
+                type="button"
+                className="primary-button"
+                onClick={() =>
+                  void copyRewardValue(
+                    subscription?.reward_program?.referral_link || "",
+                    "Lien de parrainage copie !",
+                    "Lien indisponible."
+                  )
+                }
+              >
+                Copier le lien
+              </button>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() =>
+                  void copyRewardValue(
+                    subscription?.reward_program?.referral_code || "",
+                    "Code de parrainage copie !",
+                    "Code indisponible."
+                  )
+                }
+              >
+                Copier le code
+              </button>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() =>
+                  void copyRewardValue(
+                    subscription?.reward_program?.instructions || "",
+                    "Guide officiel copie !",
+                    "Guide indisponible."
+                  )
+                }
+              >
+                Copier le guide
+              </button>
+              {copyFeedback ? <span className="form-feedback success">{copyFeedback}</span> : null}
+            </div>
+            <div className="dashboard-data-block dashboard-data-block-info dashboard-ambassador-guide">
+              <span>{subscription?.reward_program?.guide_title || "Guide officiel de la promotion ambassadeur PharmiGo"}</span>
+              <p>{subscription?.reward_program?.instructions || "Aucune instruction definie pour l'evenement pour le moment."}</p>
+              <small>
+                {subscription?.reward_program?.event_window?.start ? `Debut: ${formatExactDateTime(subscription.reward_program.event_window.start, language)}` : "Debut non defini"}
+                {" • "}
+                {subscription?.reward_program?.event_window?.end ? `Fin: ${formatExactDateTime(subscription.reward_program.event_window.end, language)}` : "Fin non definie"}
+              </small>
+            </div>
+            <div className="dashboard-record-list">
+              {(subscription?.reward_program?.referrals ?? []).length ? (
+                (subscription?.reward_program?.referrals ?? []).map((referral) => (
+                  <article key={`pharm-referral-${referral.id}`} className="dashboard-record-card">
+                    <div className="dashboard-record-head">
+                      <div>
+                        <strong>{referral.pharmacy_name || "Pharmacie filleule"}</strong>
+                        <small>{formatExactDateTime(referral.created_at, language)}</small>
+                      </div>
+                      <span className="badge info">{referral.status}</span>
+                    </div>
+                    <div className="dashboard-summary-row">
+                      <span>Ordonnances reelles traitees</span>
+                      <strong>{referral.validated_activity_count}</strong>
+                    </div>
+                  </article>
+                ))
+              ) : (
+                <div className="empty-state">Aucun parrainage enregistre pour le moment.</div>
+              )}
+            </div>
+          </div>
         </DashboardPanel>
       ) : null}
 

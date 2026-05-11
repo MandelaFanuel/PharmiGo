@@ -10,6 +10,7 @@ from .payment_config import get_default_payment_methods
 
 class Pharmacy(models.Model):
     name = models.CharField(max_length=255)
+    referral_code = models.CharField(max_length=24, unique=True, blank=True, default="")
     profile_image = models.ImageField(upload_to="pharmacies/", storage=public_media_storage, blank=True, null=True)
     profile_image_blob = models.BinaryField(blank=True, null=True, editable=False)
     profile_image_content_type = models.CharField(max_length=120, blank=True, default="")
@@ -33,6 +34,18 @@ class Pharmacy(models.Model):
 
     def __str__(self) -> str:
         return self.name
+
+    def save(self, *args, **kwargs):
+        if not self.referral_code:
+            base_token = "".join(char for char in (self.name or "PHARMIGO").upper() if char.isalnum())[:8] or "PHARMIGO"
+            seed = f"{base_token}{(self.phone_number or '')[-4:]}"
+            candidate = seed[:24]
+            suffix = 1
+            while Pharmacy.objects.exclude(pk=self.pk).filter(referral_code=candidate).exists():
+                suffix += 1
+                candidate = f"{seed[:18]}{suffix:02d}"[:24]
+            self.referral_code = candidate
+        super().save(*args, **kwargs)
 
 # Contact management between pharmacies
 class PharmacyContact(models.Model):
@@ -163,6 +176,23 @@ class SubscriptionSystemSettings(models.Model):
     trial_period_days = models.PositiveIntegerField(default=30)
     monthly_price_usd = models.DecimalField(max_digits=10, decimal_places=2, default=5.00)
     payment_methods = models.JSONField(default=get_default_payment_methods)
+    reward_event_start_date = models.DateTimeField(blank=True, null=True)
+    reward_event_end_date = models.DateTimeField(blank=True, null=True)
+    reward_referral_threshold = models.PositiveIntegerField(default=20)
+    reward_min_activity_count = models.PositiveIntegerField(default=10)
+    reward_device_daily_limit = models.PositiveIntegerField(default=3)
+    reward_bonus_days = models.PositiveIntegerField(default=90)
+    reward_instructions = models.TextField(
+        blank=True,
+        default=(
+            "Programme ambassadeur PharmiGo\n\n"
+            "1. Partagez votre lien de parrainage avec une autre pharmacie.\n"
+            "2. La pharmacie filleule doit soumettre une preuve de paiement validee par l'admin.\n"
+            "3. Elle doit ensuite traiter au moins 10 ordonnances reelles.\n"
+            "4. Toute activite repetitive suspecte sur le meme appareil est bloquee et remontee a l'administration.\n"
+            "5. A partir du seuil de validations configure, PharmiGo ajoute automatiquement des jours gratuits a votre abonnement."
+        ),
+    )
     updated_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         related_name="subscription_system_settings_updates",
@@ -186,6 +216,102 @@ class SubscriptionSystemSettings(models.Model):
             settings_obj.trial_period_days = 30
             settings_obj.save(update_fields=["trial_period_days", "updated_at"])
         return settings_obj
+
+
+class PharmacyReferral(models.Model):
+    STATUS_CHOICES = [
+        ("pending_payment", "Attente Paiement"),
+        ("pending_activity", "Attente Activite"),
+        ("validated", "Valide"),
+        ("rewarded", "Recompense accordee"),
+        ("fraud_blocked", "Bloque fraude"),
+    ]
+
+    referrer = models.ForeignKey(
+        Pharmacy,
+        related_name="sent_referrals",
+        on_delete=models.CASCADE,
+    )
+    referee = models.OneToOneField(
+        Pharmacy,
+        related_name="incoming_referral",
+        on_delete=models.CASCADE,
+    )
+    status = models.CharField(max_length=24, choices=STATUS_CHOICES, default="pending_payment")
+    payment_validated_at = models.DateTimeField(blank=True, null=True)
+    payment_validated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        related_name="validated_referrals",
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+    )
+    payment_reference = models.CharField(max_length=120, blank=True, default="")
+    validated_activity_count = models.PositiveIntegerField(default=0)
+    reward_granted_at = models.DateTimeField(blank=True, null=True)
+    fraud_blocked_at = models.DateTimeField(blank=True, null=True)
+    last_evaluated_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+
+    def __str__(self) -> str:
+        return f"{self.referrer.name} -> {self.referee.name} ({self.status})"
+
+
+class PharmacyReferralDeviceLog(models.Model):
+    referral = models.ForeignKey(
+        PharmacyReferral,
+        related_name="device_logs",
+        on_delete=models.CASCADE,
+    )
+    pharmacy = models.ForeignKey(
+        Pharmacy,
+        related_name="reward_device_logs",
+        on_delete=models.CASCADE,
+    )
+    prescription_id = models.PositiveIntegerField()
+    device_fingerprint = models.CharField(max_length=120)
+    source_label = models.CharField(max_length=80, blank=True, default="")
+    activity_date = models.DateField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["referral", "prescription_id", "device_fingerprint", "activity_date"],
+                name="unique_referral_prescription_device_day",
+            ),
+        ]
+
+
+class PharmacyReferralFraudAlert(models.Model):
+    STATUS_CHOICES = [
+        ("open", "Ouverte"),
+        ("reviewed", "Examinee"),
+    ]
+
+    referral = models.ForeignKey(
+        PharmacyReferral,
+        related_name="fraud_alerts",
+        on_delete=models.CASCADE,
+    )
+    pharmacy = models.ForeignKey(
+        Pharmacy,
+        related_name="reward_fraud_alerts",
+        on_delete=models.CASCADE,
+    )
+    device_fingerprint = models.CharField(max_length=120)
+    repeated_dates = models.JSONField(default=list, blank=True)
+    message = models.TextField()
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="open")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
 
 
 class SubscriptionPayment(models.Model):

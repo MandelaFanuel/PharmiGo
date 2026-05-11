@@ -12,6 +12,14 @@ from rest_framework.test import APITestCase
 from apps.common.public_storage import PharmigoPublicMediaStorage
 from apps.notifications.models import Notification
 from apps.pharmacies.models import Pharmacy, PharmacySubscription, SubscriptionSystemSettings
+from apps.pharmacies.models import PharmacyReferral, PharmacyReferralDeviceLog, PharmacyReferralFraudAlert
+from apps.pharmacies.services.rewards import (
+    _evaluate_fraud,
+    build_pharmacy_reward_payload,
+    safe_mark_payment_validated_for_pharmacy,
+    safe_record_activity_for_referral,
+    safe_register_referral_from_code,
+)
 from apps.pharmacies.services.access import pharmacy_has_platform_access
 from apps.prescriptions.models import MedicationExtraction, PharmacyStock, Prescription, PrescriptionResponse
 from apps.users.models import UserProfile
@@ -543,3 +551,109 @@ class PharmacySubscriptionApiTests(APITestCase):
                 title="Opportunités PharmiGo en attente",
             ).exists()
         )
+
+    def test_referral_registration_from_code_creates_pending_payment_link(self):
+        referrer = Pharmacy.objects.create(
+            name="Pharmacie Ambassadeur",
+            city="Bujumbura",
+            address="Rohero II",
+            phone_number="+25761000999",
+            email="ambassadeur@example.com",
+        )
+        safe_register_referral_from_code(referral_code=referrer.referral_code, referee=self.pharmacy)
+
+        referral = PharmacyReferral.objects.get(referee=self.pharmacy)
+        self.assertEqual(referral.referrer_id, referrer.id)
+        self.assertEqual(referral.status, "pending_payment")
+
+    def test_payment_validation_and_activity_can_reward_referrer(self):
+        settings_obj = SubscriptionSystemSettings.get_solo()
+        settings_obj.reward_referral_threshold = 1
+        settings_obj.reward_min_activity_count = 2
+        settings_obj.reward_bonus_days = 90
+        settings_obj.save(
+            update_fields=[
+                "reward_referral_threshold",
+                "reward_min_activity_count",
+                "reward_bonus_days",
+                "updated_at",
+            ]
+        )
+        referrer = Pharmacy.objects.create(
+            name="Pharmacie Reward",
+            city="Bujumbura",
+            address="Kinindo",
+            phone_number="+25761000888",
+            email="reward@example.com",
+            is_verified=False,
+        )
+        PharmacySubscription.objects.create(
+            pharmacy=referrer,
+            subscription_status="expired",
+            is_trial_active=False,
+            trial_end_date=timezone.now() - timedelta(days=1),
+        )
+        safe_register_referral_from_code(referral_code=referrer.referral_code, referee=self.pharmacy)
+        safe_mark_payment_validated_for_pharmacy(self.pharmacy, payment_reference="PAY-001")
+
+        for index in range(2):
+            prescription = Prescription.objects.create(
+                patient_name=f"Patient Reward {index}",
+                patient_email=f"reward-{index}@example.com",
+                patient_user=User.objects.create_user(username=f"reward-patient-{index}", password="secret123"),
+                pharmacy=self.pharmacy,
+                status="completed",
+            )
+            safe_record_activity_for_referral(self.pharmacy, prescription, source_label="test_reward")
+
+        referral = PharmacyReferral.objects.get(referee=self.pharmacy)
+        referrer.refresh_from_db()
+        referrer_subscription = PharmacySubscription.objects.get(pharmacy=referrer)
+
+        self.assertEqual(referral.status, "rewarded")
+        self.assertTrue(referrer.is_verified)
+        self.assertEqual(referrer_subscription.subscription_status, "active")
+        self.assertIsNotNone(referrer_subscription.next_payment_due_date)
+
+    def test_repeated_device_activity_creates_fraud_alert_and_blocks_referral(self):
+        settings_obj = SubscriptionSystemSettings.get_solo()
+        settings_obj.reward_device_daily_limit = 3
+        settings_obj.save(update_fields=["reward_device_daily_limit", "updated_at"])
+        referrer = Pharmacy.objects.create(
+            name="Pharmacie Detecteur",
+            city="Bujumbura",
+            address="Ngagara",
+            phone_number="+25761000777",
+            email="detecteur@example.com",
+        )
+        safe_register_referral_from_code(referral_code=referrer.referral_code, referee=self.pharmacy)
+        referral = PharmacyReferral.objects.get(referee=self.pharmacy)
+        first_day = timezone.localdate() - timedelta(days=1)
+        second_day = timezone.localdate()
+        for day in [first_day, second_day]:
+            for offset in range(4):
+                PharmacyReferralDeviceLog.objects.create(
+                    referral=referral,
+                    pharmacy=self.pharmacy,
+                    prescription_id=100 + (offset if day == first_day else offset + 10),
+                    device_fingerprint="same-device",
+                    activity_date=day,
+                    source_label="manual-test",
+                )
+
+        _evaluate_fraud(referral, "same-device")
+        referral.refresh_from_db()
+
+        self.assertEqual(referral.status, "fraud_blocked")
+        self.assertTrue(PharmacyReferralFraudAlert.objects.filter(referral=referral).exists())
+
+    def test_reward_payload_generates_missing_referral_code_for_existing_pharmacy(self):
+        Pharmacy.objects.filter(pk=self.pharmacy.pk).update(referral_code="")
+        self.pharmacy.refresh_from_db()
+
+        payload = build_pharmacy_reward_payload(self.pharmacy)
+
+        self.pharmacy.refresh_from_db()
+        self.assertTrue(self.pharmacy.referral_code)
+        self.assertEqual(payload["referral_code"], self.pharmacy.referral_code)
+        self.assertIn(f"ref={self.pharmacy.referral_code}", payload["referral_link"])

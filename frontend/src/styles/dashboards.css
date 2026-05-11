@@ -3391,6 +3391,27 @@ canvas {
   display: flex !important;
 }
 
+.dashboard-ambassador-grid {
+  gap: 1rem;
+}
+
+.dashboard-ambassador-stat,
+.dashboard-ambassador-guide {
+  width: 100%;
+}
+
+.dashboard-ambassador-actions {
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.dashboard-mono-text {
+  font-family: "IBM Plex Mono", "Fira Code", monospace;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  word-break: break-all;
+}
+
 .admin-name-row {
   display: flex;
   align-items: center;

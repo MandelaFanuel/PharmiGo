@@ -36,6 +36,7 @@ except ImportError:  # pragma: no cover - environment dependent
 
 from .models import Pharmacy, PharmacyStock, Medicine, MedicineSynonym
 from .utils import normalize_text
+from .extensions import build_gemini_chat_service
 
 logger = logging.getLogger(__name__)
 
@@ -1439,7 +1440,7 @@ class ChatbotResponseService:
 
         self.qa_service = QAService()
         self.context_service = ChatbotContextService()
-        self.gemini_chat = GeminiChatService()
+        self.gemini_chat = build_gemini_chat_service(GeminiChatService)
 
     def answer(self, question, user=None, session=None, preferred_language: str | None = None):
         from .models import ChatbotKnowledgeBase, ChatbotLearningData

@@ -1,6 +1,6 @@
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
-from datetime import timedelta
+from datetime import datetime, timedelta
 from django.conf import settings
 from django.db.models import Avg, CharField, Count, F, FloatField, Q, Value
 from django.utils import timezone
@@ -16,8 +16,10 @@ from apps.pharmacies.models import Pharmacy, PharmacyComment, PharmacyEngagement
 from apps.pharmacies.payment_config import sanitize_payment_methods
 from apps.pharmacies.serializers import PharmacyCommentSerializer, PharmacySerializer, SubscriptionSystemSettingsSerializer
 from apps.pharmacies.services.access import PAYMENT_WALL_MESSAGE, get_active_partner_pharmacies, pharmacy_has_platform_access, sync_pharmacy_access_flags
+from apps.pharmacies.services.rewards import build_admin_reward_payload
 from apps.pharmigo_chatbot.models import ChatbotLearningData, LearnedMedicalPattern, PharmiGoAIEventLog, PharmiGoAISettings
 from apps.pharmigo_chatbot.services import AIConfigService, AIEventLogger, GeminiChatService
+from apps.pharmigo_chatbot.extensions import build_gemini_chat_service
 from apps.prescriptions.models import Prescription, PrescriptionComment, PrescriptionEngagement, PrescriptionResponse
 from apps.prescriptions.serializers import PrescriptionCommentSerializer, PrescriptionResponseSerializer, PrescriptionSerializer
 from apps.users.phone_numbers import normalize_phone_number
@@ -1143,6 +1145,42 @@ def admin_dashboard(request):
             settings_obj.payment_methods = sanitize_payment_methods(request.data.get("payment_methods"))
             update_fields.append("payment_methods")
 
+        reward_setting_fields = [
+            ("reward_event_start_date", "datetime"),
+            ("reward_event_end_date", "datetime"),
+            ("reward_referral_threshold", "int"),
+            ("reward_min_activity_count", "int"),
+            ("reward_device_daily_limit", "int"),
+            ("reward_bonus_days", "int"),
+            ("reward_instructions", "text"),
+        ]
+        for field_name, field_type in reward_setting_fields:
+            if field_name not in request.data:
+                continue
+            raw_value = request.data.get(field_name)
+            if field_type == "datetime":
+                if raw_value in [None, ""]:
+                    setattr(settings_obj, field_name, None)
+                else:
+                    try:
+                        parsed = datetime.fromisoformat(str(raw_value).replace("Z", "+00:00"))
+                    except Exception:
+                        return Response({field_name: "Date invalide."}, status=status.HTTP_400_BAD_REQUEST)
+                    if timezone.is_naive(parsed):
+                        parsed = timezone.make_aware(parsed, timezone.get_current_timezone())
+                    setattr(settings_obj, field_name, parsed)
+            elif field_type == "int":
+                try:
+                    parsed = int(raw_value)
+                except (TypeError, ValueError):
+                    return Response({field_name: "Valeur invalide."}, status=status.HTTP_400_BAD_REQUEST)
+                if parsed < 1:
+                    return Response({field_name: "La valeur doit etre superieure a zero."}, status=status.HTTP_400_BAD_REQUEST)
+                setattr(settings_obj, field_name, parsed)
+            else:
+                setattr(settings_obj, field_name, str(raw_value or "").strip())
+            update_fields.append(field_name)
+
         ai_settings_payload = request.data.get("ai_settings")
         if isinstance(ai_settings_payload, dict):
             ai_boolean_fields = [
@@ -1283,7 +1321,7 @@ def admin_dashboard(request):
     )
 
     ai_runtime_config = AIConfigService.get_current_config()
-    gemini_service = GeminiChatService()
+    gemini_service = build_gemini_chat_service(GeminiChatService)
     ai_learning_audit = list(
         LearnedMedicalPattern.objects.order_by("-created_at").values(
             "id",
@@ -1306,6 +1344,8 @@ def admin_dashboard(request):
             "created_at",
         )[:10]
     )
+
+    reward_payload = build_admin_reward_payload()
 
     return Response(
         {
@@ -1350,6 +1390,7 @@ def admin_dashboard(request):
             },
             "ai_learning_audit": ai_learning_audit,
             "ai_recent_logs": ai_recent_logs,
+            "reward_program": reward_payload,
         }
     )
 
