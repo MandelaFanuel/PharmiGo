@@ -192,7 +192,11 @@ function parseValidDate(value?: string | null) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-export default function PharmacyDashboard() {
+export default function PharmacyDashboard({
+  onRequestProfileOpen,
+}: {
+  onRequestProfileOpen?: () => void;
+}) {
   const { language } = usePreferences();
   const [stock, setStock] = useState<StockItem[]>([]);
   const [prescriptions, setPrescriptions] = useState<PrescriptionRecord[]>([]);
@@ -507,6 +511,14 @@ export default function PharmacyDashboard() {
       void documentError;
       logClientError("L'ouverture du document ordonnance pharmacie a echoue.");
     }
+  }
+
+  function triggerProfileFlow() {
+    if (onRequestProfileOpen) {
+      onRequestProfileOpen();
+      return;
+    }
+    window.dispatchEvent(new CustomEvent("open-profile-modal"));
   }
 
   function updateStockMetrics(nextStock: StockItem[]) {
@@ -1259,7 +1271,7 @@ export default function PharmacyDashboard() {
               <span>Stock synchronise</span>
               <strong>{kpis.total_stock}</strong>
             </div>
-            <button type="button" className="primary-button" onClick={() => window.dispatchEvent(new CustomEvent("open-profile-modal"))}>
+            <button type="button" className="primary-button" onClick={triggerProfileFlow}>
               Mon profil
             </button>
           </div>

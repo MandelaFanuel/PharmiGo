@@ -1851,7 +1851,7 @@ export default function Home() {
     }
 
     function openProfileModal() {
-      openModal("profile");
+      handleOpenProfile();
     }
 
     function openPharmacyStockModal() {
@@ -1877,7 +1877,7 @@ export default function Home() {
       window.removeEventListener("open-pharmacy-stock", openPharmacyStockModal);
       window.removeEventListener("pharmigo-auth-expired", handleAuthExpired);
     };
-  }, [currentUser]);
+  }, [currentUser, activeModal]);
 
   useEffect(() => {
     if (!authBootstrapped) {
@@ -2673,6 +2673,22 @@ export default function Home() {
     }
 
     openModal("upload");
+  }
+
+  function handleOpenProfile() {
+    setProfileError(null);
+    setProfileSuccess(null);
+    setProfileFieldErrors({});
+
+    if (activeModal === "dashboard") {
+      setActiveModal(null);
+      window.setTimeout(() => {
+        openModal("profile");
+      }, 0);
+      return;
+    }
+
+    openModal("profile");
   }
 
   function cycleTheme() {
@@ -5236,14 +5252,14 @@ export default function Home() {
         >
           <div className="dashboard-container">
             {currentUser.is_staff ? (
-              <AdminDashboard />
+              <AdminDashboard onRequestProfileOpen={handleOpenProfile} />
             ) : currentUser.profile?.role === "patient" ? (
               <PatientDashboard
                 onRequestNewPrescription={handleOpenUpload}
-                onRequestProfileOpen={() => openModal("profile")}
+                onRequestProfileOpen={handleOpenProfile}
               />
             ) : (
-              <PharmacyDashboard />
+              <PharmacyDashboard onRequestProfileOpen={handleOpenProfile} />
             )}
           </div>
         </ModalShell>

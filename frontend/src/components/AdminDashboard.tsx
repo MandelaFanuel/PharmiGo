@@ -230,7 +230,11 @@ type DocumentViewerState = {
   fileName?: string | null;
 };
 
-export default function AdminDashboard() {
+export default function AdminDashboard({
+  onRequestProfileOpen: _onRequestProfileOpen,
+}: {
+  onRequestProfileOpen?: () => void;
+}) {
   const { language } = usePreferences();
   const [data, setData] = useState<AdminDashboardData | null>(null);
   const [hasAdminAccess, setHasAdminAccess] = useState<boolean | null>(null);
