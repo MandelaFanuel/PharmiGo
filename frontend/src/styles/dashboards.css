@@ -635,6 +635,18 @@
   white-space: nowrap;
 }
 
+.stock-price-row {
+  display: grid;
+  grid-template-columns: minmax(92px, 120px) minmax(0, 1fr);
+  gap: 0.65rem;
+  align-items: center;
+}
+
+.stock-price-row select,
+.stock-price-row input {
+  width: 100%;
+}
+
 .stock-row-actions {
   display: inline-flex;
   align-items: center;

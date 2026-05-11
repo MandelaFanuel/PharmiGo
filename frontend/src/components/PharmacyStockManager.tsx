@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { logClientError } from "../lib/logger";
-import { createPharmacyStockItem, deletePharmacyStockItem, fetchPharmacyStock, patchPharmacyStockItem, updatePharmacyStockItem } from "../services/api";
+import { createPharmacyStockItem, deletePharmacyStockItem, fetchPharmacyStock, fetchProfile, patchPharmacyStockItem, updatePharmacyStockItem } from "../services/api";
 
 interface MedicationStock {
   id: number;
@@ -12,8 +12,25 @@ interface MedicationStock {
   quantity: number;
   unit: string;
   price: number;
+  currency: "BIF" | "FC" | "TSH";
   last_updated: string;
   is_available: boolean;
+}
+
+const PHONE_CURRENCY_MAP: Record<string, "BIF" | "FC" | "TSH"> = {
+  "+257": "BIF",
+  "+243": "FC",
+  "+255": "TSH",
+};
+
+function inferCurrencyFromPhoneNumber(phoneNumber?: string | null): "BIF" | "FC" | "TSH" {
+  const normalized = String(phoneNumber ?? "").trim();
+  for (const [prefix, currency] of Object.entries(PHONE_CURRENCY_MAP)) {
+    if (normalized.startsWith(prefix)) {
+      return currency;
+    }
+  }
+  return "BIF";
 }
 
 function normalizeStockItem(item: unknown): MedicationStock {
@@ -38,6 +55,7 @@ function normalizeStockItem(item: unknown): MedicationStock {
     quantity: parseNumeric(record.quantity, 0),
     unit: typeof record.unit === "string" ? record.unit : "",
     price: parseNumeric(record.price, 0),
+    currency: record.currency === "FC" || record.currency === "TSH" || record.currency === "BIF" ? record.currency : "BIF",
     last_updated: typeof record.last_updated === "string" ? record.last_updated : "",
     is_available: typeof record.is_available === "boolean" ? record.is_available : Boolean(record.is_available),
   };
@@ -50,6 +68,7 @@ interface MedicationForm {
   quantity: number;
   unit: string;
   price: number;
+  currency: "BIF" | "FC" | "TSH";
   is_available: boolean;
 }
 
@@ -63,6 +82,7 @@ export default function PharmacyStockManager({
   const [stock, setStock] = useState<MedicationStock[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [busyStockId, setBusyStockId] = useState<number | null>(null);
+  const [detectedCurrency, setDetectedCurrency] = useState<"BIF" | "FC" | "TSH">("BIF");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -74,11 +94,13 @@ export default function PharmacyStockManager({
     quantity: 1,
     unit: "comprimés",
     price: 0,
+    currency: "BIF",
     is_available: true,
   });
 
   useEffect(() => {
     void loadStock();
+    void loadCurrencyContext();
   }, []);
 
   useEffect(() => {
@@ -139,6 +161,21 @@ export default function PharmacyStockManager({
     }
   }
 
+  async function loadCurrencyContext() {
+    try {
+      const profile = await fetchProfile();
+      const phoneNumber =
+        profile.profile?.pharmacy_phone_number ||
+        profile.profile?.phone_number ||
+        "";
+      const inferredCurrency = inferCurrencyFromPhoneNumber(phoneNumber);
+      setDetectedCurrency(inferredCurrency);
+      setFormData((current) => ({ ...current, currency: inferredCurrency }));
+    } catch (err) {
+      void err;
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setIsLoading(true);
@@ -158,7 +195,9 @@ export default function PharmacyStockManager({
       setEditingItem(null);
       resetForm();
     } catch (err) {
-      setError("Erreur lors de l'enregistrement");
+      const payload = (err as { response?: { data?: Record<string, unknown> } })?.response?.data;
+      const currencyError = Array.isArray(payload?.currency) ? String(payload?.currency[0]) : typeof payload?.currency === "string" ? payload.currency : null;
+      setError(currencyError || "Erreur lors de l'enregistrement");
       void err;
       logClientError("L'enregistrement du stock a echoue.");
     } finally {
@@ -194,6 +233,7 @@ export default function PharmacyStockManager({
       quantity: item.quantity,
       unit: item.unit,
       price: item.price,
+      currency: item.currency,
       is_available: item.is_available,
     });
     setShowForm(true);
@@ -207,6 +247,7 @@ export default function PharmacyStockManager({
       quantity: 1,
       unit: "comprimés",
       price: 0,
+      currency: detectedCurrency,
       is_available: true,
     });
   }
@@ -305,8 +346,19 @@ export default function PharmacyStockManager({
                 </select>
               </label>
               <label>
-                <span>Prix (FCFA) *</span>
-                <input type="number" min="0" step="0.01" value={formData.price} onChange={(e) => setFormData({ ...formData, price: parseFloat(e.target.value) || 0 })} required />
+                <span>Prix ({formData.currency}) *</span>
+                <div className="stock-price-row">
+                  <select
+                    value={formData.currency}
+                    onChange={(e) => setFormData({ ...formData, currency: e.target.value as "BIF" | "FC" | "TSH" })}
+                  >
+                    <option value="BIF">BIF</option>
+                    <option value="FC">FC</option>
+                    <option value="TSH">TSH</option>
+                  </select>
+                  <input type="number" min="0" step="0.01" value={formData.price} onChange={(e) => setFormData({ ...formData, price: parseFloat(e.target.value) || 0 })} required />
+                </div>
+                <small>La devise doit correspondre au pays du numéro de telephone de la pharmacie.</small>
               </label>
             </div>
 
@@ -365,7 +417,7 @@ export default function PharmacyStockManager({
                       </button>
                     </div>
                     <span className="stock-row-unit">{item.unit}</span>
-                    <span className="stock-row-price">{item.price.toFixed(2)} FCFA</span>
+                    <span className="stock-row-price">{item.price.toFixed(2)} {item.currency}</span>
                     <span className={`badge ${item.is_available ? "success" : "warning"}`}>{item.is_available ? "Disponible" : "Indisponible"}</span>
                     <div className="stock-row-actions">
                       <button className="icon-button compact" onClick={() => handleEdit(item)} title="Modifier" disabled={busyStockId === item.id}>

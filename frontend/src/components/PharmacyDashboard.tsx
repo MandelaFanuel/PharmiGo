@@ -29,6 +29,7 @@ interface StockItem {
   quantity: number;
   unit: string;
   price: number;
+  currency: "BIF" | "FC" | "TSH";
   is_available: boolean;
 }
 
@@ -153,9 +154,10 @@ function isImageDocument(url?: string | null) {
   return Boolean(url && /\.(png|jpe?g|gif|webp|bmp|svg)(\?.*)?$/i.test(url));
 }
 
-function formatCurrencyValue(value: unknown) {
+function formatCurrencyValue(value: unknown, currency = "BIF") {
   const parsed = typeof value === "number" ? value : Number.parseFloat(String(value ?? 0));
-  return Number.isFinite(parsed) ? parsed.toFixed(2) : "0.00";
+  const amount = Number.isFinite(parsed) ? parsed.toFixed(2) : "0.00";
+  return `${amount} ${currency}`;
 }
 
 function formatPresenceLabel(isOnline?: boolean, lastSeen?: string | null, language = "fr") {
@@ -918,7 +920,7 @@ export default function PharmacyDashboard({
                     {item.dosage ? <span>{item.dosage}</span> : null}
                     <div className="stock-item-details">
                       <span>Quantite: {item.quantity} {item.unit}</span>
-                      <span>Prix: {formatCurrencyValue(item.price)}</span>
+                      <span>Prix: {formatCurrencyValue(item.price, item.currency)}</span>
                     </div>
                     <div className="dashboard-stock-inline-actions">
                       <div className="stock-quantity-controls">

@@ -14,6 +14,21 @@ from .models import (
 User = get_user_model()
 
 
+PHONE_CURRENCY_MAP = {
+    "+257": "BIF",
+    "+243": "FC",
+    "+255": "TSH",
+}
+
+
+def infer_currency_from_phone_number(phone_number: str | None) -> str | None:
+    normalized = str(phone_number or "").strip()
+    for prefix, currency in PHONE_CURRENCY_MAP.items():
+        if normalized.startswith(prefix):
+            return currency
+    return None
+
+
 class PrescriptionResponseSerializer(serializers.ModelSerializer):
     pharmacy_name = serializers.CharField(source="pharmacy.name", read_only=True)
 
@@ -263,6 +278,7 @@ class PharmacyStockSerializer(serializers.ModelSerializer):
             "quantity",
             "unit",
             "price",
+            "currency",
             "last_updated",
             "is_available",
         ]
@@ -277,3 +293,36 @@ class PharmacyStockSerializer(serializers.ModelSerializer):
         if value < 0:
             raise serializers.ValidationError("Le prix ne peut pas être négatif.")
         return value
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        pharmacy = attrs.get("pharmacy")
+        if pharmacy is None:
+            instance = getattr(self, "instance", None)
+            pharmacy = getattr(instance, "pharmacy", None)
+        if pharmacy is None:
+            request = self.context.get("request")
+            request_user = getattr(request, "user", None) if request is not None else None
+            request_profile = getattr(request_user, "profile", None)
+            pharmacy = getattr(request_profile, "pharmacy", None)
+
+        expected_currency = infer_currency_from_phone_number(getattr(pharmacy, "phone_number", None))
+        submitted_currency = attrs.get("currency")
+
+        if submitted_currency is None and getattr(self, "instance", None) is not None:
+            submitted_currency = getattr(self.instance, "currency", None)
+
+        if submitted_currency is None:
+            submitted_currency = expected_currency or "BIF"
+            attrs["currency"] = submitted_currency
+
+        if expected_currency and submitted_currency != expected_currency:
+            raise serializers.ValidationError(
+                {
+                    "currency": (
+                        f"Cette pharmacie utilise la devise {expected_currency} selon son numéro {pharmacy.phone_number}."
+                    )
+                }
+            )
+
+        return attrs

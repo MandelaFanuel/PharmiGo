@@ -329,6 +329,41 @@ class PharmacySubscriptionApiTests(APITestCase):
         self.assertTrue(self.pharmacy.wholesale_supported)
         self.assertFalse(self.pharmacy.retail_supported)
 
+    def test_pharmacy_stock_creation_uses_phone_currency_by_default(self):
+        response = self.client.post(
+            "/api/prescriptions/pharmacy-stock/",
+            {
+                "medication_name": "Paracetamol",
+                "dosage": "500mg",
+                "quantity": 4,
+                "unit": "boîtes",
+                "price": "2500",
+                "is_available": True,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["currency"], "BIF")
+
+    def test_pharmacy_stock_creation_rejects_currency_not_matching_phone_country(self):
+        response = self.client.post(
+            "/api/prescriptions/pharmacy-stock/",
+            {
+                "medication_name": "Amoxicilline",
+                "dosage": "500mg",
+                "quantity": 2,
+                "unit": "boîtes",
+                "price": "1500",
+                "currency": "TSH",
+                "is_available": True,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("currency", response.data)
+
     def test_pharmacy_profile_patch_requires_at_least_one_sales_mode(self):
         response = self.client.patch(
             "/api/profile/",

@@ -198,6 +198,20 @@ export interface PrescriptionBotResult {
   recommendation_status?: "searching" | "ready" | "empty" | "failed";
 }
 
+export interface PharmacyStockItem {
+  id: number;
+  pharmacy_name: string;
+  medication_name: string;
+  generic_name?: string | null;
+  dosage?: string | null;
+  quantity: number;
+  unit: string;
+  price: number;
+  currency: "BIF" | "FC" | "TSH";
+  last_updated: string;
+  is_available: boolean;
+}
+
 export interface PrescriptionUploadReceipt {
   status: string;
   task_id: string;

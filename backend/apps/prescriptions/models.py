@@ -347,6 +347,12 @@ class PrescriptionStatusHistory(models.Model):
 
 class PharmacyStock(models.Model):
     """Track medication stock in each pharmacy"""
+    CURRENCY_CHOICES = [
+        ("BIF", "BIF"),
+        ("FC", "FC"),
+        ("TSH", "TSH"),
+    ]
+
     pharmacy = models.ForeignKey(
         Pharmacy,
         related_name="stock",
@@ -358,6 +364,7 @@ class PharmacyStock(models.Model):
     quantity = models.IntegerField(default=0)
     unit = models.CharField(max_length=50, default="comprimés")
     price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    currency = models.CharField(max_length=4, choices=CURRENCY_CHOICES, default="BIF")
     last_updated = models.DateTimeField(auto_now=True)
     is_available = models.BooleanField(default=True)
     
