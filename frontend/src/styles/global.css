@@ -60,20 +60,27 @@
 
 html {
   min-height: 100%;
-
   background: var(--bg);
   scroll-behavior: smooth;
+  -webkit-tap-highlight-color: transparent;
+  overflow-x: hidden;
 }
 
 body {
   margin: 0;
   min-height: 100vh;
+  padding:
+    env(safe-area-inset-top, 0px)
+    env(safe-area-inset-right, 0px)
+    env(safe-area-inset-bottom, 0px)
+    env(safe-area-inset-left, 0px);
   font-family: "Aptos", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   color: var(--text);
   background:
     radial-gradient(circle at top left, rgba(106, 164, 216, 0.18), transparent 24%),
     linear-gradient(180deg, var(--bg) 0%, color-mix(in srgb, var(--bg) 82%, #d8ebfbee 18%) 38%, var(--bg) 100%);
   transition: background 180ms ease, color 180ms ease;
+  -webkit-text-size-adjust: 100%;
 }
 
 a {
