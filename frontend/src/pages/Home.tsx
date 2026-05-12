@@ -777,6 +777,7 @@ export default function Home() {
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [authBootstrapped, setAuthBootstrapped] = useState(false);
   const dashboardRefreshInFlightRef = useRef(false);
+  const activeModalRef = useRef<ModalType>(null);
   const [, setIsLanguageMenuOpen] = useState(false);
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
   const [isNotificationMenuOpen, setIsNotificationMenuOpen] = useState(false);
@@ -1784,6 +1785,10 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    activeModalRef.current = activeModal;
+  }, [activeModal]);
+
+  useEffect(() => {
     let socket: WebSocket | null = null;
     let reconnectTimer: number | null = null;
     let pollingTimer: number | null = null;
@@ -1793,6 +1798,10 @@ export default function Home() {
       window.location.hostname === "127.0.0.1";
 
     const refreshDashboardData = async () => {
+      if (activeModalRef.current === "dashboard") {
+        return;
+      }
+
       if (dashboardRefreshInFlightRef.current) {
         return;
       }
@@ -1822,6 +1831,11 @@ export default function Home() {
       socket = new WebSocket(getChatWebSocketUrl("public-feed"));
       socket.onopen = () => setLiveFeedConnected(true);
       socket.onmessage = (event) => {
+        if (activeModalRef.current === "dashboard") {
+          setLiveFeedConnected(true);
+          return;
+        }
+
         try {
           const parsed = JSON.parse(event.data) as {
             type?: string;

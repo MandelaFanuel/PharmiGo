@@ -3,6 +3,7 @@ import { startTransition, useDeferredValue, useEffect, useMemo, useRef, useState
 import DashboardScaffold, { DashboardPanel, EyeGlyph, RefreshGlyph } from "./DashboardScaffold";
 import InAppDocumentViewer from "./InAppDocumentViewer";
 import PublicPrescriptionSheet from "./PublicPrescriptionSheet";
+import { getChatWebSocketUrl } from "../config/endpoints";
 import { getApiOrigin } from "../config/endpoints";
 import { usePreferences } from "../context/PreferencesContext";
 import { getStoredAuthToken } from "../lib/auth";
@@ -22,6 +23,15 @@ type PatientSection = "dashboard" | "prescriptions" | "ocr" | "history" | "new-p
 
 const PAGE_SIZE = 4;
 const SEARCH_LOCALES = ["fr-FR", "en-US", "sw-TZ"] as const;
+const PATIENT_DASHBOARD_REFRESH_EVENTS = new Set([
+  "prescription.created",
+  "prescription.confirmed",
+  "prescription.search.completed",
+  "prescription.pharmacy_selected",
+  "prescription.served",
+  "prescription.patient_confirmation",
+  "notification.broadcast",
+]);
 
 function buildSearchIndex(parts: Array<string | number | null | undefined>, dateValues: Array<string | null | undefined> = []) {
   const dateTokens = dateValues.flatMap((dateValue) => {
@@ -247,6 +257,56 @@ export default function PatientDashboard({
 
   useEffect(() => {
     void loadDashboardData();
+  }, []);
+
+  useEffect(() => {
+    let socket: WebSocket | null = null;
+    let reconnectTimer: number | null = null;
+    let pollingTimer: number | null = null;
+    const shouldUsePollingFallback =
+      import.meta.env.DEV ||
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1";
+
+    const refreshDashboardData = async () => {
+      await loadDashboardData(false);
+    };
+
+    const connect = () => {
+      if (shouldUsePollingFallback) {
+        pollingTimer = window.setInterval(() => {
+          void refreshDashboardData();
+        }, 20000);
+        return;
+      }
+
+      socket = new WebSocket(getChatWebSocketUrl("public-feed"));
+      socket.onmessage = (event) => {
+        try {
+          const parsed = JSON.parse(event.data) as { type?: string; event_type?: string };
+          if (parsed.type === "feed.event" && parsed.event_type && PATIENT_DASHBOARD_REFRESH_EVENTS.has(parsed.event_type)) {
+            void refreshDashboardData();
+          }
+        } catch {
+          // Ignore malformed feed payloads without forcing a full dashboard refresh.
+        }
+      };
+      socket.onclose = () => {
+        reconnectTimer = window.setTimeout(connect, 2500);
+      };
+    };
+
+    connect();
+
+    return () => {
+      if (pollingTimer) {
+        window.clearInterval(pollingTimer);
+      }
+      if (reconnectTimer) {
+        window.clearTimeout(reconnectTimer);
+      }
+      socket?.close();
+    };
   }, []);
 
   useEffect(() => {

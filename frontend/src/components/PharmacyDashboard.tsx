@@ -283,6 +283,107 @@ function ShareGlyph() {
   );
 }
 
+function WhatsAppGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M12.02 2.5a9.5 9.5 0 0 0-8.22 14.26L2.5 21.5l4.88-1.26A9.5 9.5 0 1 0 12.02 2.5Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M9.3 8.55c.2-.45.4-.46.59-.47.15-.01.33-.01.51-.01.18 0 .47.07.72.34.25.27.95.93.95 2.27 0 1.34-.97 2.64-1.1 2.82-.13.18-1.89 3.03-4.67 4.12-.95.37-1.7.59-2.28.75-.96.26-1.84.22-2.53.13-.77-.1-2.38-.97-2.72-1.9-.34-.93-.34-1.73-.24-1.9.1-.17.37-.27.77-.47.4-.2.84-.46 1.12-.68.28-.23.48-.26.81.13.33.38 1.37 1.7 1.65 2.03.28.33.57.37.97.13.4-.23 1.67-.61 2.5-1.95.66-1.05.68-1.95.48-2.18-.2-.23-.44-.52-.68-.79-.24-.27-.51-.59-.72-.79-.22-.2-.44-.17-.64.28Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
+function FacebookGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M13.5 21v-7h2.35l.35-2.75H13.5V9.5c0-.8.22-1.35 1.38-1.35h1.47V5.68c-.25-.04-1.12-.11-2.13-.11-2.1 0-3.55 1.29-3.55 3.66v2.02H8.3V14h2.37v7h2.83Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
+function PencilGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="m4 20 4.1-.9L18.7 8.5a1.6 1.6 0 0 0 0-2.26l-.94-.94a1.6 1.6 0 0 0-2.26 0L4.9 15.9 4 20Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="m13.9 6.9 3.2 3.2" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function TrashGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4.5 7.5h15" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path
+        d="M9.5 3.75h5l.7 1.75H19a.75.75 0 0 1 .75.75v.5H4.25v-.5A.75.75 0 0 1 5 5.5h3.8l.7-1.75Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M6.5 7.5 7.25 19a1.5 1.5 0 0 0 1.5 1.4h6.5a1.5 1.5 0 0 0 1.5-1.4L17.5 7.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M10 11v5M14 11v5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function PlusGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function MinusGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M5 12h14" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function ConfirmGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="m5 12.5 4.2 4.2L19 7"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function getReferralStatusLabel(status: string) {
   const labels: Record<string, string> = {
     pending_payment: "Attente paiement",
@@ -316,6 +417,16 @@ function canPharmacyConfirmPrescription(prescription: PrescriptionRecord, curren
   }
   return ["pharmacy_selected", "confirmed", "confirmed_unavailable", "searching", "preparing", "ready"].includes(prescription.status);
 }
+
+const PHARMACY_DASHBOARD_REFRESH_EVENTS = new Set([
+  "prescription.created",
+  "prescription.confirmed",
+  "prescription.search.completed",
+  "prescription.pharmacy_selected",
+  "prescription.served",
+  "prescription.patient_confirmation",
+  "notification.broadcast",
+]);
 
 export default function PharmacyDashboard({
   onRequestProfileOpen,
@@ -578,8 +689,15 @@ export default function PharmacyDashboard({
       }
 
       socket = new WebSocket(getChatWebSocketUrl("public-feed"));
-      socket.onmessage = () => {
-        void refreshDashboardData();
+      socket.onmessage = (event) => {
+        try {
+          const parsed = JSON.parse(event.data) as { type?: string; event_type?: string };
+          if (parsed.type === "feed.event" && parsed.event_type && PHARMACY_DASHBOARD_REFRESH_EVENTS.has(parsed.event_type)) {
+            void refreshDashboardData();
+          }
+        } catch {
+          // Ignore malformed feed payloads without forcing a full dashboard refresh.
+        }
       };
       socket.onclose = () => {
         reconnectTimer = window.setTimeout(connect, 2500);
@@ -641,20 +759,13 @@ export default function PharmacyDashboard({
         parseValidDate(profile.profile?.created_at);
 
       const prescriptionData = (dashboard.prescriptions ?? []).filter((item) => {
+        const belongsToCurrentPharmacy = item.pharmacy === currentPharmacyId;
+        const visibleGlobalStatuses = ["uploaded", "analyzing", "confirmed", "confirmed_unavailable", "searching", "confirmation_pending"];
+        const visibleAssignedStatuses = ["pharmacy_selected", "preparing", "ready", "served", "patient_confirmed", "completed"];
         const canDisplayForPharmacy =
-          item.pharmacy === currentPharmacyId ||
-          item.status === "uploaded" ||
-          item.status === "analyzing" ||
-          item.status === "confirmed" ||
-          item.status === "confirmed_unavailable" ||
-          item.status === "searching" ||
-          item.status === "confirmation_pending" ||
-          item.status === "pharmacy_selected" ||
-          item.status === "preparing" ||
-          item.status === "ready" ||
-          item.status === "served" ||
-          item.status === "patient_confirmed" ||
-          item.status === "completed";
+          belongsToCurrentPharmacy ||
+          visibleGlobalStatuses.includes(item.status) ||
+          (visibleAssignedStatuses.includes(item.status) && belongsToCurrentPharmacy);
 
         if (!canDisplayForPharmacy) {
           return false;
@@ -1227,7 +1338,7 @@ export default function PharmacyDashboard({
                           disabled={stockActionBusyId === item.id || item.quantity <= 0}
                           aria-label={`Reduire la quantite de ${item.medication_name}`}
                         >
-                          -
+                          <MinusGlyph />
                         </button>
                         <strong>{item.quantity}</strong>
                         <button
@@ -1237,7 +1348,7 @@ export default function PharmacyDashboard({
                           disabled={stockActionBusyId === item.id}
                           aria-label={`Augmenter la quantite de ${item.medication_name}`}
                         >
-                          +
+                          <PlusGlyph />
                         </button>
                       </div>
                       <div className="stock-row-actions">
@@ -1249,7 +1360,7 @@ export default function PharmacyDashboard({
                           aria-label={`Modifier ${item.medication_name}`}
                           disabled={stockActionBusyId === item.id}
                         >
-                          ✏️
+                          <PencilGlyph />
                         </button>
                         <button
                           type="button"
@@ -1259,7 +1370,7 @@ export default function PharmacyDashboard({
                           aria-label={`Supprimer ${item.medication_name}`}
                           disabled={stockActionBusyId === item.id}
                         >
-                          🗑️
+                          <TrashGlyph />
                         </button>
                       </div>
                     </div>
@@ -1454,11 +1565,11 @@ export default function PharmacyDashboard({
                     {isShareMenuOpen ? (
                       <div className="dashboard-ambassador-share-menu" role="menu" aria-label="Partager le lien de parrainage">
                         <button type="button" className="dashboard-ambassador-share-option" onClick={() => openSocialShare("whatsapp")}>
-                          <span className="dashboard-ambassador-share-icon whatsapp">W</span>
+                          <span className="dashboard-ambassador-share-icon whatsapp"><WhatsAppGlyph /></span>
                           <span>WhatsApp</span>
                         </button>
                         <button type="button" className="dashboard-ambassador-share-option" onClick={() => openSocialShare("facebook")}>
-                          <span className="dashboard-ambassador-share-icon facebook">f</span>
+                          <span className="dashboard-ambassador-share-icon facebook"><FacebookGlyph /></span>
                           <span>Facebook</span>
                         </button>
                       </div>
@@ -1882,7 +1993,8 @@ function AvailablePrescriptionList({
                   onClick={() => onConfirmPrescription(prescription)}
                   disabled={confirmBusyId === prescription.id}
                 >
-                  {confirmBusyId === prescription.id ? "Confirmation..." : "Confirmer ordonnance servie"}
+                  <ConfirmGlyph />
+                  <span>{confirmBusyId === prescription.id ? "Confirmation..." : "Confirmer ordonnance servie"}</span>
                 </button>
               </div>
             ) : null}

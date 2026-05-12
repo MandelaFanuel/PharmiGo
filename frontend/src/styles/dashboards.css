@@ -661,6 +661,20 @@
   white-space: nowrap;
 }
 
+.stock-row-actions .icon-button.compact,
+.stock-quantity-controls .icon-button.compact {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--line) 80%, transparent 20%);
+  background: color-mix(in srgb, var(--surface-strong) 94%, white 6%);
+  color: var(--accent);
+}
+
+.stock-row-actions .icon-button.compact.delete {
+  color: #b91c1c;
+}
+
 .stock-table {
   width: 100%;
   border-collapse: collapse;
@@ -692,6 +706,12 @@
   min-height: 2rem;
   padding: 0;
   font-size: 0.88rem;
+}
+
+.icon-button.compact svg {
+  width: 0.95rem;
+  height: 0.95rem;
+  display: block;
 }
 
 .success-message,
@@ -3564,6 +3584,12 @@ canvas {
   font-weight: 800;
 }
 
+.dashboard-ambassador-share-icon svg {
+  width: 0.98rem;
+  height: 0.98rem;
+  display: block;
+}
+
 .dashboard-ambassador-share-icon.whatsapp {
   background: #22c55e;
 }
@@ -3597,6 +3623,25 @@ canvas {
   justify-content: space-between;
   gap: 1rem;
   margin-top: 1rem;
+}
+
+.dashboard-record-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.7rem;
+  margin-top: 0.85rem;
+}
+
+.dashboard-record-actions .primary-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.dashboard-record-actions .primary-button svg {
+  width: 1rem;
+  height: 1rem;
+  display: block;
 }
 
 .dashboard-ambassador-guide-copy {
