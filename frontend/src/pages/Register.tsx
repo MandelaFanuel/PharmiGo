@@ -1,4 +1,4 @@
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import GoogleSignInButton from "../components/GoogleSignInButton";
@@ -110,6 +110,14 @@ export default function Register() {
   });
   const [showPatientPassword, setShowPatientPassword] = useState(false);
   const [showPharmacyPassword, setShowPharmacyPassword] = useState(false);
+
+  useEffect(() => {
+    if (!error) {
+      return;
+    }
+    const timer = window.setTimeout(() => setError(null), 5000);
+    return () => window.clearTimeout(timer);
+  }, [error]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

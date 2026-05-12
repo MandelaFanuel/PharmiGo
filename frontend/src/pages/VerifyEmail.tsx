@@ -43,6 +43,17 @@ export default function VerifyEmail() {
   }, [debugVerificationToken]);
 
   useEffect(() => {
+    if (!resendMessage && !resendError) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setResendMessage(null);
+      setResendError(null);
+    }, 5000);
+    return () => window.clearTimeout(timer);
+  }, [resendError, resendMessage]);
+
+  useEffect(() => {
     if (!token) {
       setStatus("loading");
       setMessage(initialMessage || "Un email de verification a ete envoye. Ouvrez votre boite mail puis cliquez sur le lien recu.");

@@ -152,7 +152,8 @@ class UserProfileImageView(APIView):
                 content_type, _ = mimetypes.guess_type(image_field.name)
                 image_file = storage.open(image_field.name, "rb")
                 response = FileResponse(image_file, content_type=content_type or "application/octet-stream")
-                response["Cache-Control"] = "public, max-age=3600"
+                response["Cache-Control"] = "private, no-store, max-age=0, must-revalidate"
+                response["Pragma"] = "no-cache"
                 return response
 
         if user.profile.profile_image_blob:
@@ -160,7 +161,8 @@ class UserProfileImageView(APIView):
                 user.profile.profile_image_blob,
                 content_type=user.profile.profile_image_content_type or "application/octet-stream",
             )
-            response["Cache-Control"] = "public, max-age=3600"
+            response["Cache-Control"] = "private, no-store, max-age=0, must-revalidate"
+            response["Pragma"] = "no-cache"
             if user.profile.profile_image_original_name:
                 response["Content-Disposition"] = f'inline; filename="{user.profile.profile_image_original_name}"'
             return response

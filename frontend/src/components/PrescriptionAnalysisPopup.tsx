@@ -55,6 +55,14 @@ export default function PrescriptionAnalysisPopup({
     setSearchStep(null);
   }, [result]);
 
+  useEffect(() => {
+    if (!error) {
+      return;
+    }
+    const timer = window.setTimeout(() => setError(null), 5000);
+    return () => window.clearTimeout(timer);
+  }, [error]);
+
   async function handleSelect(pharmacyId: number, pharmacyName: string) {
     setBusyPharmacyId(pharmacyId);
     setError(null);

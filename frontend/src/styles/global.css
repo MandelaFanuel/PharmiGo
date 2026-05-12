@@ -1477,6 +1477,8 @@ label span {
   color: var(--muted);
   line-height: 1.55;
   font-size: 0.88rem;
+  white-space: pre-line;
+  word-break: break-word;
 }
 
 .landing-popover-menu.notification-menu {
@@ -5945,6 +5947,8 @@ label span {
   grid-template-rows: auto minmax(0, 1fr) auto;
   min-height: 620px;
   overflow: hidden;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-strong) 96%, transparent 4%), color-mix(in srgb, var(--surface) 90%, transparent 10%));
 }
 
 .pharmacy-chat-thread-head {
@@ -5984,7 +5988,7 @@ label span {
   padding: 20px 18px;
   background:
     radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 8%, transparent 92%), transparent 30%),
-    linear-gradient(180deg, color-mix(in srgb, var(--surface) 76%, transparent 24%), color-mix(in srgb, var(--surface-strong) 94%, transparent 6%));
+    linear-gradient(180deg, color-mix(in srgb, #eef7f3 86%, transparent 14%), color-mix(in srgb, var(--surface-strong) 94%, transparent 6%));
 }
 
 .pharmacy-chat-bubble {
@@ -6000,19 +6004,19 @@ label span {
 }
 
 .pharmacy-chat-bubble-card {
-  max-width: min(520px, 82%);
+  max-width: min(560px, 84%);
   display: grid;
   gap: 6px;
   padding: 12px 14px;
-  border-radius: 18px;
+  border-radius: 16px;
   border: 1px solid var(--line);
   background: color-mix(in srgb, var(--surface-strong) 98%, transparent 2%);
   box-shadow: 0 10px 24px rgba(8, 30, 51, 0.08);
 }
 
 .pharmacy-chat-bubble.outgoing .pharmacy-chat-bubble-card {
-  background: color-mix(in srgb, var(--primary) 16%, var(--surface-strong) 84%);
-  border-color: color-mix(in srgb, var(--primary) 24%, var(--line) 76%);
+  background: color-mix(in srgb, #dcf8e7 90%, var(--surface-strong) 10%);
+  border-color: color-mix(in srgb, #7acda0 40%, var(--line) 60%);
 }
 
 .pharmacy-chat-bubble-card p {
@@ -6046,23 +6050,33 @@ label span {
 }
 
 .pharmacy-chat-composer-field textarea {
-  min-height: 122px;
-  max-height: 220px;
+  min-height: 64px;
+  max-height: 168px;
   resize: vertical;
 }
 
 .pharmacy-chat-send-button {
-  min-width: 72px;
-  width: 72px;
-  min-height: 72px;
-  padding: 0;
-  border-radius: 22px;
-  align-self: stretch;
+  min-width: 126px;
+  width: auto;
+  min-height: 56px;
+  padding: 0 18px;
+  border-radius: 999px;
+  align-self: end;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
 }
 
 .pharmacy-chat-send-button .landing-svg-icon {
   width: 24px;
   height: 24px;
+}
+
+.pharmacy-chat-send-button-label {
+  font-size: 0.92rem;
+  font-weight: 800;
+  line-height: 1;
 }
 
 :root[data-theme="dark"] .landing-nav,

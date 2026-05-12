@@ -94,6 +94,55 @@ function normalizeStockItem(item: unknown): MedicationStock {
   };
 }
 
+function PlusGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function MinusGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M5 12h14" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function PencilGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="m4 20 4.1-.9L18.7 8.5a1.6 1.6 0 0 0 0-2.26l-.94-.94a1.6 1.6 0 0 0-2.26 0L4.9 15.9 4 20Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="m13.9 6.9 3.2 3.2" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function TrashGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4.5 7.5h15" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path
+        d="M9.5 3.75h5l.7 1.75H19a.75.75 0 0 1 .75.75v.5H4.25v-.5A.75.75 0 0 1 5 5.5h3.8l.7-1.75Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <path d="M7.5 7.5 8.4 19h7.2l.9-11.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+      <path d="M10 11v5.5M14 11v5.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 interface MedicationForm {
   medication_name: string;
   generic_name: string;
@@ -499,7 +548,7 @@ export default function PharmacyStockManager({
                         disabled={isLoading || busyStockId === item.id || item.quantity <= 0}
                         aria-label={`Reduire la quantite de ${item.medication_name}`}
                       >
-                        -
+                        <MinusGlyph />
                       </button>
                       <strong>{item.quantity}</strong>
                       <button
@@ -509,7 +558,7 @@ export default function PharmacyStockManager({
                         disabled={isLoading || busyStockId === item.id}
                         aria-label={`Augmenter la quantite de ${item.medication_name}`}
                       >
-                        +
+                        <PlusGlyph />
                       </button>
                     </div>
                     <span className="stock-row-unit">{item.unit}</span>
@@ -517,11 +566,11 @@ export default function PharmacyStockManager({
                     <span className="stock-row-price">{item.price.toFixed(2)} {item.currency}</span>
                     <span className={`badge ${item.is_available ? "success" : "warning"}`}>{item.is_available ? "Disponible" : "Indisponible"}</span>
                     <div className="stock-row-actions">
-                      <button className="icon-button compact" onClick={() => handleEdit(item)} title="Modifier" disabled={busyStockId === item.id}>
-                        ✏️
+                      <button className="icon-button compact" onClick={() => handleEdit(item)} title="Modifier" aria-label={`Modifier ${item.medication_name}`} disabled={busyStockId === item.id}>
+                        <PencilGlyph />
                       </button>
-                      <button className="icon-button compact delete" onClick={() => void handleDelete(item.id)} title="Supprimer" disabled={busyStockId === item.id}>
-                        🗑️
+                      <button className="icon-button compact delete" onClick={() => void handleDelete(item.id)} title="Supprimer" aria-label={`Supprimer ${item.medication_name}`} disabled={busyStockId === item.id}>
+                        <TrashGlyph />
                       </button>
                     </div>
                   </div>

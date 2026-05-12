@@ -905,6 +905,8 @@ export default function Home() {
   useAutoDismissMessage(messageSuccess, () => setMessageSuccess(null));
   useAutoDismissMessage(pharmacyInteractionError, () => setPharmacyInteractionError(null));
   useAutoDismissMessage(pharmacyInteractionSuccess, () => setPharmacyInteractionSuccess(null));
+  useAutoDismissMessage(responseError, () => setResponseError(null));
+  useAutoDismissMessage(responseSuccess, () => setResponseSuccess(null));
 
   const copy = landingCopy[language] ?? landingCopy.fr;
   const languageMeta: Record<Language, LanguageMeta> = {
@@ -5347,6 +5349,7 @@ export default function Home() {
                     aria-label={messageBusy ? "Envoi en cours" : "Envoyer le message"}
                   >
                     <SendIcon />
+                    <span className="pharmacy-chat-send-button-label">{messageBusy ? "Envoi..." : "Envoyer"}</span>
                   </button>
                 </div>
                 {messageFieldErrors.pharmacy ? <p className="field-error-summary field-error">{messageFieldErrors.pharmacy}</p> : null}

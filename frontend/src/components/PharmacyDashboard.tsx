@@ -286,16 +286,10 @@ function ShareGlyph() {
 function WhatsAppGlyph() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 2.2a9.8 9.8 0 0 0-8.48 14.71L2.2 21.8l5.03-1.28A9.8 9.8 0 1 0 12 2.2Z" fill="currentColor" opacity="0.14" />
+      <path d="M12.01 4.1a8.1 8.1 0 0 0-7.02 12.13l.28.47-.82 2.99 3.06-.8.46.27A8.12 8.12 0 1 0 12 4.1Z" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
       <path
-        d="M12.02 2.5a9.5 9.5 0 0 0-8.22 14.26L2.5 21.5l4.88-1.26A9.5 9.5 0 1 0 12.02 2.5Z"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M9.3 8.55c.2-.45.4-.46.59-.47.15-.01.33-.01.51-.01.18 0 .47.07.72.34.25.27.95.93.95 2.27 0 1.34-.97 2.64-1.1 2.82-.13.18-1.89 3.03-4.67 4.12-.95.37-1.7.59-2.28.75-.96.26-1.84.22-2.53.13-.77-.1-2.38-.97-2.72-1.9-.34-.93-.34-1.73-.24-1.9.1-.17.37-.27.77-.47.4-.2.84-.46 1.12-.68.28-.23.48-.26.81.13.33.38 1.37 1.7 1.65 2.03.28.33.57.37.97.13.4-.23 1.67-.61 2.5-1.95.66-1.05.68-1.95.48-2.18-.2-.23-.44-.52-.68-.79-.24-.27-.51-.59-.72-.79-.22-.2-.44-.17-.64.28Z"
+        d="M9.4 8.2c.14-.31.28-.33.49-.34.13-.01.28-.01.43-.01.14 0 .38.05.58.26.2.22.78.77.78 1.88 0 1.11-.81 2.19-.92 2.34-.11.15-1.55 2.49-3.84 3.39-.78.31-1.39.5-1.87.63-.79.22-1.51.18-2.08.11-.63-.08-1.95-.8-2.23-1.57-.28-.77-.28-1.43-.2-1.57.08-.14.3-.22.63-.38.33-.16.69-.38.92-.56.23-.19.39-.21.66.11.27.31 1.12 1.39 1.36 1.66.23.27.47.3.79.11.33-.19 1.38-.5 2.05-1.6.54-.86.56-1.59.39-1.78-.16-.19-.36-.42-.56-.65-.2-.22-.42-.48-.59-.65-.18-.16-.36-.14-.53.23Z"
         fill="currentColor"
       />
     </svg>
@@ -305,10 +299,8 @@ function WhatsAppGlyph() {
 function FacebookGlyph() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path
-        d="M13.5 21v-7h2.35l.35-2.75H13.5V9.5c0-.8.22-1.35 1.38-1.35h1.47V5.68c-.25-.04-1.12-.11-2.13-.11-2.1 0-3.55 1.29-3.55 3.66v2.02H8.3V14h2.37v7h2.83Z"
-        fill="currentColor"
-      />
+      <path d="M12 2.2a9.8 9.8 0 1 0 0 19.6 9.8 9.8 0 0 0 0-19.6Z" fill="currentColor" opacity="0.14" />
+      <path d="M13.55 20.25v-6.46h2.17l.33-2.55h-2.5V9.62c0-.74.2-1.25 1.28-1.25h1.37V6.03c-.23-.04-1.04-.1-1.97-.1-1.94 0-3.27 1.19-3.27 3.38v1.93H8.8v2.55h2.16v6.46h2.59Z" fill="currentColor" />
     </svg>
   );
 }
@@ -426,6 +418,8 @@ const PHARMACY_DASHBOARD_REFRESH_EVENTS = new Set([
   "prescription.served",
   "prescription.patient_confirmation",
   "notification.broadcast",
+  "stock.updated",
+  "profile.updated",
 ]);
 
 export default function PharmacyDashboard({
@@ -473,6 +467,9 @@ export default function PharmacyDashboard({
     proof_image: null as File | null,
   });
   const refreshInFlightRef = useRef(false);
+  const backgroundRefreshTimerRef = useRef<number | null>(null);
+  const lastBackgroundRefreshAtRef = useRef(0);
+  const lastSnapshotRef = useRef("");
   const shareMenuRef = useRef<HTMLDivElement | null>(null);
 
   async function copyRewardValue(value: string, successMessage: string, emptyMessage: string) {
@@ -677,13 +674,31 @@ export default function PharmacyDashboard({
       window.location.hostname === "127.0.0.1";
 
     const refreshDashboardData = async () => {
-      await loadDashboardData(false);
+      await loadDashboardData(false, true);
+    };
+
+    const scheduleBackgroundRefresh = () => {
+      const now = Date.now();
+      const elapsed = now - lastBackgroundRefreshAtRef.current;
+      if (elapsed >= 12000 && !refreshInFlightRef.current) {
+        lastBackgroundRefreshAtRef.current = now;
+        void refreshDashboardData();
+        return;
+      }
+      if (backgroundRefreshTimerRef.current) {
+        return;
+      }
+      backgroundRefreshTimerRef.current = window.setTimeout(() => {
+        backgroundRefreshTimerRef.current = null;
+        lastBackgroundRefreshAtRef.current = Date.now();
+        void refreshDashboardData();
+      }, Math.max(1800, 12000 - elapsed));
     };
 
     const connect = () => {
       if (shouldUsePollingFallback) {
         pollingTimer = window.setInterval(() => {
-          void refreshDashboardData();
+          scheduleBackgroundRefresh();
         }, 15000);
         return;
       }
@@ -693,7 +708,7 @@ export default function PharmacyDashboard({
         try {
           const parsed = JSON.parse(event.data) as { type?: string; event_type?: string };
           if (parsed.type === "feed.event" && parsed.event_type && PHARMACY_DASHBOARD_REFRESH_EVENTS.has(parsed.event_type)) {
-            void refreshDashboardData();
+            scheduleBackgroundRefresh();
           }
         } catch {
           // Ignore malformed feed payloads without forcing a full dashboard refresh.
@@ -709,6 +724,9 @@ export default function PharmacyDashboard({
     return () => {
       if (pollingTimer) {
         window.clearInterval(pollingTimer);
+      }
+      if (backgroundRefreshTimerRef.current) {
+        window.clearTimeout(backgroundRefreshTimerRef.current);
       }
       if (reconnectTimer) {
         window.clearTimeout(reconnectTimer);
@@ -731,7 +749,7 @@ export default function PharmacyDashboard({
     }
   }, [activeSection]);
 
-  async function loadDashboardData(withLoader = true) {
+  async function loadDashboardData(withLoader = true, silent = false) {
     if (refreshInFlightRef.current) {
       return;
     }
@@ -739,7 +757,7 @@ export default function PharmacyDashboard({
     refreshInFlightRef.current = true;
     if (withLoader || !stock.length) {
       setIsLoading(true);
-    } else {
+    } else if (!silent) {
       setIsRefreshing(true);
     }
 
@@ -783,6 +801,29 @@ export default function PharmacyDashboard({
         return prescriptionCreatedAt >= pharmacyRegistrationDate;
       });
 
+      const nextSnapshot = JSON.stringify({
+        currentPharmacyId,
+        currentName,
+        profileImage: profile.profile?.pharmacy_image ?? null,
+        profileMeta: [profile.profile?.address || profile.profile?.pharmacy_city || "", pharmacyRegistrationDate?.toISOString() ?? "", profile.profile?.last_seen ?? "", profile.profile?.pharmacy_is_online ?? profile.profile?.is_online ?? false, language],
+        stock: stockData,
+        prescriptions: prescriptionData.map((item) => [item.id, item.status, item.pharmacy, item.created_at, item.public_reference ?? null, item.pharmacy_name ?? null]),
+        payments: paymentData,
+        subscriptionStatus: subscriptionData?.subscription_status ?? null,
+        rewardProgram: subscriptionData?.reward_program ?? null,
+        kpis: {
+          total_stock: stockData.length,
+          available_medications: (stockData as StockItem[]).filter((item) => item.is_available).length,
+          total_responses: dashboard.responses?.length ?? 0,
+          avg_response_time: dashboard.kpis?.response_time_minutes ?? 0,
+        },
+      });
+
+      if (nextSnapshot === lastSnapshotRef.current) {
+        return;
+      }
+
+      lastSnapshotRef.current = nextSnapshot;
       startTransition(() => {
         setCurrentPharmacyId(currentPharmacyId ?? null);
         setProfileName(currentName);
@@ -816,7 +857,9 @@ export default function PharmacyDashboard({
       if (withLoader || !stock.length) {
         setIsLoading(false);
       }
-      setIsRefreshing(false);
+      if (!silent) {
+        setIsRefreshing(false);
+      }
     }
   }
 
@@ -1311,19 +1354,13 @@ export default function PharmacyDashboard({
             ) : (
               <div className="stock-grid dashboard-stock-summary">
                 {pagedStock.map((item) => (
-                  <div key={item.id} className="stock-item-card">
-                    <div className="stock-item-header">
-                      <strong>{item.medication_name}</strong>
-                      <span className={`badge ${item.is_available ? "success" : "warning"}`}>{item.is_available ? "Disponible" : "Indisponible"}</span>
-                    </div>
-                    {item.generic_name ? <small>{item.generic_name}</small> : null}
-                    {item.dosage ? <span>{item.dosage}</span> : null}
-                    <div className="stock-item-details">
-                      <span>Quantite: {item.quantity} {item.unit}</span>
-                      <span>{formatSaleScopeLabel(item.sale_scope)}</span>
-                      <span>Prix: {formatCurrencyValue(item.price, item.currency)} / {item.unit}</span>
-                    </div>
-                    <div className="dashboard-stock-inline-actions">
+                  <article key={item.id} className="stock-row-card dashboard-stock-row-card">
+                    <div className="stock-row-main dashboard-stock-row-main">
+                      <div className="stock-row-title">
+                        <strong>{item.medication_name}</strong>
+                        {item.generic_name ? <small>{item.generic_name}</small> : null}
+                      </div>
+                      <span className="stock-row-dosage">{item.dosage || "-"}</span>
                       <div className="stock-quantity-controls">
                         <button
                           type="button"
@@ -1345,6 +1382,10 @@ export default function PharmacyDashboard({
                           <PlusGlyph />
                         </button>
                       </div>
+                      <span className="stock-row-unit">{item.unit}</span>
+                      <span className="badge info">{formatSaleScopeLabel(item.sale_scope)}</span>
+                      <span className="stock-row-price">{formatCurrencyValue(item.price, item.currency)} / {item.unit}</span>
+                      <span className={`badge ${item.is_available ? "success" : "warning"}`}>{item.is_available ? "Disponible" : "Indisponible"}</span>
                       <div className="stock-row-actions">
                         <button
                           type="button"
@@ -1368,7 +1409,7 @@ export default function PharmacyDashboard({
                         </button>
                       </div>
                     </div>
-                  </div>
+                  </article>
                 ))}
               </div>
             )}

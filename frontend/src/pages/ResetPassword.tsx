@@ -1,4 +1,4 @@
-import { type FormEvent, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { parseApiError } from "../lib/apiErrors";
@@ -17,6 +17,17 @@ export default function ResetPassword() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!error && !success) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setError(null);
+      setSuccess(null);
+    }, 5000);
+    return () => window.clearTimeout(timer);
+  }, [error, success]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

@@ -49,6 +49,19 @@ type AdminSection =
   | "configurations";
 
 const PHARMACY_PAGE_SIZE = 4;
+const ADMIN_DASHBOARD_REFRESH_EVENTS = new Set([
+  "notification.broadcast",
+  "prescription.created",
+  "prescription.confirmed",
+  "prescription.search.completed",
+  "prescription.pharmacy_selected",
+  "prescription.served",
+  "prescription.patient_confirmation",
+  "payment.created",
+  "payment.updated",
+  "subscription.updated",
+  "profile.updated",
+]);
 
 const SEARCH_LOCALES = ["fr-FR", "en-US", "sw-TZ"] as const;
 
@@ -308,7 +321,16 @@ export default function AdminDashboard({
   const [error, setError] = useState<string | null>(null);
   const [proofPreview, setProofPreview] = useState<PaymentProofPreview | null>(null);
   const [documentViewer, setDocumentViewer] = useState<DocumentViewerState | null>(null);
+  const [adminProfileImageVersion, setAdminProfileImageVersion] = useState(() => Date.now());
   const refreshInFlightRef = useRef(false);
+
+  function withProfileImageVersion(url?: string | null) {
+    if (!url) {
+      return null;
+    }
+    const separator = url.includes("?") ? "&" : "?";
+    return `${url}${separator}v=${adminProfileImageVersion}`;
+  }
 
   useEffect(() => {
     if (!feedback && !error) {
@@ -530,8 +552,15 @@ export default function AdminDashboard({
       }
 
       socket = new WebSocket(getChatWebSocketUrl("public-feed"));
-      socket.onmessage = () => {
-        void loadDashboard(false);
+      socket.onmessage = (event) => {
+        try {
+          const parsed = JSON.parse(event.data) as { type?: string; event_type?: string };
+          if (parsed.type === "feed.event" && parsed.event_type && ADMIN_DASHBOARD_REFRESH_EVENTS.has(parsed.event_type)) {
+            void loadDashboard(false);
+          }
+        } catch {
+          // Ignore malformed websocket payloads without refreshing the full admin dashboard.
+        }
       };
       socket.onclose = () => {
         reconnectTimer = window.setTimeout(connect, 2500);
@@ -645,6 +674,7 @@ export default function AdminDashboard({
     try {
       const profile = await fetchProfile();
       setAdminProfile(profile);
+      setAdminProfileImageVersion(Date.now());
       setAdminProfileForm({
         username: profile.username ?? "",
         email: profile.email ?? "",
@@ -811,14 +841,17 @@ export default function AdminDashboard({
     const message = [
       "Expediteur: Admin PharmiGo",
       "",
+      "Annonce officielle du systeme de parrainage",
+      "",
       guideBody,
       "",
-      `Debut de l'evenement: ${startLabel}`,
-      `Fin de l'evenement: ${endLabel}`,
-      `Seuil de parrainages valides: ${rewardThreshold || "20"} pharmacies`,
-      `Activite minimale: ${rewardMinActivity || "10"} ordonnances reelles`,
-      `Limite appareil / jour: ${rewardDeviceDailyLimit || "3"}`,
-      `Jours gratuits accordes: +${rewardBonusDays || "90"}`,
+      "Resume de l'evenement",
+      `- Debut de l'evenement: ${startLabel}`,
+      `- Fin de l'evenement: ${endLabel}`,
+      `- Seuil de parrainages valides: ${rewardThreshold || "20"} pharmacies`,
+      `- Activite minimale: ${rewardMinActivity || "10"} ordonnances reelles`,
+      `- Limite appareil / jour: ${rewardDeviceDailyLimit || "3"}`,
+      `- Jours gratuits accordes: +${rewardBonusDays || "90"}`,
     ].join("\n");
 
     setIsSending(true);
@@ -885,6 +918,7 @@ export default function AdminDashboard({
         profile_image: adminProfileForm.profile_image,
       });
       setAdminProfile(updated);
+      setAdminProfileImageVersion(Date.now());
       setAdminProfileForm({
         username: updated.username ?? "",
         email: updated.email ?? "",
@@ -1277,7 +1311,7 @@ export default function AdminDashboard({
       onSearchChange={setSearchTerm}
       profileLabel={adminProfile?.username || storedUserName}
       profileMeta={adminProfile ? `${formatPresenceLabel(adminProfile.profile?.is_online, adminProfile.profile?.last_seen, language)} • Controle global` : "Controle global"}
-      profileImageUrl={resolveMediaUrl(adminProfile?.profile?.profile_image) ?? null}
+      profileImageUrl={withProfileImageVersion(resolveMediaUrl(adminProfile?.profile?.profile_image) ?? null)}
       profileIsOnline={Boolean(adminProfile?.profile?.is_online)}
       navSections={navSections}
       footerSections={footerSections}

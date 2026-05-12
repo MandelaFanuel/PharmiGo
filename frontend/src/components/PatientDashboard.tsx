@@ -31,6 +31,7 @@ const PATIENT_DASHBOARD_REFRESH_EVENTS = new Set([
   "prescription.served",
   "prescription.patient_confirmation",
   "notification.broadcast",
+  "profile.updated",
 ]);
 
 function buildSearchIndex(parts: Array<string | number | null | undefined>, dateValues: Array<string | null | undefined> = []) {
@@ -136,6 +137,9 @@ export default function PatientDashboard({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [documentViewer, setDocumentViewer] = useState<{ src: string; title: string; contentType?: string | null; fileName?: string | null } | null>(null);
   const refreshInFlightRef = useRef(false);
+  const backgroundRefreshTimerRef = useRef<number | null>(null);
+  const lastBackgroundRefreshAtRef = useRef(0);
+  const lastSnapshotRef = useRef("");
 
   const labels = {
     fr: {
@@ -269,13 +273,31 @@ export default function PatientDashboard({
       window.location.hostname === "127.0.0.1";
 
     const refreshDashboardData = async () => {
-      await loadDashboardData(false);
+      await loadDashboardData(false, true);
+    };
+
+    const scheduleBackgroundRefresh = () => {
+      const now = Date.now();
+      const elapsed = now - lastBackgroundRefreshAtRef.current;
+      if (elapsed >= 12000 && !refreshInFlightRef.current) {
+        lastBackgroundRefreshAtRef.current = now;
+        void refreshDashboardData();
+        return;
+      }
+      if (backgroundRefreshTimerRef.current) {
+        return;
+      }
+      backgroundRefreshTimerRef.current = window.setTimeout(() => {
+        backgroundRefreshTimerRef.current = null;
+        lastBackgroundRefreshAtRef.current = Date.now();
+        void refreshDashboardData();
+      }, Math.max(1800, 12000 - elapsed));
     };
 
     const connect = () => {
       if (shouldUsePollingFallback) {
         pollingTimer = window.setInterval(() => {
-          void refreshDashboardData();
+          scheduleBackgroundRefresh();
         }, 20000);
         return;
       }
@@ -285,7 +307,7 @@ export default function PatientDashboard({
         try {
           const parsed = JSON.parse(event.data) as { type?: string; event_type?: string };
           if (parsed.type === "feed.event" && parsed.event_type && PATIENT_DASHBOARD_REFRESH_EVENTS.has(parsed.event_type)) {
-            void refreshDashboardData();
+            scheduleBackgroundRefresh();
           }
         } catch {
           // Ignore malformed feed payloads without forcing a full dashboard refresh.
@@ -302,6 +324,9 @@ export default function PatientDashboard({
       if (pollingTimer) {
         window.clearInterval(pollingTimer);
       }
+      if (backgroundRefreshTimerRef.current) {
+        window.clearTimeout(backgroundRefreshTimerRef.current);
+      }
       if (reconnectTimer) {
         window.clearTimeout(reconnectTimer);
       }
@@ -316,7 +341,7 @@ export default function PatientDashboard({
   const deferredSearchTerm = useDeferredValue(searchTerm);
   const normalizedSearchTerm = deferredSearchTerm.trim().toLowerCase();
 
-  async function loadDashboardData(withLoader = true) {
+  async function loadDashboardData(withLoader = true, silent = false) {
     if (!getStoredAuthToken()) {
       setPrescriptions([]);
       setIsLoading(false);
@@ -331,7 +356,7 @@ export default function PatientDashboard({
     refreshInFlightRef.current = true;
     if (withLoader || !prescriptions.length) {
       setIsLoading(true);
-    } else {
+    } else if (!silent) {
       setIsRefreshing(true);
     }
 
@@ -339,6 +364,19 @@ export default function PatientDashboard({
       const [profile, dashboard] = await Promise.all([fetchProfile(), fetchDashboard()]);
       const history = profile.history;
       const historyPrescriptions = history && Array.isArray(history.prescriptions) ? history.prescriptions : [];
+      const nextSnapshot = JSON.stringify({
+        profileName: profile.username || "Patient",
+        profileImage: profile.profile?.profile_image ?? null,
+        profileMeta: [profile.profile?.is_online ?? false, profile.profile?.last_seen ?? null, profile.profile?.phone_number ?? null, language],
+        prescriptions: historyPrescriptions.map((item) => [item.id, item.status, item.created_at, item.pharmacy, item.public_reference, item.pharmacy_name ?? null]),
+        kpis: buildKpis(historyPrescriptions, dashboard),
+      });
+
+      if (nextSnapshot === lastSnapshotRef.current) {
+        return;
+      }
+
+      lastSnapshotRef.current = nextSnapshot;
       startTransition(() => {
         setProfileName(profile.username || "Patient");
         setProfileMeta([formatPresenceLabel(profile.profile?.is_online, profile.profile?.last_seen, language), profile.profile?.phone_number || ""].filter(Boolean).join(" • "));
@@ -355,7 +393,9 @@ export default function PatientDashboard({
       if (withLoader || !prescriptions.length) {
         setIsLoading(false);
       }
-      setIsRefreshing(false);
+      if (!silent) {
+        setIsRefreshing(false);
+      }
     }
   }
 
