@@ -389,6 +389,10 @@
   overflow: hidden;
 }
 
+.dashboard-panel.dashboard-keep-visible {
+  overflow: visible;
+}
+
 .dashboard-hero-card {
   display: flex;
   justify-content: space-between;
@@ -3402,12 +3406,18 @@ canvas {
   width: 100%;
 }
 
+.dashboard-data-block.dashboard-ambassador-stat,
+.dashboard-data-block.dashboard-ambassador-guide {
+  overflow: visible !important;
+}
+
 .dashboard-ambassador-link-actions {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.85rem;
   margin-top: 0.9rem;
+  overflow: visible;
 }
 
 .dashboard-ambassador-inline-actions {
@@ -3421,6 +3431,7 @@ canvas {
   display: inline-flex;
   align-items: center;
   z-index: 12;
+  overflow: visible;
 }
 
 .dashboard-ambassador-share-wrap.is-open {
@@ -3455,8 +3466,9 @@ canvas {
 
 .dashboard-ambassador-share-menu {
   position: absolute;
-  top: calc(100% + 0.65rem);
   right: 0;
+  bottom: calc(100% + 0.65rem);
+  top: auto;
   z-index: 40;
   display: grid;
   gap: 0.45rem;
@@ -3465,6 +3477,20 @@ canvas {
   border: 1px solid rgba(15, 23, 42, 0.08);
   background: color-mix(in srgb, var(--surface) 96%, white 4%);
   box-shadow: 0 24px 46px rgba(15, 23, 42, 0.16);
+  overflow: visible;
+}
+
+.dashboard-ambassador-event-list {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.dashboard-ambassador-event-card {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: color-mix(in srgb, var(--surface-strong) 94%, white 6%);
 }
 
 .dashboard-ambassador-share-option {

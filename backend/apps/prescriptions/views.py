@@ -155,6 +155,7 @@ def _get_visible_prescription_queryset(request):
                 "analyzing",
                 "confirmation_pending",
                 "confirmed",
+                "confirmed_unavailable",
                 "searching",
                 "pharmacy_selected",
                 "preparing",
@@ -635,6 +636,9 @@ class PrescriptionRecommendationsView(views.APIView):
         if recommendations:
             status_value = "ready"
             message = prescription.notes or "J'ai trouvé les pharmacies suivantes qui possèdent mes médicaments."
+        elif prescription.status == "confirmed_unavailable":
+            status_value = "unavailable"
+            message = prescription.notes or "Les médicaments confirmés n'ont pas encore été trouvés dans les stocks du réseau."
         elif prescription.status in {"searching", "confirmed"}:
             status_value = "searching"
             message = prescription.notes or "Je recherche les pharmacies qui possèdent mes médicaments..."

@@ -369,6 +369,7 @@ def build_pharmacy_reward_payload(pharmacy: Pharmacy | None) -> dict:
             "start": settings_obj.reward_event_start_date,
             "end": settings_obj.reward_event_end_date,
         },
+        "events": build_reward_event_cards(settings_obj),
         "referrals": [
             {
                 "id": item.id,
@@ -403,6 +404,7 @@ def build_admin_reward_payload() -> dict:
             "validated_referrals_total": referrals.filter(status__in=["validated", "rewarded"]).count(),
             "fraud_alerts_open": alerts.filter(status="open").count(),
         },
+        "events": build_reward_event_cards(settings_obj),
         "referrals": [
             {
                 "id": item.id,
@@ -437,6 +439,37 @@ def build_admin_reward_payload() -> dict:
             for alert in alerts[:100]
         ],
     }
+
+
+def build_reward_event_cards(settings_obj: SubscriptionSystemSettings) -> list[dict]:
+    start = settings_obj.reward_event_start_date
+    end = settings_obj.reward_event_end_date
+    now = timezone.now()
+
+    if start and now < start:
+        lifecycle = "upcoming"
+    elif end and now > end:
+        lifecycle = "closed"
+    else:
+        lifecycle = "active"
+
+    return [
+        {
+            "id": "reward-program-current",
+            "title": "Promotion ambassadeur PharmiGo",
+            "start": start,
+            "end": end,
+            "threshold": settings_obj.reward_referral_threshold,
+            "bonus_days": settings_obj.reward_bonus_days,
+            "min_activity_count": settings_obj.reward_min_activity_count,
+            "device_daily_limit": settings_obj.reward_device_daily_limit,
+            "status": lifecycle,
+            "summary": (
+                f"{settings_obj.reward_referral_threshold} pharmacies validees requises • "
+                f"+{settings_obj.reward_bonus_days} jours gratuits"
+            ),
+        }
+    ]
 
 
 def safe_register_referral_from_code(*, referral_code: str | None, referee: Pharmacy) -> None:

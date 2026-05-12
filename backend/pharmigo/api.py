@@ -1199,6 +1199,16 @@ def admin_dashboard(request):
         settings_obj.updated_by = user
         settings_obj.save(update_fields=update_fields)
         sync_subscription_prices(settings_obj)
+        if update_fields:
+            broadcast_feed_event(
+                "reward_program.updated",
+                {
+                    "reward_event_start_date": settings_obj.reward_event_start_date.isoformat() if settings_obj.reward_event_start_date else None,
+                    "reward_event_end_date": settings_obj.reward_event_end_date.isoformat() if settings_obj.reward_event_end_date else None,
+                    "reward_referral_threshold": settings_obj.reward_referral_threshold,
+                    "reward_bonus_days": settings_obj.reward_bonus_days,
+                },
+            )
         if ai_update_fields:
             ai_update_fields.append("updated_at")
             ai_settings_obj.save(update_fields=ai_update_fields)

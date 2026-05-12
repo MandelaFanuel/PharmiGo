@@ -48,7 +48,7 @@ class PharmiGoChatbotOrchestrator:
         if recommendations:
             prescription.status = "searching"
         else:
-            prescription.status = "confirmed"
+            prescription.status = "confirmed_unavailable"
         prescription.notes = message
         prescription.save(update_fields=["status", "notes", "updated_at"])
 

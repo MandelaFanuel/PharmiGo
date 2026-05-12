@@ -18,8 +18,12 @@ export default function PharmacyDetail() {
       if (!id) {
         return;
       }
-      const data = await fetchPharmacy(id);
-      setPharmacy(data);
+      try {
+        const data = await fetchPharmacy(id);
+        setPharmacy(data);
+      } catch {
+        setPharmacy(null);
+      }
     }
 
     void loadPharmacy();

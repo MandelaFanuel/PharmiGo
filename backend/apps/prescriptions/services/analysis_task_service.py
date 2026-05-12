@@ -162,18 +162,18 @@ class AnalysisTaskService:
             logger.info("[ANALYSIS] final status=%s task_status=%s", prescription.status, task.status)
         except Exception as exc:
             logger.exception("[ANALYSIS] exception task_id=%s prescription_id=%s", task_id, prescription.id)
-            task.status = "needs_confirmation"
+            task.status = "failed"
             task.error_message = str(exc)
-            task.needs_confirmation = True
+            task.needs_confirmation = False
             task.completed_at = timezone.now()
             task.save(update_fields=["status", "needs_confirmation", "error_message", "completed_at", "updated_at"])
-            prescription.status = "confirmation_pending"
+            prescription.status = "error"
             technical_message = str(exc).strip()
-            prescription.notes = "L'analyse automatique n'a pas pu etre finalisee. Je peux confirmer les elements manuellement."
+            prescription.notes = "L'analyse automatique a echoue. Cette ordonnance a ete rejetee. Merci de televerser une image plus lisible."
             if technical_message and settings.DEBUG:
                 prescription.notes = f"{prescription.notes} Detail technique: {technical_message[:300]}"
             prescription.save(update_fields=["status", "notes", "updated_at"])
-            self._log(task, prescription, "analysis", "warning", "[ANALYSIS] Analyse incomplete, confirmation manuelle requise.", {"error": str(exc)})
+            self._log(task, prescription, "analysis", "warning", "[ANALYSIS] Analyse rejetee, reupload requis.", {"error": str(exc)})
         finally:
             close_old_connections()
 
@@ -211,8 +211,24 @@ class AnalysisTaskService:
                 "gemini_success": task.gemini_payload.get("success") if isinstance(task.gemini_payload, dict) else None,
             }
 
+        if task.status == "failed":
+            return {
+                "status": "error",
+                "task_id": str(task.task_id),
+                "prescription_id": prescription.id,
+                "task_status": task.status,
+                "debug": debug_info,
+                "data": {
+                    "analysis": [],
+                    "global_score": task.global_score,
+                    "needs_confirmation": False,
+                },
+                "record": None,
+                "error": prescription.notes or task.error_message or "Analyse impossible.",
+            }
+
         return {
-            "status": "success" if task.status != "failed" else "error",
+            "status": "success",
             "task_id": str(task.task_id),
             "prescription_id": prescription.id,
             "task_status": task.status,

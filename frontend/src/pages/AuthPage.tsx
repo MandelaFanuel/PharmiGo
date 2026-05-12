@@ -12,10 +12,43 @@ import { login, loginWithGoogle, register } from "../services/api";
 type AuthMode = "login" | "register";
 type AccountType = "patient" | "pharmacy";
 type PatientGender = "male" | "female" | "other" | "";
+type PharmacySalesModeChoice = "retail" | "wholesale" | "both" | null;
 type RegistrationLocation = {
   latitude: number;
   longitude: number;
 };
+
+function getSalesModeChoiceFromFlags({
+  wholesale_supported,
+  retail_supported,
+}: {
+  wholesale_supported: boolean;
+  retail_supported: boolean;
+}): PharmacySalesModeChoice {
+  if (wholesale_supported && retail_supported) {
+    return "both";
+  }
+  if (wholesale_supported) {
+    return "wholesale";
+  }
+  if (retail_supported) {
+    return "retail";
+  }
+  return null;
+}
+
+function applySalesModeChoice(choice: PharmacySalesModeChoice) {
+  if (choice === "both") {
+    return { wholesale_supported: true, retail_supported: true };
+  }
+  if (choice === "wholesale") {
+    return { wholesale_supported: true, retail_supported: false };
+  }
+  if (choice === "retail") {
+    return { wholesale_supported: false, retail_supported: true };
+  }
+  return { wholesale_supported: false, retail_supported: false };
+}
 
 function EyeIcon({ open }: { open: boolean }) {
   return open ? (
@@ -98,6 +131,8 @@ export default function AuthPage() {
     password: "",
     pharmacy_image: null as File | null,
     referral_code: "",
+    wholesale_supported: false,
+    retail_supported: false,
   });
   const [showPatientPassword, setShowPatientPassword] = useState(false);
   const [showPharmacyPassword, setShowPharmacyPassword] = useState(false);
@@ -298,8 +333,9 @@ export default function AuthPage() {
       const password = pharmacyForm.password.trim();
       const referralCode = pharmacyForm.referral_code.trim().toUpperCase();
       const emailValidationError = validateEmailValue(email);
+      const hasSelectedSalesMode = pharmacyForm.wholesale_supported || pharmacyForm.retail_supported;
 
-      if (!pharmacyName || !phoneNumber || !email || !address || !password || emailValidationError) {
+      if (!pharmacyName || !phoneNumber || !email || !address || !password || emailValidationError || !hasSelectedSalesMode) {
         setRegisterError(emailValidationError ?? "Veuillez remplir correctement les champs obligatoires.");
         setRegisterFieldErrors({
           ...(pharmacyName ? {} : { pharmacy_name: "Le nom de la pharmacie est obligatoire." }),
@@ -307,6 +343,7 @@ export default function AuthPage() {
           ...(emailValidationError ? { email: emailValidationError } : {}),
           ...(address ? {} : { address: "L'adresse exacte est obligatoire." }),
           ...(password ? {} : { password: "Le mot de passe est obligatoire." }),
+          ...(hasSelectedSalesMode ? {} : { retail_supported: "Choisissez le mode de vente de cette pharmacie." }),
         });
         return;
       }
@@ -333,6 +370,8 @@ export default function AuthPage() {
         address,
         password: pharmacyForm.password,
         pharmacy_image: pharmacyForm.pharmacy_image,
+        wholesale_supported: pharmacyForm.wholesale_supported,
+        retail_supported: pharmacyForm.retail_supported,
         referral_code: referralCode || undefined,
         latitude: registrationLocation?.latitude,
         longitude: registrationLocation?.longitude,
@@ -623,6 +662,58 @@ export default function AuthPage() {
                       <span>Image de la pharmacie</span>
                       <input type="file" accept="image/*" onChange={(event) => setPharmacyForm((current) => ({ ...current, pharmacy_image: event.target.files?.[0] ?? null }))} />
                     </label>
+                    <div className="sales-mode-selector compact" role="radiogroup" aria-label="Mode de vente pharmacie">
+                      <button
+                        type="button"
+                        className={`sales-mode-option${getSalesModeChoiceFromFlags(pharmacyForm) === "retail" ? " is-active retail" : ""}`}
+                        onClick={() => {
+                          setRegisterError(null);
+                          setRegisterFieldErrors((current) => {
+                            const next = { ...current };
+                            delete next.retail_supported;
+                            return next;
+                          });
+                          setPharmacyForm((current) => ({ ...current, ...applySalesModeChoice("retail") }));
+                        }}
+                      >
+                        <strong>Vente au detail</strong>
+                        <span>Comprime, flacon, unite patient</span>
+                      </button>
+                      <button
+                        type="button"
+                        className={`sales-mode-option${getSalesModeChoiceFromFlags(pharmacyForm) === "wholesale" ? " is-active wholesale" : ""}`}
+                        onClick={() => {
+                          setRegisterError(null);
+                          setRegisterFieldErrors((current) => {
+                            const next = { ...current };
+                            delete next.retail_supported;
+                            return next;
+                          });
+                          setPharmacyForm((current) => ({ ...current, ...applySalesModeChoice("wholesale") }));
+                        }}
+                      >
+                        <strong>Vente en gros</strong>
+                        <span>Carton, caisse, lot, palette</span>
+                      </button>
+                      <button
+                        type="button"
+                        className={`sales-mode-option${getSalesModeChoiceFromFlags(pharmacyForm) === "both" ? " is-active both" : ""}`}
+                        onClick={() => {
+                          setRegisterError(null);
+                          setRegisterFieldErrors((current) => {
+                            const next = { ...current };
+                            delete next.retail_supported;
+                            return next;
+                          });
+                          setPharmacyForm((current) => ({ ...current, ...applySalesModeChoice("both") }));
+                        }}
+                      >
+                        <strong>Gros et detail</strong>
+                        <span>La pharmacie sert les deux formats</span>
+                      </button>
+                    </div>
+                    <small className="field-help">Choix obligatoire. Aucun mode n'est preselectionne par defaut.</small>
+                    {registerFieldErrors.retail_supported ? <small className="field-error">{registerFieldErrors.retail_supported}</small> : null}
                     <label className="login-field">
                       <span>Mot de passe</span>
                       <div className={registerFieldErrors.password ? "password-field password-field-error" : "password-field"}>

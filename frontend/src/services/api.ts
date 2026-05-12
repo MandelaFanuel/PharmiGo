@@ -395,7 +395,7 @@ export async function fetchEndpointCatalog(): Promise<EndpointItem[]> {
     const { data } = await api.get<EndpointItem[]>(API_ENDPOINTS.endpoints);
     return data;
   } catch {
-    return mockEndpoints;
+    return [];
   }
 }
 
@@ -417,28 +417,7 @@ export async function fetchPharmacy(id: string): Promise<Pharmacy> {
   } catch (error) {
     void error;
     logClientError("Impossible de charger la fiche pharmacie.");
-    // Return a default pharmacy object to prevent crashes
-    return {
-      id: 0,
-      name: "Pharmacie indisponible",
-      profile_image: null,
-      city: "",
-      address: "",
-      phone_number: "",
-      email: "",
-      opening_hours: "",
-      delivery_supported: false,
-      delivery_available: false,
-      latitude: null,
-      longitude: null,
-      created_at: new Date().toISOString(),
-      cover_image: "",
-      logo: "",
-      rating: 0,
-      distance_km: 0,
-      is_open: false,
-      response_time_minutes: 30,
-    };
+    throw error;
   }
 }
 

@@ -4,7 +4,7 @@ import DashboardScaffold, { DashboardPanel, EyeGlyph, RefreshGlyph } from "./Das
 import InAppDocumentViewer from "./InAppDocumentViewer";
 import PublicPrescriptionSheet from "./PublicPrescriptionSheet";
 import PharmacyStockManager from "./PharmacyStockManager";
-import { getApiOrigin } from "../config/endpoints";
+import { getApiOrigin, getChatWebSocketUrl } from "../config/endpoints";
 import { usePreferences } from "../context/PreferencesContext";
 import { formatExactDateTime } from "../lib/datetime";
 import { logClientError } from "../lib/logger";
@@ -235,6 +235,43 @@ function buildRewardGuideCopyText(program?: RewardProgramPharmacyPayload | null,
   ].join("\n");
 }
 
+function formatRewardEventStatus(status: string) {
+  const labels: Record<string, string> = {
+    active: "Actif",
+    upcoming: "A venir",
+    closed: "Cloture",
+  };
+  return labels[status] ?? status;
+}
+
+function copyTextWithFallback(value: string) {
+  if (navigator.clipboard?.writeText) {
+    return navigator.clipboard.writeText(value);
+  }
+
+  return new Promise<void>((resolve, reject) => {
+    try {
+      const textarea = document.createElement("textarea");
+      textarea.value = value;
+      textarea.setAttribute("readonly", "true");
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      textarea.style.pointerEvents = "none";
+      document.body.appendChild(textarea);
+      textarea.select();
+      const successful = document.execCommand("copy");
+      document.body.removeChild(textarea);
+      if (successful) {
+        resolve();
+        return;
+      }
+      reject(new Error("copy failed"));
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
 function ShareGlyph() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -266,6 +303,7 @@ function getPharmacyPrescriptionStatusLabel(status: string) {
     completed: "Classee",
     confirmation_pending: "Confirmation requise",
     confirmed: "Confirmee",
+    confirmed_unavailable: "Confirmee, medicaments introuvables",
     searching: "Recherche en cours",
     analyzing: "En analyse",
   };
@@ -276,7 +314,7 @@ function canPharmacyConfirmPrescription(prescription: PrescriptionRecord, curren
   if (!currentPharmacyId || prescription.pharmacy !== currentPharmacyId) {
     return false;
   }
-  return ["pharmacy_selected", "preparing", "ready"].includes(prescription.status);
+  return ["pharmacy_selected", "confirmed", "confirmed_unavailable", "searching", "preparing", "ready"].includes(prescription.status);
 }
 
 export default function PharmacyDashboard({
@@ -332,7 +370,7 @@ export default function PharmacyDashboard({
       return;
     }
     try {
-      await navigator.clipboard.writeText(value);
+      await copyTextWithFallback(value);
       setCopyFeedback(successMessage);
       window.setTimeout(() => {
         setCopyFeedback((current) => (current === successMessage ? null : current));
@@ -519,6 +557,49 @@ export default function PharmacyDashboard({
   }, []);
 
   useEffect(() => {
+    let socket: WebSocket | null = null;
+    let reconnectTimer: number | null = null;
+    let pollingTimer: number | null = null;
+    const shouldUsePollingFallback =
+      import.meta.env.DEV ||
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1";
+
+    const refreshDashboardData = async () => {
+      await loadDashboardData(false);
+    };
+
+    const connect = () => {
+      if (shouldUsePollingFallback) {
+        pollingTimer = window.setInterval(() => {
+          void refreshDashboardData();
+        }, 15000);
+        return;
+      }
+
+      socket = new WebSocket(getChatWebSocketUrl("public-feed"));
+      socket.onmessage = () => {
+        void refreshDashboardData();
+      };
+      socket.onclose = () => {
+        reconnectTimer = window.setTimeout(connect, 2500);
+      };
+    };
+
+    connect();
+
+    return () => {
+      if (pollingTimer) {
+        window.clearInterval(pollingTimer);
+      }
+      if (reconnectTimer) {
+        window.clearTimeout(reconnectTimer);
+      }
+      socket?.close();
+    };
+  }, []);
+
+  useEffect(() => {
     setStockPage(1);
     setPrescriptionPage(1);
   }, [searchTerm, activeSection]);
@@ -565,11 +646,15 @@ export default function PharmacyDashboard({
           item.status === "uploaded" ||
           item.status === "analyzing" ||
           item.status === "confirmed" ||
+          item.status === "confirmed_unavailable" ||
           item.status === "searching" ||
           item.status === "confirmation_pending" ||
           item.status === "pharmacy_selected" ||
           item.status === "preparing" ||
-          item.status === "ready";
+          item.status === "ready" ||
+          item.status === "served" ||
+          item.status === "patient_confirmed" ||
+          item.status === "completed";
 
         if (!canDisplayForPharmacy) {
           return false;
@@ -1394,6 +1479,30 @@ export default function PharmacyDashboard({
                   style={{ width: `${Math.round((subscription?.reward_program?.progress_ratio ?? 0) * 100)}%` }}
                 />
               </div>
+            </div>
+            <div className="dashboard-data-block dashboard-ambassador-stat">
+              <span>Evenements visibles</span>
+              {(subscription?.reward_program?.events ?? []).length ? (
+                <div className="dashboard-ambassador-event-list">
+                  {(subscription?.reward_program?.events ?? []).map((eventItem) => (
+                    <article key={eventItem.id} className="dashboard-ambassador-event-card">
+                      <div className="dashboard-record-head">
+                        <strong>{eventItem.title}</strong>
+                        <span className={`badge ${eventItem.status === "active" ? "success" : eventItem.status === "upcoming" ? "info" : "warning"}`}>
+                          {formatRewardEventStatus(eventItem.status)}
+                        </span>
+                      </div>
+                      <p>{eventItem.summary}</p>
+                      <small>
+                        {eventItem.start ? `Debut: ${formatExactDateTime(eventItem.start, language)}` : "Debut non defini"} •{" "}
+                        {eventItem.end ? `Fin: ${formatExactDateTime(eventItem.end, language)}` : "Fin non definie"}
+                      </small>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <p>Aucun evenement visible pour le moment.</p>
+              )}
             </div>
             <div className="dashboard-data-block dashboard-data-block-info dashboard-ambassador-guide">
               <span>{subscription?.reward_program?.guide_title || "Guide officiel de la promotion ambassadeur PharmiGo"}</span>

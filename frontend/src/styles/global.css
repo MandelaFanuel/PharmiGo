@@ -2674,7 +2674,7 @@ label span {
 }
 
 .login-shell {
-  min-height: min(740px, calc(100vh - 72px));
+  min-height: auto;
   grid-template-columns: minmax(340px, 0.95fr) minmax(320px, 0.85fr);
   gap: 0;
   border: 1px solid color-mix(in srgb, var(--line) 88%, white 12%);
@@ -2702,10 +2702,11 @@ label span {
 
 .login-form-panel {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  padding: 24px 22px 24px 16px;
+  padding: 24px 22px 30px 16px;
   min-width: 0;
+  overflow-y: auto;
   background:
     radial-gradient(circle at top left, color-mix(in srgb, var(--primary) 14%, transparent 86%), transparent 38%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(255, 255, 255, 0.88));
@@ -2719,7 +2720,7 @@ label span {
 }
 
 .auth-book-panel {
-  overflow: hidden;
+  overflow: visible;
 }
 
 .auth-surface-toolbar {
@@ -2773,7 +2774,7 @@ label span {
 
 .auth-book-pages {
   position: relative;
-  min-height: 690px;
+  min-height: 700px;
   transform-style: preserve-3d;
   transition: transform 1180ms cubic-bezier(0.16, 0.76, 0.18, 1);
 }
@@ -2783,7 +2784,7 @@ label span {
 }
 
 .auth-book.is-register .auth-book-pages {
-  min-height: 760px;
+  min-height: 920px;
 }
 
 .auth-page-face {

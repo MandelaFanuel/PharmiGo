@@ -245,7 +245,7 @@ export interface PrescriptionAnalysisTaskResult {
     global_score: number;
     needs_confirmation: boolean;
   };
-  record: PrescriptionRecord;
+  record?: PrescriptionRecord | null;
   error?: string | null;
 }
 
@@ -502,6 +502,19 @@ export interface RewardProgramSettings {
   reward_instructions: string;
 }
 
+export interface RewardEventCard {
+  id: string;
+  title: string;
+  start?: string | null;
+  end?: string | null;
+  threshold: number;
+  bonus_days: number;
+  min_activity_count: number;
+  device_daily_limit: number;
+  status: string;
+  summary: string;
+}
+
 export interface RewardProgramAdminPayload {
   settings: RewardProgramSettings;
   summary: {
@@ -509,6 +522,7 @@ export interface RewardProgramAdminPayload {
     validated_referrals_total: number;
     fraud_alerts_open: number;
   };
+  events: RewardEventCard[];
   referrals: Array<RewardReferralItem & {
     referrer_id: number;
     referrer_name: string;
@@ -532,6 +546,7 @@ export interface RewardProgramPharmacyPayload {
     start?: string | null;
     end?: string | null;
   };
+  events: RewardEventCard[];
   referrals: RewardReferralItem[];
 }
 

@@ -353,6 +353,7 @@ export default function PatientDashboard({
       case "served":
         return "success";
       case "confirmed":
+      case "confirmed_unavailable":
       case "searching":
       case "analyzing":
         return "info";
@@ -369,6 +370,7 @@ export default function PatientDashboard({
       completed: "Completee",
       served: "Deja servie",
       confirmed: "Confirmee",
+      confirmed_unavailable: "Confirmee, medicaments introuvables",
       pharmacy_selected: "Pharmacie selectionnee",
       analyzing: "En analyse",
       searching: "Recherche en cours",

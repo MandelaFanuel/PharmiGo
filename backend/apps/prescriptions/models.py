@@ -13,6 +13,7 @@ class Prescription(models.Model):
         ("analyzing", "Analyse en cours"),
         ("confirmation_pending", "Confirmation en attente"),
         ("confirmed", "Confirmée"),
+        ("confirmed_unavailable", "Confirmée, stock introuvable"),
         ("searching", "Recherche pharmacies"),
         ("pharmacy_selected", "Pharmacie sélectionnée"),
         ("preparing", "En préparation"),

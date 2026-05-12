@@ -214,6 +214,56 @@ function formatPresenceLabel(isOnline?: boolean, lastSeen?: string | null, langu
   return `Vu le ${label}`;
 }
 
+function formatDateTimeLocalValue(value?: string | null) {
+  if (!value) {
+    return "";
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "";
+  }
+
+  const local = new Date(parsed.getTime() - parsed.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 16);
+}
+
+function copyTextWithFallback(value: string) {
+  if (navigator.clipboard?.writeText) {
+    return navigator.clipboard.writeText(value);
+  }
+
+  return new Promise<void>((resolve, reject) => {
+    try {
+      const textarea = document.createElement("textarea");
+      textarea.value = value;
+      textarea.setAttribute("readonly", "true");
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      const successful = document.execCommand("copy");
+      document.body.removeChild(textarea);
+      if (successful) {
+        resolve();
+        return;
+      }
+      reject(new Error("copy failed"));
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+function formatRewardEventStatus(status: string) {
+  const labels: Record<string, string> = {
+    active: "Actif",
+    upcoming: "A venir",
+    closed: "Cloture",
+  };
+  return labels[status] ?? status;
+}
+
 type AdminProfileFormState = {
   username: string;
   email: string;
@@ -565,8 +615,8 @@ export default function AdminDashboard({
     if (!rewardSettings) {
       return;
     }
-    setRewardEventStartDate(rewardSettings.reward_event_start_date ? rewardSettings.reward_event_start_date.slice(0, 16) : "");
-    setRewardEventEndDate(rewardSettings.reward_event_end_date ? rewardSettings.reward_event_end_date.slice(0, 16) : "");
+    setRewardEventStartDate(formatDateTimeLocalValue(rewardSettings.reward_event_start_date));
+    setRewardEventEndDate(formatDateTimeLocalValue(rewardSettings.reward_event_end_date));
     setRewardThreshold(String(rewardSettings.reward_referral_threshold ?? 20));
     setRewardMinActivity(String(rewardSettings.reward_min_activity_count ?? 10));
     setRewardDeviceDailyLimit(String(rewardSettings.reward_device_daily_limit ?? 3));
@@ -647,6 +697,7 @@ export default function AdminDashboard({
     setFeedback(null);
     setError(null);
     await Promise.all([loadAdminProfile(), loadDashboard(true, true)]);
+    setFeedback("Dashboard admin actualise.");
   }
 
   async function handleOpenDocument(prescription: PrescriptionRecord) {
@@ -792,7 +843,21 @@ export default function AdminDashboard({
 
     const guideTitle = data?.reward_program?.settings.reward_guide_title || "Guide officiel de la promotion ambassadeur PharmiGo";
     try {
-      await navigator.clipboard.writeText(`${guideTitle}\n\n${guideBody}`);
+      const fullGuide = [
+        guideTitle,
+        "",
+        guideBody,
+        "",
+        "Seuil valide",
+        `${rewardThreshold || "20"} pharmacies`,
+        "",
+        "Recompense",
+        `+${rewardBonusDays || "90"} jours gratuits`,
+        "",
+        rewardEventStartDate ? `Debut: ${new Date(rewardEventStartDate).toLocaleString()}` : "Debut non defini",
+        rewardEventEndDate ? `Fin: ${new Date(rewardEventEndDate).toLocaleString()}` : "Fin non definie",
+      ].join("\n");
+      await copyTextWithFallback(fullGuide);
       setFeedback("Le guide officiel a ete copie.");
       setError(null);
     } catch {
@@ -1584,6 +1649,22 @@ export default function AdminDashboard({
               </button>
             </div>
           </form>
+
+          <div className="admin-table-grid dashboard-mobile-single-stack">
+            {(data?.reward_program?.events ?? []).map((eventItem) => (
+              <article key={`reward-event-${eventItem.id}`} className="admin-data-card">
+                <strong>{eventItem.title}</strong>
+                <span className={`badge ${eventItem.status === "active" ? "success" : eventItem.status === "upcoming" ? "info" : "warning"}`}>
+                  {formatRewardEventStatus(eventItem.status)}
+                </span>
+                <p>{eventItem.summary}</p>
+                <small>
+                  {eventItem.start ? formatExactDateTime(eventItem.start, language) : "Debut non defini"} •{" "}
+                  {eventItem.end ? formatExactDateTime(eventItem.end, language) : "Fin non definie"}
+                </small>
+              </article>
+            ))}
+          </div>
 
           <div className="admin-table-grid dashboard-mobile-single-stack">
             <article className="admin-data-card">

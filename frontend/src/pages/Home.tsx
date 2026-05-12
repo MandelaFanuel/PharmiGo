@@ -2537,8 +2537,16 @@ export default function Home() {
         if (result.task_status === "completed" || result.task_status === "needs_confirmation" || result.task_status === "failed") {
           setCompletedTaskResult(result);
           setActiveAnalysisTaskId(null);
-          if (result.record) {
-            setDashboard((current) => mergePrescriptionRecords(current, result.record));
+          if (result.task_status === "failed") {
+            setUploadError(result.error || "L'analyse a echoue. Merci de televerser une ordonnance plus lisible.");
+            setPendingAnalysisRecord(null);
+            setAnalysisPopupRecord(null);
+            setUploadSuccess(null);
+            return;
+          }
+          const completedRecord = result.record ?? null;
+          if (completedRecord) {
+            setDashboard((current) => mergePrescriptionRecords(current, completedRecord));
           }
           return;
         }
@@ -2569,12 +2577,13 @@ export default function Home() {
   }, [activeAnalysisTaskId]);
 
   useEffect(() => {
-    if (!completedTaskResult?.record) {
+    const completedRecord = completedTaskResult?.record ?? null;
+    if (!completedRecord) {
       return;
     }
     const remainingDelay = Math.max(0, (analysisRevealAt ?? Date.now()) - Date.now());
     const timer = window.setTimeout(() => {
-      setPendingAnalysisRecord(completedTaskResult.record);
+      setPendingAnalysisRecord(completedRecord);
       setCompletedTaskResult(null);
     }, remainingDelay);
     return () => window.clearTimeout(timer);
