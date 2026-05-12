@@ -303,11 +303,25 @@ export default function AdminDashboard({
   const [isSaving, setIsSaving] = useState(false);
   const [isProfileSaving, setIsProfileSaving] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [proofPreview, setProofPreview] = useState<PaymentProofPreview | null>(null);
   const [documentViewer, setDocumentViewer] = useState<DocumentViewerState | null>(null);
   const refreshInFlightRef = useRef(false);
+
+  useEffect(() => {
+    if (!feedback && !error) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setFeedback(null);
+      setError(null);
+    }, 5000);
+
+    return () => window.clearTimeout(timer);
+  }, [error, feedback]);
 
   const labels = {
     fr: {
@@ -670,8 +684,16 @@ export default function AdminDashboard({
   async function handleRefresh() {
     setFeedback(null);
     setError(null);
-    await Promise.all([loadAdminProfile(), loadDashboard(true, true)]);
-    setFeedback("Dashboard admin actualise.");
+    setIsRefreshing(true);
+    try {
+      await Promise.all([loadAdminProfile(), loadDashboard(false, true)]);
+      setFeedback("Dashboard admin actualise.");
+    } catch (refreshError) {
+      void refreshError;
+      setError("Impossible d'actualiser le dashboard admin.");
+    } finally {
+      setIsRefreshing(false);
+    }
   }
 
   async function handleOpenDocument(prescription: PrescriptionRecord) {
@@ -1262,7 +1284,14 @@ export default function AdminDashboard({
       metrics={metrics}
       highlights={highlights}
       topbarActions={
-        <button className="dashboard-icon-button dashboard-refresh-button" type="button" onClick={() => void handleRefresh()} aria-label={labels.refresh} title={labels.refresh}>
+        <button
+          className={`dashboard-icon-button dashboard-refresh-button${isRefreshing ? " is-refreshing" : ""}`}
+          type="button"
+          onClick={() => void handleRefresh()}
+          aria-label={labels.refresh}
+          title={labels.refresh}
+          disabled={isRefreshing}
+        >
           <RefreshGlyph />
         </button>
       }
@@ -1324,13 +1353,17 @@ export default function AdminDashboard({
 
       {activeSection === "patients" ? (
         <DashboardPanel title={labels.patients} description="Liste patient avec recherche en temps reel et pagination de 4." className="dashboard-panel-span-3">
-          <div className="admin-table-grid dashboard-mobile-single-stack">
+          <div className="admin-patient-list">
             {pagedPatients.map((patient) => (
-              <article key={patient.id} className="admin-data-card">
-                <strong>{patient.username}</strong>
-                <span className={`badge ${patient.is_staff ? "info" : "neutral"}`}>{patient.role}</span>
-                <p>{patient.email || "Sans email"}</p>
-                <div className="admin-card-actions">
+              <article key={patient.id} className="admin-data-card admin-patient-row">
+                <div className="admin-patient-row-main">
+                  <strong>{patient.username}</strong>
+                  <span className={`badge ${patient.is_staff ? "info" : "neutral"}`}>{patient.role}</span>
+                </div>
+                <span className="admin-patient-row-value">{patient.email || "Sans email"}</span>
+                <span className="admin-patient-row-value">ID #{patient.id}</span>
+                <span className="admin-patient-row-value">{patient.is_active === false ? "Compte limite" : "Compte actif"}</span>
+                <div className="admin-card-actions admin-patient-row-actions">
                   <ActionIconButton
                     label={patient.is_active === false ? "Reactiver l'utilisateur" : "Desactiver l'utilisateur"}
                     title={patient.is_active === false ? "Reactiver" : "Desactiver"}

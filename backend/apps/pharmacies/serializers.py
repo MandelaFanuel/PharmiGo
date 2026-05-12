@@ -1,5 +1,5 @@
 from django.contrib.auth import get_user_model
-from django.db.models import Avg
+from django.db.models import Avg, DurationField, ExpressionWrapper, F
 from django.urls import reverse
 from rest_framework import serializers
 
@@ -84,8 +84,17 @@ class PharmacySerializer(serializers.ModelSerializer):
         return getattr(linked_profile, "last_seen", None)
 
     def get_response_time_minutes(self, obj):
-        average = obj.responses.aggregate(value=Avg("estimated_minutes")).get("value")
-        return round(float(average), 1) if average is not None else 0
+        average = (
+            obj.responses.annotate(
+                actual_delay=ExpressionWrapper(
+                    F("created_at") - F("prescription__created_at"),
+                    output_field=DurationField(),
+                )
+            )
+            .aggregate(value=Avg("actual_delay"))
+            .get("value")
+        )
+        return round(average.total_seconds() / 60, 1) if average is not None else 0
 
     def get_subscription_status(self, obj):
         subscription = getattr(obj, "subscription", None)

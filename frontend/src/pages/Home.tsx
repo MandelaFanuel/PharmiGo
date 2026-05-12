@@ -749,6 +749,17 @@ function prescriptionHasConfirmedMedications(prescription: PrescriptionRecord) {
     : false;
 }
 
+function useAutoDismissMessage<T>(value: T, clear: () => void, delayMs = 5000) {
+  useEffect(() => {
+    if (!value) {
+      return;
+    }
+
+    const timer = window.setTimeout(clear, delayMs);
+    return () => window.clearTimeout(timer);
+  }, [clear, delayMs, value]);
+}
+
 export default function Home() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -884,6 +895,16 @@ export default function Home() {
   );
   const [pharmacyPage, setPharmacyPage] = useState(1);
   const [homePrescriptionPage, setHomePrescriptionPage] = useState(1);
+
+  useAutoDismissMessage(authError, () => setAuthError(null));
+  useAutoDismissMessage(authSuccess, () => setAuthSuccess(null));
+  useAutoDismissMessage(profileError, () => setProfileError(null));
+  useAutoDismissMessage(profileSuccess, () => setProfileSuccess(null));
+  useAutoDismissMessage(uploadError, () => setUploadError(null));
+  useAutoDismissMessage(messageError, () => setMessageError(null));
+  useAutoDismissMessage(messageSuccess, () => setMessageSuccess(null));
+  useAutoDismissMessage(pharmacyInteractionError, () => setPharmacyInteractionError(null));
+  useAutoDismissMessage(pharmacyInteractionSuccess, () => setPharmacyInteractionSuccess(null));
 
   const copy = landingCopy[language] ?? landingCopy.fr;
   const languageMeta: Record<Language, LanguageMeta> = {
@@ -2755,21 +2776,6 @@ export default function Home() {
     setProfileError(null);
     setProfileSuccess(null);
     setProfileFieldErrors({});
-
-    const dashboardRouteIsPinned =
-      location.pathname.startsWith("/dashboard") ||
-      new URLSearchParams(location.search).get("modal") === "dashboard";
-
-    if (activeModal === "dashboard" || dashboardRouteIsPinned) {
-      setActiveModal(null);
-      if (dashboardRouteIsPinned) {
-        navigate("/", { replace: true });
-      }
-      window.setTimeout(() => {
-        openModal("profile");
-      }, 0);
-      return;
-    }
 
     openModal("profile");
   }

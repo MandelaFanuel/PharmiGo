@@ -154,9 +154,18 @@ export default function PharmacyStockManager({
       return;
     }
 
-    const timer = window.setTimeout(() => setSuccess(null), 2800);
+    const timer = window.setTimeout(() => setSuccess(null), 5000);
     return () => window.clearTimeout(timer);
   }, [success]);
+
+  useEffect(() => {
+    if (!error) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => setError(null), 5000);
+    return () => window.clearTimeout(timer);
+  }, [error]);
 
   useEffect(() => {
     const handleAddRequest = () => {
@@ -363,7 +372,7 @@ export default function PharmacyStockManager({
             setShowForm((current) => !current);
           }}
         >
-          {showForm ? "Fermer" : "➕ Ajouter un médicament"}
+          {showForm ? "Fermer" : "Ajouter un médicament"}
         </button>
       </div>
 

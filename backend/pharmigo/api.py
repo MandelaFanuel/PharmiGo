@@ -2,7 +2,7 @@ from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from datetime import datetime, timedelta
 from django.conf import settings
-from django.db.models import Avg, CharField, Count, F, FloatField, Q, Value
+from django.db.models import Avg, CharField, Count, DurationField, ExpressionWrapper, F, FloatField, Q, Value
 from django.utils import timezone
 from rest_framework import parsers, routers, status, viewsets
 from rest_framework.decorators import action, api_view
@@ -79,6 +79,20 @@ def create_targeted_notification(title, message, channel, recipient_user=None, r
         recipient_user=recipient_user,
         recipient_pharmacy=recipient_pharmacy,
     )
+
+
+def calculate_average_response_minutes(response_queryset):
+    average = (
+        response_queryset.annotate(
+            actual_delay=ExpressionWrapper(
+                F("created_at") - F("prescription__created_at"),
+                output_field=DurationField(),
+            )
+        )
+        .aggregate(value=Avg("actual_delay"))
+        .get("value")
+    )
+    return round(average.total_seconds() / 60, 1) if average is not None else 0
 
 
 def pharmacy_subscription_is_active(pharmacy):
@@ -1068,7 +1082,7 @@ def dashboard(request):
     message_data = ChatMessageSerializer(filtered_messages.order_by("-created_at")[:80], many=True).data
 
     kpis = {
-        "response_time_minutes": round(float(response_queryset.aggregate(value=Avg("estimated_minutes")).get("value") or 0), 1),
+        "response_time_minutes": calculate_average_response_minutes(response_queryset),
         "resolution_rate": 89,
         "satisfaction_score": 4.7,
         "active_pharmacies": pharmacies.count(),

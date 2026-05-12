@@ -1228,12 +1228,6 @@ export default function PharmacyDashboard({
           active: activeSection === "activate",
           onClick: () => setActiveSection("activate"),
         },
-        {
-          id: "pharm-add",
-          label: labels.addMedication,
-          active: activeSection === "add-medication",
-          onClick: () => setActiveSection(hasActiveSubscription ? "add-medication" : "activate"),
-        },
       ],
     },
   ];

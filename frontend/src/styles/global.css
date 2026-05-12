@@ -3249,6 +3249,23 @@ label span {
   margin-top: 4px;
 }
 
+.checkbox-label,
+.checkbox-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.checkbox-label input[type="checkbox"],
+.checkbox-field input[type="checkbox"] {
+  width: 0.95rem;
+  height: 0.95rem;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
 .field-input-error,
 .phone-field.phone-field-error {
   border-color: color-mix(in srgb, var(--danger, #c24646) 40%, transparent 60%);
