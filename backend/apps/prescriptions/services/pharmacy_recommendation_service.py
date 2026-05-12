@@ -20,6 +20,7 @@ class RecommendationContext:
     prescription: Prescription
     user_latitude: float | None = None
     user_longitude: float | None = None
+    include_wholesale_only: bool = False
 
 
 class PharmacyRecommendationService:
@@ -28,7 +29,7 @@ class PharmacyRecommendationService:
     def __init__(self) -> None:
         self.qa_service = QAService()
 
-    def generate_for_prescription(self, prescription: Prescription, user=None) -> dict:
+    def generate_for_prescription(self, prescription: Prescription, user=None, *, include_wholesale_only: bool = False) -> dict:
         medications = list(
             prescription.extracted_medications.filter(confirmed=True).order_by("-confidence", "id")
         )
@@ -43,6 +44,7 @@ class PharmacyRecommendationService:
             prescription=prescription,
             user_latitude=self._coerce_float(getattr(getattr(user, "profile", None), "latitude", None)),
             user_longitude=self._coerce_float(getattr(getattr(user, "profile", None), "longitude", None)),
+            include_wholesale_only=include_wholesale_only,
         )
 
         recommendations = self._build_recommendations(context, medications)
@@ -104,6 +106,8 @@ class PharmacyRecommendationService:
             if getattr(pharmacy, "is_active", True) is False:
                 continue
             if not self._subscription_is_eligible(pharmacy):
+                continue
+            if not context.include_wholesale_only and self._is_wholesale_only(pharmacy):
                 continue
 
             matched_items: list[dict] = []
@@ -230,6 +234,10 @@ class PharmacyRecommendationService:
                     }
                 )
             return created
+
+    @staticmethod
+    def _is_wholesale_only(pharmacy: Pharmacy) -> bool:
+        return bool(getattr(pharmacy, "wholesale_supported", False)) and getattr(pharmacy, "retail_supported", True) is False
 
     def _find_matching_stock(self, pharmacy: Pharmacy, medication: MedicationExtraction) -> PharmacyStock | None:
         medication_candidates = self._medication_candidates(medication)

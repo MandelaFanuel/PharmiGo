@@ -106,6 +106,7 @@ export default function DashboardScaffold({
   profileImageUrl,
   profileIsOnline,
   navSections,
+  footerSections,
   metrics,
   highlights,
   topbarActions,
@@ -124,6 +125,7 @@ export default function DashboardScaffold({
   profileImageUrl?: string | null;
   profileIsOnline?: boolean;
   navSections: DashboardNavSection[];
+  footerSections?: DashboardNavSection[];
   metrics: DashboardMetric[];
   highlights?: DashboardHighlight[];
   topbarActions?: ReactNode;
@@ -186,6 +188,31 @@ export default function DashboardScaffold({
             </section>
           ))}
         </div>
+        {footerSections?.length ? (
+          <div className="dashboard-sidebar-footer">
+            {footerSections.map((section) => (
+              <section key={`footer-${section.title}`} className="dashboard-sidebar-group">
+                <p className="dashboard-sidebar-title">{section.title}</p>
+                <div className="dashboard-sidebar-links">
+                  {section.items.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className={item.active ? "dashboard-sidebar-link active" : "dashboard-sidebar-link"}
+                      onClick={() => {
+                        item.onClick?.();
+                        setIsMobileNavOpen(false);
+                      }}
+                    >
+                      <span className="dashboard-sidebar-link-dot" aria-hidden="true" />
+                      <span>{item.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
+        ) : null}
       </aside>
 
       {isMobileNavOpen ? (

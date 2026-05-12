@@ -416,12 +416,15 @@ export default function PatientDashboard({
         { id: "patient-prescriptions", label: labels.list, active: activeSection === "prescriptions", onClick: () => setActiveSection("prescriptions") },
         { id: "patient-ocr", label: labels.ocr, active: activeSection === "ocr", onClick: () => setActiveSection("ocr") },
         { id: "patient-history", label: labels.history, active: activeSection === "history", onClick: () => setActiveSection("history") },
+        { id: "patient-new", label: labels.newPrescription, active: false, onClick: triggerNewPrescriptionFlow },
       ],
     },
+  ];
+
+  const footerSections = [
     {
-      title: language === "en" ? "Actions" : "Actions",
+      title: language === "en" ? "Profile" : "Profil",
       items: [
-        { id: "patient-new", label: labels.newPrescription, active: false, onClick: triggerNewPrescriptionFlow },
         { id: "patient-config", label: labels.configuration, active: activeSection === "configuration", onClick: () => setActiveSection("configuration") },
       ],
     },
@@ -467,6 +470,7 @@ export default function PatientDashboard({
       profileImageUrl={profileImageUrl}
       profileIsOnline={profileIsOnline}
       navSections={navSections}
+      footerSections={footerSections}
       metrics={metrics}
       highlights={highlights}
       topbarActions={

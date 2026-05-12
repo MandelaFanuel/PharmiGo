@@ -1063,7 +1063,21 @@ export default function AdminDashboard({
   const pharmacyRows = useMemo(
     () =>
       (data?.pharmacies ?? []).filter((item) =>
-        buildSearchIndex([item.name, item.city, item.address, item.phone_number, item.email]).includes(normalizedSearchTerm)
+        buildSearchIndex(
+          [
+            item.name,
+            item.city,
+            item.address,
+            item.phone_number,
+            item.email,
+            item.wholesale_supported && item.retail_supported
+              ? "vente en gros et en detail"
+              : item.wholesale_supported
+                ? "vente en gros"
+                : "vente au detail",
+          ],
+          [item.created_at]
+        ).includes(normalizedSearchTerm)
       ),
     [data?.pharmacies, normalizedSearchTerm]
   );
@@ -1162,7 +1176,6 @@ export default function AdminDashboard({
         { id: "admin-ambassador", label: "Ambassadeur", active: activeSection === "ambassador", onClick: () => setActiveSection("ambassador") },
         { id: "admin-status", label: labels.status, active: activeSection === "status", onClick: () => setActiveSection("status") },
         { id: "admin-active", label: labels.activity, active: activeSection === "active-system", onClick: () => setActiveSection("active-system") },
-        { id: "admin-config", label: labels.configurations, active: activeSection === "configurations", onClick: () => setActiveSection("configurations") },
       ],
     },
     {
@@ -1171,6 +1184,15 @@ export default function AdminDashboard({
         { id: "admin-payment-modes", label: labels.paymentMethods, active: activeSection === "payment-modes", onClick: () => setActiveSection("payment-modes") },
         { id: "admin-payments", label: labels.payments, active: activeSection === "payments", onClick: () => setActiveSection("payments") },
         { id: "admin-subs", label: labels.subscriptions, active: activeSection === "subscriptions", onClick: () => setActiveSection("subscriptions") },
+      ],
+    },
+  ];
+
+  const footerSections = [
+    {
+      title: language === "en" ? "Profile" : "Profil",
+      items: [
+        { id: "admin-config", label: labels.configurations, active: activeSection === "configurations", onClick: () => setActiveSection("configurations") },
       ],
     },
   ];
@@ -1220,6 +1242,7 @@ export default function AdminDashboard({
       profileImageUrl={resolveMediaUrl(adminProfile?.profile?.profile_image) ?? null}
       profileIsOnline={Boolean(adminProfile?.profile?.is_online)}
       navSections={navSections}
+      footerSections={footerSections}
       metrics={metrics}
       highlights={highlights}
       topbarActions={

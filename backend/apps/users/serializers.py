@@ -203,7 +203,7 @@ class RegisterSerializer(serializers.Serializer):
     address = serializers.CharField(required=False, allow_blank=True, max_length=255)
     pharmacy_image = serializers.ImageField(required=False, allow_null=True)
     wholesale_supported = serializers.BooleanField(required=False, default=False)
-    retail_supported = serializers.BooleanField(required=False, default=True)
+    retail_supported = serializers.BooleanField(required=False, default=False)
     referral_code = serializers.CharField(required=False, allow_blank=True, max_length=24)
     latitude = serializers.FloatField(required=False, allow_null=True)
     longitude = serializers.FloatField(required=False, allow_null=True)
@@ -243,7 +243,7 @@ class RegisterSerializer(serializers.Serializer):
                 raise serializers.ValidationError({"phone_number": "Le numero de telephone est obligatoire."})
             if phone_number_already_used(phone_number):
                 raise serializers.ValidationError({"phone_number": "Ce numero de telephone est deja utilise."})
-            if not attrs.get("wholesale_supported", False) and not attrs.get("retail_supported", True):
+            if not attrs.get("wholesale_supported", False) and not attrs.get("retail_supported", False):
                 raise serializers.ValidationError(
                     {"retail_supported": "Choisissez au moins un mode de vente: gros ou detail."}
                 )
@@ -296,7 +296,7 @@ class RegisterSerializer(serializers.Serializer):
             opening_hours="08:00 - 20:00",
             delivery_supported=False,
             wholesale_supported=validated_data.get("wholesale_supported", False),
-            retail_supported=validated_data.get("retail_supported", True),
+            retail_supported=validated_data.get("retail_supported", False),
             latitude=latitude,
             longitude=longitude,
         )

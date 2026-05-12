@@ -931,6 +931,64 @@ label span {
   align-items: flex-start;
 }
 
+.sales-mode-selector {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  width: 100%;
+}
+
+.sales-mode-selector.compact {
+  width: 100%;
+}
+
+.sales-mode-option {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  width: 100%;
+  min-height: 108px;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--accent) 14%, var(--line) 86%);
+  background: color-mix(in srgb, var(--surface-strong) 96%, transparent 4%);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease, background 140ms ease;
+}
+
+.sales-mode-option strong {
+  font-size: 0.97rem;
+  color: var(--text);
+}
+
+.sales-mode-option span {
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.sales-mode-option:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 30px rgba(8, 30, 51, 0.08);
+}
+
+.sales-mode-option.is-active.retail {
+  border-color: color-mix(in srgb, var(--primary) 38%, var(--line) 62%);
+  background: color-mix(in srgb, var(--primary) 15%, var(--surface-strong) 85%);
+}
+
+.sales-mode-option.is-active.wholesale {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--line) 58%);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface-strong) 88%);
+}
+
+.sales-mode-option.is-active.both {
+  border-color: color-mix(in srgb, var(--primary) 30%, var(--accent) 30%);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--primary) 16%, var(--surface-strong) 84%), color-mix(in srgb, var(--accent) 16%, var(--surface-strong) 84%));
+}
+
 .text-link {
   display: inline-flex;
   margin-top: 12px;
@@ -4764,6 +4822,22 @@ label span {
   color: #1d4f89;
 }
 
+.pharmacy-showcase-tag.sales-mode-retail {
+  background: color-mix(in srgb, var(--primary) 18%, transparent 82%);
+  color: var(--primary-strong);
+}
+
+.pharmacy-showcase-tag.sales-mode-wholesale {
+  background: color-mix(in srgb, var(--accent) 18%, transparent 82%);
+  color: var(--accent);
+}
+
+.pharmacy-showcase-tag.sales-mode-both {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--primary) 20%, transparent 80%), color-mix(in srgb, var(--accent) 20%, transparent 80%));
+  color: #114a73;
+}
+
 .pharmacy-social-actions {
   flex-wrap: wrap;
   overflow-x: visible;
@@ -8159,5 +8233,25 @@ label span {
   .verify-email-actions .auth-submit {
     width: 100%;
     min-width: 0;
+  }
+}
+
+.landing-modal-card,
+.landing-share-card,
+.pharmigo-modal-dialog,
+.guardian-popup-card,
+.document-viewer-dialog,
+.app-modal-panel,
+.wide-modal,
+.ocr-modal,
+.admin-proof-modal-frame,
+.landing-popover-menu,
+.dashboard-ambassador-share-menu {
+  border-radius: 0 !important;
+}
+
+@media (max-width: 900px) {
+  .sales-mode-selector {
+    grid-template-columns: 1fr;
   }
 }

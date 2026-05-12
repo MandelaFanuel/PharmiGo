@@ -9,6 +9,7 @@ import { usePreferences } from "../context/PreferencesContext";
 import { formatExactDateTime } from "../lib/datetime";
 import { logClientError } from "../lib/logger";
 import {
+  confirmPharmacyServedPrescription,
   createSubscriptionPayment,
   deletePharmacyStockItem,
   fetchDashboard,
@@ -31,6 +32,7 @@ interface StockItem {
   unit: string;
   price: number;
   currency: "BIF" | "FC" | "TSH";
+  last_updated?: string | null;
   is_available: boolean;
 }
 
@@ -205,6 +207,78 @@ function buildAmbassadorShareMessage(link: string) {
   return `Rejoignez PharmiGo via ce lien officiel de parrainage pharmacie : ${link}`;
 }
 
+function buildRewardGuideCopyText(program?: RewardProgramPharmacyPayload | null, language = "fr") {
+  if (!program) {
+    return "";
+  }
+
+  const title = program.guide_title || "Guide officiel de la promotion ambassadeur PharmiGo";
+  const instructions = program.instructions || "Aucune instruction definie pour l'evenement pour le moment.";
+  const threshold = program.threshold ?? 20;
+  const bonusDays = program.bonus_days ?? 90;
+  const startLabel = program.event_window?.start ? formatExactDateTime(program.event_window.start, language as "fr" | "en" | "rn" | "sw" | "ln") : "Debut non defini";
+  const endLabel = program.event_window?.end ? formatExactDateTime(program.event_window.end, language as "fr" | "en" | "rn" | "sw" | "ln") : "Fin non definie";
+
+  return [
+    title,
+    "",
+    instructions,
+    "",
+    "Seuil valide",
+    `${threshold} pharmacies`,
+    "",
+    "Recompense",
+    `+${bonusDays} jours gratuits`,
+    "",
+    `Debut: ${startLabel}`,
+    `Fin: ${endLabel}`,
+  ].join("\n");
+}
+
+function ShareGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M16.5 7.5a2.5 2.5 0 1 0-2.39-3.25l-5.38 3.1a2.5 2.5 0 1 0 0 9.3l5.38 3.1a2.5 2.5 0 1 0 .74-1.3l-5.38-3.1a2.56 2.56 0 0 0 0-2.7l5.38-3.1A2.49 2.49 0 0 0 16.5 7.5Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
+function getReferralStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    pending_payment: "Attente paiement",
+    pending_activity: "Attente activite",
+    validated: "Valide",
+    rewarded: "Recompense accordee",
+    fraud_blocked: "Bloque fraude",
+  };
+  return labels[status] ?? status;
+}
+
+function getPharmacyPrescriptionStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    pharmacy_selected: "Envoyee a votre pharmacie",
+    preparing: "En preparation",
+    ready: "Prete a servir",
+    served: "Servie",
+    completed: "Classee",
+    confirmation_pending: "Confirmation requise",
+    confirmed: "Confirmee",
+    searching: "Recherche en cours",
+    analyzing: "En analyse",
+  };
+  return labels[status] ?? status;
+}
+
+function canPharmacyConfirmPrescription(prescription: PrescriptionRecord, currentPharmacyId: number | null) {
+  if (!currentPharmacyId || prescription.pharmacy !== currentPharmacyId) {
+    return false;
+  }
+  return ["pharmacy_selected", "preparing", "ready"].includes(prescription.status);
+}
+
 export default function PharmacyDashboard({
   onRequestProfileOpen,
 }: {
@@ -225,6 +299,7 @@ export default function PharmacyDashboard({
   const [profileMeta, setProfileMeta] = useState("");
   const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null);
   const [profileIsOnline, setProfileIsOnline] = useState(false);
+  const [currentPharmacyId, setCurrentPharmacyId] = useState<number | null>(null);
   const [activeSection, setActiveSection] = useState<PharmacySection>("dashboard");
   const [searchTerm, setSearchTerm] = useState("");
   const [stockPage, setStockPage] = useState(1);
@@ -238,6 +313,8 @@ export default function PharmacyDashboard({
   const [activationError, setActivationError] = useState<string | null>(null);
   const [activationSuccess, setActivationSuccess] = useState<string | null>(null);
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
+  const [isShareMenuOpen, setIsShareMenuOpen] = useState(false);
+  const [confirmBusyId, setConfirmBusyId] = useState<number | null>(null);
   const [activationForm, setActivationForm] = useState({
     payer_name: "",
     payer_address: "",
@@ -247,6 +324,7 @@ export default function PharmacyDashboard({
     proof_image: null as File | null,
   });
   const refreshInFlightRef = useRef(false);
+  const shareMenuRef = useRef<HTMLDivElement | null>(null);
 
   async function copyRewardValue(value: string, successMessage: string, emptyMessage: string) {
     if (!value.trim()) {
@@ -256,12 +334,15 @@ export default function PharmacyDashboard({
     try {
       await navigator.clipboard.writeText(value);
       setCopyFeedback(successMessage);
+      window.setTimeout(() => {
+        setCopyFeedback((current) => (current === successMessage ? null : current));
+      }, 2800);
     } catch {
       setCopyFeedback("Impossible de copier pour le moment.");
     }
   }
 
-  function openSocialShare(platform: "whatsapp" | "facebook" | "telegram" | "linkedin") {
+  function openSocialShare(platform: "whatsapp" | "facebook") {
     const link = subscription?.reward_program?.referral_link || "";
     if (!link) {
       setCopyFeedback("Lien indisponible.");
@@ -273,39 +354,11 @@ export default function PharmacyDashboard({
     const shareUrls = {
       whatsapp: `https://wa.me/?text=${encodedText}`,
       facebook: `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`,
-      telegram: `https://t.me/share/url?url=${encodedUrl}&text=${encodedText}`,
-      linkedin: `https://www.linkedin.com/sharing/share-offsite/?url=${encodedUrl}`,
     } as const;
 
     window.open(shareUrls[platform], "_blank", "noopener,noreferrer");
     setCopyFeedback(`Partage ${platform} lance.`);
-  }
-
-  async function handleNativeShare() {
-    const link = subscription?.reward_program?.referral_link || "";
-    if (!link) {
-      setCopyFeedback("Lien indisponible.");
-      return;
-    }
-
-    const sharePayload = {
-      title: "Parrainage PharmiGo",
-      text: buildAmbassadorShareMessage(link),
-      url: link,
-    };
-
-    if (navigator.share) {
-      try {
-        await navigator.share(sharePayload);
-        setCopyFeedback("Partage lance.");
-        return;
-      } catch {
-        setCopyFeedback("Le partage a ete annule ou a echoue.");
-        return;
-      }
-    }
-
-    await copyRewardValue(link, "Lien de parrainage copie !", "Lien indisponible.");
+    setIsShareMenuOpen(false);
   }
 
   const labels = {
@@ -513,7 +566,10 @@ export default function PharmacyDashboard({
           item.status === "analyzing" ||
           item.status === "confirmed" ||
           item.status === "searching" ||
-          item.status === "confirmation_pending";
+          item.status === "confirmation_pending" ||
+          item.status === "pharmacy_selected" ||
+          item.status === "preparing" ||
+          item.status === "ready";
 
         if (!canDisplayForPharmacy) {
           return false;
@@ -532,6 +588,7 @@ export default function PharmacyDashboard({
       });
 
       startTransition(() => {
+        setCurrentPharmacyId(currentPharmacyId ?? null);
         setProfileName(currentName);
         setProfileMeta(
           [
@@ -584,6 +641,34 @@ export default function PharmacyDashboard({
     } catch (documentError) {
       void documentError;
       logClientError("L'ouverture du document ordonnance pharmacie a echoue.");
+    }
+  }
+
+  async function handlePrescriptionServedConfirm(prescription: PrescriptionRecord) {
+    if (!canPharmacyConfirmPrescription(prescription, currentPharmacyId)) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Confirmer que l'ordonnance ${getPrescriptionReference(prescription)} a bien ete servie ou classee ?`
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setConfirmBusyId(prescription.id);
+    try {
+      await confirmPharmacyServedPrescription(prescription.id, {
+        notes: `Ordonnance ${getPrescriptionReference(prescription)} confirmee comme servie depuis le dashboard pharmacie.`,
+      });
+      setCopyFeedback("Ordonnance marquee comme servie.");
+      await loadDashboardData(false);
+    } catch (confirmError) {
+      void confirmError;
+      logClientError("La confirmation de service ordonnance pharmacie a echoue.");
+      setCopyFeedback("Impossible de confirmer cette ordonnance pour le moment.");
+    } finally {
+      setConfirmBusyId(null);
     }
   }
 
@@ -728,6 +813,21 @@ export default function PharmacyDashboard({
     return () => window.clearTimeout(timer);
   }, [copyFeedback]);
 
+  useEffect(() => {
+    function handlePointerDown(event: MouseEvent) {
+      if (!shareMenuRef.current?.contains(event.target as Node)) {
+        setIsShareMenuOpen(false);
+      }
+    }
+
+    if (!isShareMenuOpen) {
+      return;
+    }
+
+    window.addEventListener("mousedown", handlePointerDown);
+    return () => window.removeEventListener("mousedown", handlePointerDown);
+  }, [isShareMenuOpen]);
+
   const enabledPaymentMethods = (subscription?.payment_details?.payment_methods ?? []).filter((item) => item.enabled);
   const selectedPaymentMethod = enabledPaymentMethods.find((item) => item.code === activationForm.payment_method) ?? null;
   const isTrialSubscription = subscription?.subscription_status === "trial";
@@ -802,16 +902,21 @@ export default function PharmacyDashboard({
   const filteredStock = useMemo(
     () =>
       stock.filter((item) =>
-        buildSearchIndex([
-          item.medication_name,
-          item.generic_name ?? "",
-          item.dosage ?? "",
-          item.unit,
-          item.price,
-          item.quantity,
-          item.sale_scope === "wholesale" ? "gros" : "detail",
-          item.sale_scope,
-        ]).includes(normalizedSearchTerm)
+        buildSearchIndex(
+          [
+            item.medication_name,
+            item.generic_name ?? "",
+            item.dosage ?? "",
+            item.unit,
+            item.price,
+            item.quantity,
+            item.sale_scope === "wholesale" ? "gros" : "detail",
+            item.sale_scope,
+            item.currency,
+            item.is_available ? "disponible" : "indisponible",
+          ],
+          [item.last_updated]
+        ).includes(normalizedSearchTerm)
       ),
     [normalizedSearchTerm, stock]
   );
@@ -822,9 +927,11 @@ export default function PharmacyDashboard({
         buildSearchIndex(
           [
             prescription.public_reference,
+            getPrescriptionReference(prescription),
             prescription.medication_name,
             prescription.patient_name,
             prescription.status,
+            getPharmacyPrescriptionStatusLabel(prescription.status),
             prescription.geo_zone,
             ...(prescription.extracted_medications ?? []).flatMap((item) => [item.name, item.dosage ?? "", item.form ?? "", item.posology ?? ""]),
           ],
@@ -920,12 +1027,6 @@ export default function PharmacyDashboard({
           onClick: () => setActiveSection(hasActiveSubscription ? "manage-stock" : "activate"),
         },
         {
-          id: "pharm-configuration",
-          label: labels.configuration,
-          active: activeSection === "configuration",
-          onClick: () => setActiveSection("configuration"),
-        },
-        {
           id: "pharm-activate",
           label: labels.activate,
           active: activeSection === "activate",
@@ -936,6 +1037,20 @@ export default function PharmacyDashboard({
           label: labels.addMedication,
           active: activeSection === "add-medication",
           onClick: () => setActiveSection(hasActiveSubscription ? "add-medication" : "activate"),
+        },
+      ],
+    },
+  ];
+
+  const footerSections = [
+    {
+      title: language === "en" ? "Profile" : "Profil",
+      items: [
+        {
+          id: "pharm-configuration",
+          label: labels.configuration,
+          active: activeSection === "configuration",
+          onClick: () => setActiveSection("configuration"),
         },
       ],
     },
@@ -959,6 +1074,7 @@ export default function PharmacyDashboard({
       profileImageUrl={profileImageUrl}
       profileIsOnline={profileIsOnline}
       navSections={navSections}
+      footerSections={footerSections}
       metrics={metrics}
       highlights={highlights}
       topbarActions={
@@ -1079,7 +1195,17 @@ export default function PharmacyDashboard({
             description={language === "en" ? "Matching prescriptions connected to live stock." : "Ordonnances reliees au stock en temps reel."}
             className="dashboard-panel-span-2"
           >
-            <AvailablePrescriptionList stock={stock} prescriptions={pagedPrescriptions} language={language} emptyText={labels.emptyPrescription} viewOriginalLabel="Voir l'ordonnance originale" onOpenDocument={handleOpenDocument} />
+            <AvailablePrescriptionList
+              stock={stock}
+              prescriptions={pagedPrescriptions}
+              language={language}
+              emptyText={labels.emptyPrescription}
+              viewOriginalLabel="Voir l'ordonnance originale"
+              onOpenDocument={handleOpenDocument}
+              currentPharmacyId={currentPharmacyId}
+              onConfirmPrescription={handlePrescriptionServedConfirm}
+              confirmBusyId={confirmBusyId}
+            />
             <PaginationControls
               label={labels.prescriptionPage}
               page={prescriptionPage}
@@ -1119,7 +1245,17 @@ export default function PharmacyDashboard({
         >
           {hasActiveSubscription ? (
             <>
-              <AvailablePrescriptionList stock={stock} prescriptions={pagedPrescriptions} language={language} emptyText={labels.emptyPrescription} viewOriginalLabel="Voir l'ordonnance originale" onOpenDocument={handleOpenDocument} />
+              <AvailablePrescriptionList
+                stock={stock}
+                prescriptions={pagedPrescriptions}
+                language={language}
+                emptyText={labels.emptyPrescription}
+                viewOriginalLabel="Voir l'ordonnance originale"
+                onOpenDocument={handleOpenDocument}
+                currentPharmacyId={currentPharmacyId}
+                onConfirmPrescription={handlePrescriptionServedConfirm}
+                confirmBusyId={confirmBusyId}
+              />
               <PaginationControls
                 label={labels.prescriptionPage}
                 page={prescriptionPage}
@@ -1205,6 +1341,47 @@ export default function PharmacyDashboard({
                 Ce lien unique contient deja votre code de parrainage. Toute nouvelle pharmacie inscrite via ce lien sera marquee comme
                 parrainee par votre pharmacie.
               </small>
+              <div className="dashboard-ambassador-link-actions">
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={() =>
+                    void copyRewardValue(
+                      subscription?.reward_program?.referral_link || "",
+                      "Lien de parrainage copie !",
+                      "Lien indisponible."
+                    )
+                  }
+                >
+                  Copier le lien de parrainage
+                </button>
+                <div ref={shareMenuRef} className="dashboard-ambassador-inline-actions">
+                  <div className={`dashboard-ambassador-share-wrap${isShareMenuOpen ? " is-open" : ""}`}>
+                    <button
+                      type="button"
+                      className="dashboard-ambassador-share-button"
+                      aria-label="Partager le lien de parrainage"
+                      title="Partager le lien de parrainage"
+                      onClick={() => setIsShareMenuOpen((current) => !current)}
+                    >
+                      <ShareGlyph />
+                    </button>
+                    {isShareMenuOpen ? (
+                      <div className="dashboard-ambassador-share-menu" role="menu" aria-label="Partager le lien de parrainage">
+                        <button type="button" className="dashboard-ambassador-share-option" onClick={() => openSocialShare("whatsapp")}>
+                          <span className="dashboard-ambassador-share-icon whatsapp">W</span>
+                          <span>WhatsApp</span>
+                        </button>
+                        <button type="button" className="dashboard-ambassador-share-option" onClick={() => openSocialShare("facebook")}>
+                          <span className="dashboard-ambassador-share-icon facebook">f</span>
+                          <span>Facebook</span>
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+              {copyFeedback ? <p className="dashboard-ambassador-feedback">{copyFeedback}</p> : null}
             </div>
             <div className="dashboard-data-block dashboard-ambassador-stat">
               <span>Progression</span>
@@ -1218,58 +1395,41 @@ export default function PharmacyDashboard({
                 />
               </div>
             </div>
-            <div className="dashboard-record-actions dashboard-ambassador-actions">
-              <button
-                type="button"
-                className="primary-button"
-                onClick={() =>
-                  void copyRewardValue(
-                    subscription?.reward_program?.referral_link || "",
-                    "Lien de parrainage copie !",
-                    "Lien indisponible."
-                  )
-                }
-              >
-                Copier le lien
-              </button>
-              <button type="button" className="secondary-button" onClick={() => void handleNativeShare()}>
-                Partager
-              </button>
-              <button type="button" className="secondary-button" onClick={() => openSocialShare("whatsapp")}>
-                WhatsApp
-              </button>
-              <button type="button" className="secondary-button" onClick={() => openSocialShare("facebook")}>
-                Facebook
-              </button>
-              <button type="button" className="secondary-button" onClick={() => openSocialShare("telegram")}>
-                Telegram
-              </button>
-              <button type="button" className="secondary-button" onClick={() => openSocialShare("linkedin")}>
-                LinkedIn
-              </button>
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={() =>
-                  void copyRewardValue(
-                    subscription?.reward_program?.instructions || "",
-                    "Guide officiel copie !",
-                    "Guide indisponible."
-                  )
-                }
-              >
-                Copier le guide
-              </button>
-              {copyFeedback ? <span className="form-feedback success">{copyFeedback}</span> : null}
-            </div>
             <div className="dashboard-data-block dashboard-data-block-info dashboard-ambassador-guide">
               <span>{subscription?.reward_program?.guide_title || "Guide officiel de la promotion ambassadeur PharmiGo"}</span>
-              <p>{subscription?.reward_program?.instructions || "Aucune instruction definie pour l'evenement pour le moment."}</p>
-              <small>
-                {subscription?.reward_program?.event_window?.start ? `Debut: ${formatExactDateTime(subscription.reward_program.event_window.start, language)}` : "Debut non defini"}
-                {" • "}
-                {subscription?.reward_program?.event_window?.end ? `Fin: ${formatExactDateTime(subscription.reward_program.event_window.end, language)}` : "Fin non definie"}
-              </small>
+              <p className="dashboard-ambassador-guide-body">
+                {subscription?.reward_program?.instructions || "Aucune instruction definie pour l'evenement pour le moment."}
+              </p>
+              <div className="dashboard-ambassador-guide-summary">
+                <div className="dashboard-ambassador-guide-chip">
+                  <span>Seuil valide</span>
+                  <strong>{subscription?.reward_program?.threshold ?? 20} pharmacies</strong>
+                </div>
+                <div className="dashboard-ambassador-guide-chip">
+                  <span>Recompense</span>
+                  <strong>+{subscription?.reward_program?.bonus_days ?? 90} jours gratuits</strong>
+                </div>
+              </div>
+              <div className="dashboard-ambassador-guide-footer">
+                <small>
+                  {subscription?.reward_program?.event_window?.start ? `Debut: ${formatExactDateTime(subscription.reward_program.event_window.start, language)}` : "Debut non defini"}
+                  {" • "}
+                  {subscription?.reward_program?.event_window?.end ? `Fin: ${formatExactDateTime(subscription.reward_program.event_window.end, language)}` : "Fin non definie"}
+                </small>
+                <button
+                  type="button"
+                  className="dashboard-ambassador-guide-copy"
+                  onClick={() =>
+                    void copyRewardValue(
+                      buildRewardGuideCopyText(subscription?.reward_program, language),
+                      "Guide officiel copie !",
+                      "Guide indisponible."
+                    )
+                  }
+                >
+                  Copier le guide
+                </button>
+              </div>
             </div>
             <div className="dashboard-record-list">
               {(subscription?.reward_program?.referrals ?? []).length ? (
@@ -1280,7 +1440,9 @@ export default function PharmacyDashboard({
                         <strong>{referral.pharmacy_name || "Pharmacie filleule"}</strong>
                         <small>{formatExactDateTime(referral.created_at, language)}</small>
                       </div>
-                      <span className="badge info">{referral.status}</span>
+                      <span className={`badge ${referral.status === "validated" || referral.status === "rewarded" ? "success" : referral.status === "fraud_blocked" ? "warning" : "info"}`}>
+                        {getReferralStatusLabel(referral.status)}
+                      </span>
                     </div>
                     <div className="dashboard-summary-row">
                       <span>Ordonnances reelles traitees</span>
@@ -1526,6 +1688,9 @@ function AvailablePrescriptionList({
   emptyText,
   viewOriginalLabel,
   onOpenDocument,
+  currentPharmacyId,
+  onConfirmPrescription,
+  confirmBusyId,
 }: {
   stock: StockItem[];
   prescriptions: PrescriptionRecord[];
@@ -1533,6 +1698,9 @@ function AvailablePrescriptionList({
   emptyText: string;
   viewOriginalLabel: string;
   onOpenDocument: (prescription: PrescriptionRecord) => void;
+  currentPharmacyId: number | null;
+  onConfirmPrescription: (prescription: PrescriptionRecord) => void;
+  confirmBusyId: number | null;
 }) {
   if (!prescriptions.length) {
     return <div className="empty-state">{emptyText}</div>;
@@ -1543,6 +1711,7 @@ function AvailablePrescriptionList({
       {prescriptions.map((prescription) => {
         const medications = prescription.extracted_medications ?? [];
         const documentUrl = getPrescriptionDocumentUrl(prescription);
+        const canConfirm = canPharmacyConfirmPrescription(prescription, currentPharmacyId);
         const available = medications.filter((med) =>
           stock.some(
             (item) =>
@@ -1563,6 +1732,7 @@ function AvailablePrescriptionList({
                 <small>{prescription.geo_zone ? `Zone: ${prescription.geo_zone}` : "Identite patient protegee"}</small>
                 <small>{formatExactDateTime(prescription.created_at, language)}</small>
                 <small>{prescription.pharmacy_name ? `Pharmacie choisie: ${prescription.pharmacy_name}` : "Pharmacie non selectionnee"}</small>
+                <small>Statut: {getPharmacyPrescriptionStatusLabel(prescription.status)}</small>
               </div>
               <div className="match-indicator">
                 <span className="match-percentage">{matchPercentage.toFixed(0)}%</span>
@@ -1592,6 +1762,18 @@ function AvailablePrescriptionList({
                 <p>Le document original n'est pas encore accessible pour cette ordonnance.</p>
               </div>
             )}
+            {canConfirm ? (
+              <div className="dashboard-record-actions">
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={() => onConfirmPrescription(prescription)}
+                  disabled={confirmBusyId === prescription.id}
+                >
+                  {confirmBusyId === prescription.id ? "Confirmation..." : "Confirmer ordonnance servie"}
+                </button>
+              </div>
+            ) : null}
           </article>
         );
       })}

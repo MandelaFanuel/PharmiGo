@@ -109,7 +109,7 @@ function normalizePharmacy(value: unknown): Pharmacy {
         ? value.delivery_available
         : false;
   const wholesaleSupported = typeof value.wholesale_supported === "boolean" ? value.wholesale_supported : false;
-  const retailSupported = typeof value.retail_supported === "boolean" ? value.retail_supported : true;
+  const retailSupported = typeof value.retail_supported === "boolean" ? value.retail_supported : false;
 
   return {
     id: typeof value.id === "number" ? value.id : 0,
@@ -611,6 +611,21 @@ export async function selectPrescriptionPharmacy(
   return data;
 }
 
+export async function confirmPharmacyServedPrescription(
+  prescriptionId: number,
+  payload: {
+    total_amount?: number | null;
+    payment_method?: string;
+    notes?: string;
+  } = {}
+): Promise<{ prescription_id: number; status: string; served_at?: string | null }> {
+  const { data } = await api.post<{ prescription_id: number; status: string; served_at?: string | null }>(
+    `${API_ENDPOINTS.prescriptions}${prescriptionId}/pharmacy-confirm/`,
+    payload
+  );
+  return data;
+}
+
 export async function confirmPrescriptionMedications(
   prescriptionId: number,
   medications: Array<{
@@ -689,7 +704,7 @@ export async function register(payload: {
     formData.append("email", payload.email ?? "");
     formData.append("address", payload.address ?? "");
     formData.append("wholesale_supported", payload.wholesale_supported ? "true" : "false");
-    formData.append("retail_supported", payload.retail_supported === false ? "false" : "true");
+    formData.append("retail_supported", payload.retail_supported ? "true" : "false");
     if (payload.referral_code) {
       formData.append("referral_code", payload.referral_code);
     }
@@ -711,7 +726,7 @@ export async function register(payload: {
     body = {
       ...payload,
       wholesale_supported: Boolean(payload.wholesale_supported),
-      retail_supported: payload.retail_supported !== false,
+      retail_supported: Boolean(payload.retail_supported),
     };
   }
 

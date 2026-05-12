@@ -1516,10 +1516,12 @@ class ChatbotResponseService:
             medication_name = medication_names[0] if medication_names else ""
 
         if medication_names and not internal_answer and response_kind != "medication_guidance":
+            include_wholesale_only = self._question_requests_wholesale_pharmacies(cleaned_question)
             lookup_answer, lookup_confidence = self._answer_medicine_lookup(
                 medication_names=medication_names,
                 role=role,
                 user=user,
+                include_wholesale_only=include_wholesale_only,
             )
             if lookup_answer:
                 internal_answer = lookup_answer
@@ -2592,7 +2594,14 @@ class ChatbotResponseService:
             parts.append(privacy_note)
         return " ".join(part for part in parts if part)
 
-    def _answer_medicine_lookup(self, medication_names: List[str], role: str, user=None) -> Tuple[str, float]:
+    def _answer_medicine_lookup(
+        self,
+        medication_names: List[str],
+        role: str,
+        user=None,
+        *,
+        include_wholesale_only: bool = False,
+    ) -> Tuple[str, float]:
         del role
 
         requested_names = self._prepare_requested_medications(medication_names)
@@ -2613,6 +2622,7 @@ class ChatbotResponseService:
                 medication_name,
                 user_latitude=user_latitude,
                 user_longitude=user_longitude,
+                include_wholesale_only=include_wholesale_only,
             )
             if exact_matches:
                 found_count += 1
@@ -2630,6 +2640,7 @@ class ChatbotResponseService:
                 medication_name,
                 user_latitude=user_latitude,
                 user_longitude=user_longitude,
+                include_wholesale_only=include_wholesale_only,
             )
             if suggestion_name and suggested_matches:
                 found_count += 1
@@ -2653,7 +2664,7 @@ class ChatbotResponseService:
 
         if found_count == 0:
             requested_label = ", ".join(requested_names)
-            available_stock_snapshot = self._format_available_stock_snapshot()
+            available_stock_snapshot = self._format_available_stock_snapshot(include_wholesale_only=include_wholesale_only)
             return (
                 f"J'ai recherche {requested_label} chez les partenaires certifies PharmiGo eligibles. "
                 "Je n'ai pas de stock correspondant disponible pour le moment.\n\n"
@@ -2669,6 +2680,21 @@ class ChatbotResponseService:
         summary = " ".join(summary_parts)
         confidence = 0.94 if found_count == len(requested_names) else 0.86
         return f"{summary}\n\n" + "\n\n".join(sections), confidence
+
+    @staticmethod
+    def _question_requests_wholesale_pharmacies(question: str) -> bool:
+        normalized = normalize_text(question or "")
+        wholesale_markers = [
+            "en gros",
+            "vente en gros",
+            "grossiste",
+            "carton",
+            "caisse",
+            "palette",
+            "lot",
+            "pharmacies de gros",
+        ]
+        return any(marker in normalized for marker in wholesale_markers)
 
     def _prepare_requested_medications(self, medication_names: List[str]) -> List[str]:
         prepared_names: List[str] = []
@@ -2708,7 +2734,7 @@ class ChatbotResponseService:
             getattr(profile, "longitude", None) if profile else None,
         )
 
-    def _iter_eligible_partner_stocks(self):
+    def _iter_eligible_partner_stocks(self, *, include_wholesale_only: bool = False):
         from apps.prescriptions.models import PharmacyStock as RealPharmacyStock
 
         stocks = (
@@ -2716,14 +2742,25 @@ class ChatbotResponseService:
             .filter(is_available=True, quantity__gt=0)
             .order_by("pharmacy__name", "medication_name", "dosage")
         )
-        return [stock for stock in stocks if self._is_partner_eligible(getattr(stock, "pharmacy", None))]
+        return [
+            stock
+            for stock in stocks
+            if self._is_partner_eligible(getattr(stock, "pharmacy", None))
+            and (
+                include_wholesale_only
+                or not (
+                    bool(getattr(getattr(stock, "pharmacy", None), "wholesale_supported", False))
+                    and getattr(getattr(stock, "pharmacy", None), "retail_supported", True) is False
+                )
+            )
+        ]
 
     @staticmethod
     def _is_partner_eligible(pharmacy) -> bool:
         return is_pharmacy_partner_eligible(pharmacy)
 
-    def _format_available_stock_snapshot(self) -> str:
-        visible_stocks = list(self._iter_eligible_partner_stocks()[:8])
+    def _format_available_stock_snapshot(self, *, include_wholesale_only: bool = False) -> str:
+        visible_stocks = list(self._iter_eligible_partner_stocks(include_wholesale_only=include_wholesale_only)[:8])
 
         if not visible_stocks:
             return (
@@ -2781,13 +2818,14 @@ class ChatbotResponseService:
         *,
         user_latitude: float | None = None,
         user_longitude: float | None = None,
+        include_wholesale_only: bool = False,
     ) -> List[Dict[str, str]]:
         requested = normalize_text(medication_name)
         if not requested:
             return []
 
         matches: List[Dict[str, str]] = []
-        stocks = self._iter_eligible_partner_stocks()
+        stocks = self._iter_eligible_partner_stocks(include_wholesale_only=include_wholesale_only)
 
         for stock in stocks:
             best_score = 0
@@ -2823,6 +2861,7 @@ class ChatbotResponseService:
         *,
         user_latitude: float | None = None,
         user_longitude: float | None = None,
+        include_wholesale_only: bool = False,
     ) -> Tuple[str, List[Dict[str, str]]]:
         learned_name = self._find_learned_medicine_name(medication_name)
         search_name = learned_name or medication_name
@@ -2839,7 +2878,7 @@ class ChatbotResponseService:
                 alias_candidates.update(normalized_aliases)
 
         exact_matches: List[Dict[str, str]] = []
-        stocks = self._iter_eligible_partner_stocks()
+        stocks = self._iter_eligible_partner_stocks(include_wholesale_only=include_wholesale_only)
 
         seen_keys = set()
         for stock in stocks:
@@ -2882,13 +2921,14 @@ class ChatbotResponseService:
         *,
         user_latitude: float | None = None,
         user_longitude: float | None = None,
+        include_wholesale_only: bool = False,
     ) -> Tuple[str, List[Dict[str, str]]]:
         requested = normalize_text(medication_name)
         if not requested:
             return "", []
 
         candidate_names: Dict[str, str] = {}
-        for stock in self._iter_eligible_partner_stocks():
+        for stock in self._iter_eligible_partner_stocks(include_wholesale_only=include_wholesale_only):
             for candidate in [stock.medication_name, stock.generic_name or ""]:
                 normalized_candidate = normalize_text(candidate)
                 if normalized_candidate:
@@ -2909,6 +2949,7 @@ class ChatbotResponseService:
             best_name,
             user_latitude=user_latitude,
             user_longitude=user_longitude,
+            include_wholesale_only=include_wholesale_only,
         )
 
     def _format_stock_response(self, intro: str, matches: List[Dict[str, str]]) -> str:

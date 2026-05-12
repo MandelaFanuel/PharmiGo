@@ -93,6 +93,25 @@ class AuthenticationFlowTests(APITestCase):
         self.assertTrue(user.profile.pharmacy.wholesale_supported)
         self.assertFalse(user.profile.pharmacy.retail_supported)
 
+    def test_pharmacy_register_requires_explicit_sales_mode_choice(self):
+        response = self.client.post(
+            "/api/auth/register/",
+            {
+                "account_type": "pharmacy",
+                "pharmacy_name": "Pharmacie Sans Choix",
+                "phone_number": "+25761000089",
+                "email": "sans-choix@example.com",
+                "password": "secret123",
+                "address": "Rohero III",
+                "wholesale_supported": False,
+                "retail_supported": False,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("retail_supported", response.data)
+
     def test_email_verification_with_valid_token_marks_email_verified(self):
         self.client.post(
             "/api/auth/register/",

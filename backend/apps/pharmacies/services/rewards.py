@@ -32,7 +32,7 @@ LEGACY_REWARD_GUIDE_TEXT = (
     "4. Toute activite repetitive suspecte sur le meme appareil est bloquee et remontee a l'administration.\n"
     "5. A partir du seuil de validations configure, PharmiGo ajoute automatiquement des jours gratuits a votre abonnement."
 )
-DEFAULT_REWARD_GUIDE_TEXT = (
+PREVIOUS_DEFAULT_REWARD_GUIDE_TEXT = (
     "Promotion ambassadeur PharmiGo\n\n"
     "Objectif\n"
     "Invitez de nouvelles pharmacies serieuses a rejoindre PharmiGo et accompagnez-les jusqu'a leur activation reelle sur le reseau.\n\n"
@@ -62,15 +62,59 @@ def get_reward_guide_title() -> str:
     return REWARD_GUIDE_TITLE
 
 
-def get_default_reward_guide_text() -> str:
-    return DEFAULT_REWARD_GUIDE_TEXT
+def build_default_reward_guide_text(settings_obj: SubscriptionSystemSettings | None = None) -> str:
+    threshold = getattr(settings_obj, "reward_referral_threshold", 20) or 20
+    min_activity = getattr(settings_obj, "reward_min_activity_count", 10) or 10
+    device_limit = getattr(settings_obj, "reward_device_daily_limit", 3) or 3
+    bonus_days = getattr(settings_obj, "reward_bonus_days", 90) or 90
+
+    return (
+        "Promotion ambassadeur PharmiGo\n\n"
+        "Objectif de la promotion\n"
+        "Invitez de nouvelles pharmacies serieuses a rejoindre PharmiGo et accompagnez-les jusqu'a leur activation reelle sur le reseau.\n\n"
+        "Ce que la pharmacie marraine doit faire\n"
+        "1. Partager uniquement son lien officiel PharmiGo de parrainage.\n"
+        "2. Expliquer a la pharmacie filleule comment s'inscrire correctement avec ce lien.\n"
+        "3. Suivre la progression de la pharmacie filleule jusqu'a la validation complete.\n\n"
+        "Conditions pour qu'un parrainage soit valide\n"
+        f"1. La pharmacie filleule doit creer son compte via le lien unique du parrain.\n"
+        "2. Elle doit soumettre une preuve de paiement validee manuellement par l'administration.\n"
+        f"3. Elle doit ensuite confirmer une activite reelle en traitant au moins {min_activity} ordonnances reelles sur PharmiGo.\n"
+        "4. Une ordonnance reelle est comptabilisee lorsqu'elle est effectivement servie dans le reseau PharmiGo et confirmee dans le flux normal de la plateforme.\n\n"
+        "Regles de securite et anti-fraude\n"
+        f"- Un meme appareil ne peut valider que {device_limit} ordonnances maximum par jour pour une pharmacie en cours de validation.\n"
+        "- Si une activite repetitive suspecte est detectee sur le meme appareil sur des dates successives, le compteur est bloque et une alerte est envoyee a l'administration.\n"
+        "- Seules les activites reelles et verifiables dans PharmiGo sont retenues.\n\n"
+        "Recompense officielle\n"
+        f"- Lorsque vous atteignez {threshold} pharmacies validees, PharmiGo ajoute automatiquement {bonus_days} jours gratuits a votre abonnement.\n"
+        "- Si votre pharmacie etait inactive, elle peut aussi etre reactivee et repasser en statut Verified selon les regles de l'evenement.\n"
+        "- La recompense est accordee automatiquement des que le seuil requis est atteint avec des validations conformes.\n\n"
+        "Quand une pharmacie filleule passe aux etapes suivantes\n"
+        "- Attente paiement: la filleule s'est inscrite mais sa preuve de paiement n'est pas encore validee.\n"
+        "- Attente activite: le paiement est valide, mais le minimum d'ordonnances reelles n'est pas encore atteint.\n"
+        "- Valide: les conditions paiement + activite sont remplies.\n"
+        "- Recompense accordee: le seuil de l'evenement est atteint pour la pharmacie marraine.\n\n"
+        "Bonnes pratiques recommandees\n"
+        "- Partagez toujours le lien officiel complet, pas un simple texte modifie.\n"
+        "- Accompagnez la pharmacie filleule jusqu'a sa premiere vraie activite sur le reseau.\n"
+        "- Gardez ce guide comme reference officielle pendant toute la promotion."
+    )
+
+
+def get_default_reward_guide_text(settings_obj: SubscriptionSystemSettings | None = None) -> str:
+    return build_default_reward_guide_text(settings_obj)
 
 
 def get_reward_settings() -> SubscriptionSystemSettings:
     settings_obj = SubscriptionSystemSettings.get_solo()
     normalized_guide = (settings_obj.reward_instructions or "").strip()
-    if not normalized_guide or normalized_guide == LEGACY_REWARD_GUIDE_TEXT:
-        settings_obj.reward_instructions = DEFAULT_REWARD_GUIDE_TEXT
+    legacy_texts = {
+        "",
+        LEGACY_REWARD_GUIDE_TEXT.strip(),
+        PREVIOUS_DEFAULT_REWARD_GUIDE_TEXT.strip(),
+    }
+    if normalized_guide in legacy_texts:
+        settings_obj.reward_instructions = build_default_reward_guide_text(settings_obj)
         settings_obj.save(update_fields=["reward_instructions", "updated_at"])
     return settings_obj
 

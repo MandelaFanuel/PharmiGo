@@ -175,6 +175,7 @@ type ShareMenuState = {
 };
 
 type ShareChannel = "whatsapp" | "facebook" | "instagram" | "telegram" | "tiktok" | "copy" | "platform";
+type PharmacySalesModeChoice = "retail" | "wholesale" | "both" | null;
 
 const HOME_MOBILE_BREAKPOINT = 768;
 
@@ -230,6 +231,35 @@ function ProfileReadItem({ label, value }: { label: string; value: string }) {
       <strong>{value}</strong>
     </div>
   );
+}
+
+function getSalesModeChoiceFromFlags({
+  wholesale_supported,
+  retail_supported,
+}: Pick<PharmacyRegisterFormState | PharmacyProfileFormState, "wholesale_supported" | "retail_supported">): PharmacySalesModeChoice {
+  if (wholesale_supported && retail_supported) {
+    return "both";
+  }
+  if (wholesale_supported) {
+    return "wholesale";
+  }
+  if (retail_supported) {
+    return "retail";
+  }
+  return null;
+}
+
+function applySalesModeChoice(choice: PharmacySalesModeChoice) {
+  if (choice === "both") {
+    return { wholesale_supported: true, retail_supported: true };
+  }
+  if (choice === "wholesale") {
+    return { wholesale_supported: true, retail_supported: false };
+  }
+  if (choice === "retail") {
+    return { wholesale_supported: false, retail_supported: true };
+  }
+  return { wholesale_supported: false, retail_supported: false };
 }
 
 function HomePagination({
@@ -810,7 +840,7 @@ export default function Home() {
     password: "",
     pharmacy_image: null,
     wholesale_supported: false,
-    retail_supported: true,
+    retail_supported: false,
     country_code: "bi",
   });
   const [showLoginPassword, setShowLoginPassword] = useState(false);
@@ -2111,7 +2141,16 @@ export default function Home() {
       !normalizedDirectorySearchTerm || isPrescriptionReferenceSearch
         ? pharmacies
         : pharmacies.filter((pharmacy) =>
-            [pharmacy.name, pharmacy.address, pharmacy.city]
+            [
+              pharmacy.name,
+              pharmacy.address,
+              pharmacy.city,
+              pharmacy.phone_number,
+              pharmacy.email,
+              getPharmacySalesModeLabel(pharmacy),
+              pharmacy.subscription_status ?? "",
+              pharmacy.is_online ? "en ligne" : "hors ligne",
+            ]
               .filter(Boolean)
               .join(" ")
               .toLowerCase()
@@ -2623,6 +2662,18 @@ export default function Home() {
     return "Vente au detail";
   }
 
+  function getPharmacySalesModeClass(pharmacy: Pick<Pharmacy, "wholesale_supported" | "retail_supported">) {
+    const sellsWholesale = Boolean(pharmacy.wholesale_supported);
+    const sellsRetail = pharmacy.retail_supported !== false;
+    if (sellsWholesale && sellsRetail) {
+      return "pharmacy-showcase-tag sales-mode-both";
+    }
+    if (sellsWholesale) {
+      return "pharmacy-showcase-tag sales-mode-wholesale";
+    }
+    return "pharmacy-showcase-tag sales-mode-retail";
+  }
+
   function openModal(modal: Exclude<ModalType, null>) {
     if (currentUser && (modal === "login" || modal === "register")) {
       setActiveModal("profile");
@@ -2989,7 +3040,7 @@ export default function Home() {
         password: "",
         pharmacy_image: null,
         wholesale_supported: false,
-        retail_supported: true,
+        retail_supported: false,
         country_code: pharmacyRegisterForm.country_code,
       });
       setShowPharmacyRegisterPassword(false);
@@ -4048,7 +4099,7 @@ export default function Home() {
                           ) : (
                             <span className="pharmacy-showcase-tag">{feedText.pickupOnsite}</span>
                           )}
-                          <span className="pharmacy-showcase-tag subtle">{getPharmacySalesModeLabel(pharmacy)}</span>
+                          <span className={getPharmacySalesModeClass(pharmacy)}>{getPharmacySalesModeLabel(pharmacy)}</span>
                           <span className="pharmacy-showcase-tag subtle">
                             {pharmacy.response_count ?? 0} {feedText.servedCount}
                           </span>
@@ -4651,32 +4702,45 @@ export default function Home() {
                     }
                   />
                 </label>
-                <div className="card-row">
-                  <label className="checkbox-field">
-                    <input
-                      type="checkbox"
-                      checked={pharmacyRegisterForm.wholesale_supported}
-                      onChange={(event) => {
-                        setAuthError(null);
-                        clearAuthFieldError("retail_supported");
-                        setPharmacyRegisterForm((current) => ({ ...current, wholesale_supported: event.target.checked }));
-                      }}
-                    />
-                    <span>La pharmacie vend en gros</span>
-                  </label>
-                  <label className="checkbox-field">
-                    <input
-                      type="checkbox"
-                      checked={pharmacyRegisterForm.retail_supported}
-                      onChange={(event) => {
-                        setAuthError(null);
-                        clearAuthFieldError("retail_supported");
-                        setPharmacyRegisterForm((current) => ({ ...current, retail_supported: event.target.checked }));
-                      }}
-                    />
-                    <span>La pharmacie vend au detail</span>
-                  </label>
+                <div className="sales-mode-selector" role="radiogroup" aria-label="Mode de vente pharmacie">
+                  <button
+                    type="button"
+                    className={`sales-mode-option${getSalesModeChoiceFromFlags(pharmacyRegisterForm) === "retail" ? " is-active retail" : ""}`}
+                    onClick={() => {
+                      setAuthError(null);
+                      clearAuthFieldError("retail_supported");
+                      setPharmacyRegisterForm((current) => ({ ...current, ...applySalesModeChoice("retail") }));
+                    }}
+                  >
+                    <strong>Vente au detail</strong>
+                    <span>Comprime, flacon, unite patient</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`sales-mode-option${getSalesModeChoiceFromFlags(pharmacyRegisterForm) === "wholesale" ? " is-active wholesale" : ""}`}
+                    onClick={() => {
+                      setAuthError(null);
+                      clearAuthFieldError("retail_supported");
+                      setPharmacyRegisterForm((current) => ({ ...current, ...applySalesModeChoice("wholesale") }));
+                    }}
+                  >
+                    <strong>Vente en gros</strong>
+                    <span>Carton, caisse, lot, palette</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`sales-mode-option${getSalesModeChoiceFromFlags(pharmacyRegisterForm) === "both" ? " is-active both" : ""}`}
+                    onClick={() => {
+                      setAuthError(null);
+                      clearAuthFieldError("retail_supported");
+                      setPharmacyRegisterForm((current) => ({ ...current, ...applySalesModeChoice("both") }));
+                    }}
+                  >
+                    <strong>Gros et detail</strong>
+                    <span>La pharmacie sert les deux formats</span>
+                  </button>
                 </div>
+                <small className="field-help">Choix obligatoire. Aucun mode n'est preselectionne par defaut.</small>
                 {authFieldErrors.retail_supported ? <small className="field-error">{authFieldErrors.retail_supported}</small> : null}
                 <label>
                   <span>{copy.authPassword}</span>
@@ -4975,22 +5039,32 @@ export default function Home() {
                 </label>
               </div>
               <div className="card-row">
-                <label className="checkbox-field">
-                  <input
-                    type="checkbox"
-                    checked={pharmacyProfileForm.wholesale_supported}
-                    onChange={(event) => setPharmacyProfileForm((current) => ({ ...current, wholesale_supported: event.target.checked }))}
-                  />
-                  <span>Vente en gros</span>
-                </label>
-                <label className="checkbox-field">
-                  <input
-                    type="checkbox"
-                    checked={pharmacyProfileForm.retail_supported}
-                    onChange={(event) => setPharmacyProfileForm((current) => ({ ...current, retail_supported: event.target.checked }))}
-                  />
-                  <span>Vente au detail</span>
-                </label>
+                <div className="sales-mode-selector compact" role="radiogroup" aria-label="Mode de vente pharmacie">
+                  <button
+                    type="button"
+                    className={`sales-mode-option${getSalesModeChoiceFromFlags(pharmacyProfileForm) === "retail" ? " is-active retail" : ""}`}
+                    onClick={() => setPharmacyProfileForm((current) => ({ ...current, ...applySalesModeChoice("retail") }))}
+                  >
+                    <strong>Vente au detail</strong>
+                    <span>Unites patient</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`sales-mode-option${getSalesModeChoiceFromFlags(pharmacyProfileForm) === "wholesale" ? " is-active wholesale" : ""}`}
+                    onClick={() => setPharmacyProfileForm((current) => ({ ...current, ...applySalesModeChoice("wholesale") }))}
+                  >
+                    <strong>Vente en gros</strong>
+                    <span>Formats gros</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`sales-mode-option${getSalesModeChoiceFromFlags(pharmacyProfileForm) === "both" ? " is-active both" : ""}`}
+                    onClick={() => setPharmacyProfileForm((current) => ({ ...current, ...applySalesModeChoice("both") }))}
+                  >
+                    <strong>Gros et detail</strong>
+                    <span>Deux modes</span>
+                  </button>
+                </div>
               </div>
               {profileFieldErrors.retail_supported ? <small className="field-error">{profileFieldErrors.retail_supported}</small> : null}
               <label>

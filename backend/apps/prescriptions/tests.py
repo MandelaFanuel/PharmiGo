@@ -189,6 +189,95 @@ class PrescriptionUploadApiTests(APITestCase):
         self.assertEqual(confirm_response.data["status"], "searching")
         self.assertTrue(confirm_response.data["pharmacies"])
 
+    @patch("apps.prescriptions.services.gemini_vision_service.GeminiVisionService.analyze_prescription")
+    @patch("apps.prescriptions.services.ocr_service.OCRService.analyze_with_both_engines")
+    def test_standard_search_excludes_wholesale_only_pharmacies(self, mock_ocr, mock_gemini):
+        mock_ocr.return_value = {
+            "success": True,
+            "text": "Amoxicilline 500mg 1 boite",
+            "confidence": 0.58,
+        }
+        mock_gemini.return_value = {
+            "success": True,
+            "text": "Amoxicilline 500mg",
+            "confidence": 0.95,
+            "medications": [
+                {"name": "Amoxicilline", "dosage": "500mg", "form": "boite", "posology": "1 par jour", "confidence": 0.95}
+            ],
+        }
+        wholesale_pharmacy = Pharmacy.objects.create(
+            name="Grossiste Test",
+            city="Bujumbura",
+            address="Bujumbura",
+            phone_number="+25762000011",
+            email="grossiste@example.com",
+            wholesale_supported=True,
+            retail_supported=False,
+        )
+        retail_pharmacy = Pharmacy.objects.create(
+            name="Pharmacie Detail Test",
+            city="Bujumbura",
+            address="Bujumbura",
+            phone_number="+25762000012",
+            email="detail@example.com",
+        )
+        PharmacyStock.objects.create(
+            pharmacy=wholesale_pharmacy,
+            medication_name="Amoxicilline",
+            dosage="500mg",
+            quantity=20,
+            unit="cartons",
+            price=50000,
+            sale_scope="wholesale",
+            is_available=True,
+        )
+        PharmacyStock.objects.create(
+            pharmacy=retail_pharmacy,
+            medication_name="Amoxicilline",
+            dosage="500mg",
+            quantity=10,
+            unit="boites",
+            price=1200,
+            sale_scope="retail",
+            is_available=True,
+        )
+        uploaded = SimpleUploadedFile("ordonnance.png", b"fake-image-content", content_type="image/png")
+
+        with patch("apps.prescriptions.views.AnalysisTaskService.enqueue"):
+            upload_response = self.client.post(
+                "/api/upload-prescription/",
+                {
+                    "prescription_image": uploaded,
+                    "patient_name": "Patient One",
+                    "patient_email": "patient@example.com",
+                },
+                format="multipart",
+            )
+
+        AnalysisTaskService()._process_task(upload_response.data["task_id"])
+        task_status_response = self.client.get(f"/api/prescription-analysis/{upload_response.data['task_id']}/")
+        medications = task_status_response.data["record"]["bot_result"]["medications"]
+
+        confirm_response = self.client.post(
+            "/api/confirm-prescription/",
+            {
+                "prescription_id": upload_response.data["prescription_id"],
+                "medications": [
+                    {
+                        "id": medications[0]["id"],
+                        "confirmed": True,
+                        "corrected_name": medications[0]["name"],
+                    }
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(confirm_response.status_code, 200)
+        pharmacy_names = {item["pharmacy_name"] for item in confirm_response.data["pharmacies"]}
+        self.assertIn("Pharmacie Detail Test", pharmacy_names)
+        self.assertNotIn("Grossiste Test", pharmacy_names)
+
     def test_clean_for_json_breaks_circular_references(self):
         payload = {"name": "root"}
         payload["self"] = payload
