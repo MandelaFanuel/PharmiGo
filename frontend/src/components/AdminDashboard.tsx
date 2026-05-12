@@ -228,33 +228,6 @@ function formatDateTimeLocalValue(value?: string | null) {
   return local.toISOString().slice(0, 16);
 }
 
-function copyTextWithFallback(value: string) {
-  if (navigator.clipboard?.writeText) {
-    return navigator.clipboard.writeText(value);
-  }
-
-  return new Promise<void>((resolve, reject) => {
-    try {
-      const textarea = document.createElement("textarea");
-      textarea.value = value;
-      textarea.setAttribute("readonly", "true");
-      textarea.style.position = "fixed";
-      textarea.style.opacity = "0";
-      document.body.appendChild(textarea);
-      textarea.select();
-      const successful = document.execCommand("copy");
-      document.body.removeChild(textarea);
-      if (successful) {
-        resolve();
-        return;
-      }
-      reject(new Error("copy failed"));
-    } catch (error) {
-      reject(error);
-    }
-  });
-}
-
 function formatRewardEventStatus(status: string) {
   const labels: Record<string, string> = {
     active: "Actif",
@@ -301,6 +274,7 @@ export default function AdminDashboard({
   const [rewardDeviceDailyLimit, setRewardDeviceDailyLimit] = useState("3");
   const [rewardBonusDays, setRewardBonusDays] = useState("90");
   const [rewardInstructions, setRewardInstructions] = useState("");
+  const [rewardFormDirty, setRewardFormDirty] = useState(false);
   const [aiSettings, setAiSettings] = useState<AdminDashboardAISettings>({
     human_layer: true,
     learning_passif: true,
@@ -612,7 +586,7 @@ export default function AdminDashboard({
 
   useEffect(() => {
     const rewardSettings = data?.reward_program?.settings;
-    if (!rewardSettings) {
+    if (!rewardSettings || rewardFormDirty) {
       return;
     }
     setRewardEventStartDate(formatDateTimeLocalValue(rewardSettings.reward_event_start_date));
@@ -622,7 +596,7 @@ export default function AdminDashboard({
     setRewardDeviceDailyLimit(String(rewardSettings.reward_device_daily_limit ?? 3));
     setRewardBonusDays(String(rewardSettings.reward_bonus_days ?? 90));
     setRewardInstructions(rewardSettings.reward_instructions ?? "");
-  }, [data?.reward_program]);
+  }, [data?.reward_program, rewardFormDirty]);
 
   useEffect(() => {
     if (data?.ai_settings) {
@@ -792,6 +766,7 @@ export default function AdminDashboard({
         reward_bonus_days: Number.parseInt(rewardBonusDays, 10),
         reward_instructions: rewardInstructions,
       });
+      setRewardFormDirty(false);
       setData(payload);
       setFeedback("Le programme ambassadeur a ete mis a jour.");
     } catch {
@@ -809,60 +784,36 @@ export default function AdminDashboard({
       return;
     }
 
-    const guideTitle = data?.reward_program?.settings.reward_guide_title || "Guide officiel de la promotion ambassadeur PharmiGo";
-    const eventDates = [
-      rewardEventStartDate ? `Debut: ${new Date(rewardEventStartDate).toLocaleString()}` : null,
-      rewardEventEndDate ? `Fin: ${new Date(rewardEventEndDate).toLocaleString()}` : null,
-    ].filter(Boolean);
-    const message = `${guideBody}${eventDates.length ? `\n\n${eventDates.join(" • ")}` : ""}`;
+    const startLabel = rewardEventStartDate ? new Date(rewardEventStartDate).toLocaleString() : "Debut non defini";
+    const endLabel = rewardEventEndDate ? new Date(rewardEventEndDate).toLocaleString() : "Fin non definie";
+    const message = [
+      "Expediteur: Admin PharmiGo",
+      "",
+      guideBody,
+      "",
+      `Debut de l'evenement: ${startLabel}`,
+      `Fin de l'evenement: ${endLabel}`,
+      `Seuil de parrainages valides: ${rewardThreshold || "20"} pharmacies`,
+      `Activite minimale: ${rewardMinActivity || "10"} ordonnances reelles`,
+      `Limite appareil / jour: ${rewardDeviceDailyLimit || "3"}`,
+      `Jours gratuits accordes: +${rewardBonusDays || "90"}`,
+    ].join("\n");
 
     setIsSending(true);
     setError(null);
     setFeedback(null);
     try {
       await broadcastNotifications({
-        title: guideTitle,
+        title: "Annonce officiel - Systeme de parrainage",
         message,
         audience: "pharmacies",
       });
-      setFeedback("Le guide officiel a ete envoye a toutes les pharmacies.");
+      setFeedback("L'annonce officielle a ete envoyee a toutes les pharmacies.");
     } catch {
       logClientError("L'envoi du guide officiel du programme ambassadeur a echoue.");
-      setError("Impossible d'envoyer le guide officiel aux pharmacies.");
+      setError("Impossible d'envoyer l'annonce officielle aux pharmacies.");
     } finally {
       setIsSending(false);
-    }
-  }
-
-  async function handleRewardGuideCopy() {
-    const guideBody = rewardInstructions.trim();
-    if (!guideBody) {
-      setError("Le guide officiel ne peut pas etre vide.");
-      return;
-    }
-
-    const guideTitle = data?.reward_program?.settings.reward_guide_title || "Guide officiel de la promotion ambassadeur PharmiGo";
-    try {
-      const fullGuide = [
-        guideTitle,
-        "",
-        guideBody,
-        "",
-        "Seuil valide",
-        `${rewardThreshold || "20"} pharmacies`,
-        "",
-        "Recompense",
-        `+${rewardBonusDays || "90"} jours gratuits`,
-        "",
-        rewardEventStartDate ? `Debut: ${new Date(rewardEventStartDate).toLocaleString()}` : "Debut non defini",
-        rewardEventEndDate ? `Fin: ${new Date(rewardEventEndDate).toLocaleString()}` : "Fin non definie",
-      ].join("\n");
-      await copyTextWithFallback(fullGuide);
-      setFeedback("Le guide officiel a ete copie.");
-      setError(null);
-    } catch {
-      logClientError("La copie du guide officiel a echoue.");
-      setError("Impossible de copier le guide officiel.");
     }
   }
 
@@ -1611,41 +1562,91 @@ export default function AdminDashboard({
           <form className="admin-settings-form" onSubmit={handleRewardSettingsSubmit}>
             <label>
               <span>Debut de l'evenement</span>
-              <input type="datetime-local" value={rewardEventStartDate} onChange={(event) => setRewardEventStartDate(event.target.value)} />
+              <input
+                type="datetime-local"
+                value={rewardEventStartDate}
+                onChange={(event) => {
+                  setRewardFormDirty(true);
+                  setRewardEventStartDate(event.target.value);
+                }}
+              />
             </label>
             <label>
               <span>Fin de l'evenement</span>
-              <input type="datetime-local" value={rewardEventEndDate} onChange={(event) => setRewardEventEndDate(event.target.value)} />
+              <input
+                type="datetime-local"
+                value={rewardEventEndDate}
+                onChange={(event) => {
+                  setRewardFormDirty(true);
+                  setRewardEventEndDate(event.target.value);
+                }}
+              />
             </label>
             <label>
               <span>Seuil de parrainages valides</span>
-              <input type="number" min="1" value={rewardThreshold} onChange={(event) => setRewardThreshold(event.target.value)} />
+              <input
+                type="number"
+                min="1"
+                value={rewardThreshold}
+                onChange={(event) => {
+                  setRewardFormDirty(true);
+                  setRewardThreshold(event.target.value);
+                }}
+              />
             </label>
             <label>
               <span>Activite minimale</span>
-              <input type="number" min="1" value={rewardMinActivity} onChange={(event) => setRewardMinActivity(event.target.value)} />
+              <input
+                type="number"
+                min="1"
+                value={rewardMinActivity}
+                onChange={(event) => {
+                  setRewardFormDirty(true);
+                  setRewardMinActivity(event.target.value);
+                }}
+              />
             </label>
             <label>
               <span>Limite appareil / jour</span>
-              <input type="number" min="1" value={rewardDeviceDailyLimit} onChange={(event) => setRewardDeviceDailyLimit(event.target.value)} />
+              <input
+                type="number"
+                min="1"
+                value={rewardDeviceDailyLimit}
+                onChange={(event) => {
+                  setRewardFormDirty(true);
+                  setRewardDeviceDailyLimit(event.target.value);
+                }}
+              />
             </label>
             <label>
               <span>Jours gratuits accordes</span>
-              <input type="number" min="1" value={rewardBonusDays} onChange={(event) => setRewardBonusDays(event.target.value)} />
+              <input
+                type="number"
+                min="1"
+                value={rewardBonusDays}
+                onChange={(event) => {
+                  setRewardFormDirty(true);
+                  setRewardBonusDays(event.target.value);
+                }}
+              />
             </label>
             <label className="admin-settings-form-span-2">
               <span>{data?.reward_program?.settings.reward_guide_title || "Guide officiel de la promotion ambassadeur PharmiGo"}</span>
-              <textarea value={rewardInstructions} onChange={(event) => setRewardInstructions(event.target.value)} rows={8} />
+              <textarea
+                value={rewardInstructions}
+                onChange={(event) => {
+                  setRewardFormDirty(true);
+                  setRewardInstructions(event.target.value);
+                }}
+                rows={8}
+              />
             </label>
-            <div className="dashboard-action-stack">
+            <div className="dashboard-action-stack dashboard-event-actions">
               <button type="submit" className="primary-button" disabled={isSaving}>
                 {isSaving ? "Mise a jour..." : "Enregistrer l'evenement"}
               </button>
               <button type="button" className="secondary-button" disabled={isSending} onClick={() => void handleRewardGuideBroadcast()}>
                 {isSending ? "Envoi..." : "Envoyer aux pharmacies"}
-              </button>
-              <button type="button" className="secondary-button" onClick={() => void handleRewardGuideCopy()}>
-                Copier le guide
               </button>
             </div>
           </form>
@@ -1659,8 +1660,11 @@ export default function AdminDashboard({
                 </span>
                 <p>{eventItem.summary}</p>
                 <small>
-                  {eventItem.start ? formatExactDateTime(eventItem.start, language) : "Debut non defini"} •{" "}
-                  {eventItem.end ? formatExactDateTime(eventItem.end, language) : "Fin non definie"}
+                  Activite minimale: {eventItem.min_activity_count} ordonnances • Limite appareil/jour: {eventItem.device_daily_limit}
+                </small>
+                <small>
+                  {eventItem.start ? `Debut: ${formatExactDateTime(eventItem.start, language)}` : "Debut non defini"} •{" "}
+                  {eventItem.end ? `Fin: ${formatExactDateTime(eventItem.end, language)}` : "Fin non definie"}
                 </small>
               </article>
             ))}

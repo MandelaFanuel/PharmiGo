@@ -1917,6 +1917,26 @@
   width: 100% !important;
 }
 
+.dashboard-event-actions {
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 0.9rem !important;
+  width: auto !important;
+}
+
+.dashboard-event-actions .primary-button,
+.dashboard-event-actions .secondary-button,
+.dashboard-event-actions .pharmigo-primary-btn,
+.dashboard-event-actions .pharmigo-secondary-btn {
+  width: auto !important;
+  min-width: 220px !important;
+  flex: 0 0 auto !important;
+  padding-inline: 1.35rem !important;
+}
+
 @media (max-width: 1180px) {
   .dashboard-frame {
     grid-template-columns: 220px minmax(0, 1fr) !important;
@@ -2207,6 +2227,26 @@
 
 .dashboard-data-block {
   padding: 11px 13px !important;
+}
+
+.dashboard-event-actions {
+  display: flex !important;
+}
+
+.dashboard-content-grid > .dashboard-panel:has(.dashboard-event-actions) {
+  display: block !important;
+}
+
+.dashboard-action-stack.dashboard-event-actions {
+  display: flex !important;
+}
+
+.dashboard-action-stack.dashboard-event-actions .primary-button,
+.dashboard-action-stack.dashboard-event-actions .secondary-button,
+.dashboard-action-stack.dashboard-event-actions .pharmigo-primary-btn,
+.dashboard-action-stack.dashboard-event-actions .pharmigo-secondary-btn {
+  width: auto !important;
+  min-width: 220px !important;
 }
 
 .dashboard-summary-row {
@@ -3861,6 +3901,20 @@ canvas {
   .dashboard-footer-actions,
   .dashboard-action-stack {
     gap: 0.65rem !important;
+  }
+
+  .dashboard-event-actions {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    width: 100% !important;
+  }
+
+  .dashboard-event-actions .primary-button,
+  .dashboard-event-actions .secondary-button,
+  .dashboard-event-actions .pharmigo-primary-btn,
+  .dashboard-event-actions .pharmigo-secondary-btn {
+    width: 100% !important;
+    min-width: 0 !important;
   }
 
   .dashboard-actions .primary-button,

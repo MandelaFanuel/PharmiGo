@@ -796,7 +796,11 @@ class NotificationViewSet(viewsets.ModelViewSet):
         if not title or not message:
             return Response({"detail": "Le titre et le message sont obligatoires."}, status=status.HTTP_400_BAD_REQUEST)
 
-        if not title.lower().startswith("from admin:"):
+        normalized_title = title.lower()
+        if not (
+            normalized_title.startswith("from admin:")
+            or normalized_title.startswith("annonce officiel")
+        ):
             title = f"From Admin: {title}"
 
         created = []

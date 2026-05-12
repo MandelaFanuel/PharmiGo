@@ -1494,6 +1494,9 @@ export default function PharmacyDashboard({
                       </div>
                       <p>{eventItem.summary}</p>
                       <small>
+                        Activite minimale: {eventItem.min_activity_count} ordonnances • Limite appareil/jour: {eventItem.device_daily_limit}
+                      </small>
+                      <small>
                         {eventItem.start ? `Debut: ${formatExactDateTime(eventItem.start, language)}` : "Debut non defini"} •{" "}
                         {eventItem.end ? `Fin: ${formatExactDateTime(eventItem.end, language)}` : "Fin non definie"}
                       </small>
