@@ -1052,7 +1052,6 @@ def dashboard(request):
     message_queryset = ChatMessage.objects.exclude(sender_name__in=excluded_message_senders)
 
     # Serialize pharmacies
-    from apps.pharmacies.serializers import PharmacySerializer
     pharmacy_data = PharmacySerializer(pharmacies, many=True, context={'request': request}).data
     prescription_data = PrescriptionSerializer(
         prescription_queryset.select_related("pharmacy", "patient_user").prefetch_related("responses__pharmacy", "comments__user__profile__pharmacy"),

@@ -12,9 +12,7 @@ frontend/dist/
 __pycache__/
 *.pyc
 .env
-.env.example
 **/.env
-**/.env.example
 .env.exemple
 *.pem
 *.key

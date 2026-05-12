@@ -1,6 +1,5 @@
 from django.conf import settings
 from django.db import models
-from django.contrib.auth.models import User
 from django.utils import timezone
 from decimal import Decimal
 
@@ -156,7 +155,7 @@ class PharmacySubscription(models.Model):
             exchange_rate = self.current_exchange_rate_bif if isinstance(self.current_exchange_rate_bif, Decimal) else Decimal(str(self.current_exchange_rate_bif))
             self.monthly_price_bif = monthly_price * exchange_rate
         
-        # Set trial end date to 6 months from start if not set
+        # Set trial end date to 30 days from start if not set
         if self.trial_end_date is None and self.trial_start_date:
             from datetime import timedelta
             self.trial_end_date = self.trial_start_date + timedelta(days=30)
