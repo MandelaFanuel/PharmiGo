@@ -979,6 +979,12 @@ label span {
   box-shadow: 0 14px 30px rgba(8, 30, 51, 0.08);
 }
 
+.sales-mode-option:focus-visible {
+  outline: none;
+  border-color: color-mix(in srgb, var(--primary) 42%, var(--line) 58%);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 16%, transparent 84%);
+}
+
 .sales-mode-option.is-active.retail {
   border-color: color-mix(in srgb, var(--primary) 38%, var(--line) 62%);
   background: color-mix(in srgb, var(--primary) 15%, var(--surface-strong) 85%);
@@ -2689,7 +2695,7 @@ label span {
 
 .login-shell {
   min-height: auto;
-  grid-template-columns: minmax(340px, 0.95fr) minmax(320px, 0.85fr);
+  grid-template-columns: minmax(520px, 1.08fr) minmax(340px, 0.82fr);
   gap: 0;
   border: 1px solid color-mix(in srgb, var(--line) 88%, white 12%);
   border-radius: 28px;
@@ -2727,10 +2733,33 @@ label span {
 }
 
 .login-form {
-  width: min(100%, 412px);
+  width: min(100%, 520px);
   max-width: 100%;
   min-width: 0;
   gap: 14px;
+}
+
+.auth-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  margin-bottom: 4px;
+  color: var(--accent);
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.auth-back-link:hover,
+.auth-back-link:focus-visible {
+  color: var(--primary-strong);
+  outline: none;
+}
+
+.auth-back-icon {
+  width: 18px;
+  height: 18px;
+  display: block;
 }
 
 .auth-book-panel {
@@ -2782,7 +2811,7 @@ label span {
 }
 
 .auth-book {
-  width: min(100%, 452px);
+  width: min(100%, 560px);
   perspective: 2200px;
 }
 
@@ -3809,6 +3838,28 @@ label span {
   row-gap: 10px;
 }
 
+.auth-account-grid-pharmacy {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+}
+
+.auth-account-grid-pharmacy .sales-mode-selector,
+.auth-account-grid-pharmacy .field-help,
+.auth-account-grid-pharmacy .field-error,
+.auth-account-grid-pharmacy .auth-location-note {
+  grid-column: 1 / -1;
+}
+
+.auth-account-grid-pharmacy .sales-mode-selector.compact {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.auth-account-grid-pharmacy .sales-mode-option {
+  min-height: 126px;
+}
+
 .auth-account-grid .phone-field {
   grid-template-columns: 104px minmax(0, 1fr);
 }
@@ -3858,6 +3909,12 @@ label span {
 
 .auth-location-error {
   margin: 0;
+}
+
+.login-field.auth-upload-field input[type="file"] {
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 12px;
 }
 
 .auth-location-actions {
@@ -4300,6 +4357,26 @@ label span {
   gap: 8px;
 }
 
+.landing-inline-footer-socials {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.landing-inline-footer-socials a {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  width: fit-content;
+  color: rgba(242, 247, 251, 0.92);
+}
+
+.landing-inline-footer-socials .landing-svg-icon {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
 .footer-link-button {
   padding: 0;
   background: transparent;
@@ -4318,6 +4395,14 @@ label span {
   border-top: 1px solid rgba(255, 255, 255, 0.22);
   color: rgba(242, 247, 251, 0.82);
   text-align: center;
+}
+
+.pharmigo-modal-actions .pharmigo-pdf-download-btn,
+.pharmigo-modal-actions .pharmigo-modal-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 
 .pharmacy-live-board {
@@ -6404,6 +6489,12 @@ label span {
     display: none;
   }
 
+  .auth-account-grid,
+  .auth-account-grid-pharmacy,
+  .auth-account-grid-pharmacy .sales-mode-selector.compact {
+    grid-template-columns: 1fr;
+  }
+
   .landing-inline-footer {
     position: static;
     left: auto;
@@ -6487,6 +6578,10 @@ label span {
 @media (max-width: 640px) {
   .login-form-panel {
     padding: 26px 12px 22px;
+  }
+
+  .auth-back-link span {
+    font-size: 0.8rem;
   }
 
   .login-copy-block h1 {

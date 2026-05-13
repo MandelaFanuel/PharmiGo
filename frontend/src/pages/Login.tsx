@@ -49,6 +49,14 @@ function EyeIcon({ open }: { open: boolean }) {
   );
 }
 
+function BackHomeIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="auth-back-icon">
+      <path d="M15 18l-6-6 6-6M9 12h10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export default function Login() {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
@@ -125,6 +133,10 @@ export default function Login() {
     <section className="auth-shell login-shell">
       <div className="auth-panel login-form-panel">
         <form className="auth-form login-form" onSubmit={handleSubmit} autoComplete="off">
+          <Link to="/" className="auth-back-link" aria-label="Retour a l'accueil">
+            <BackHomeIcon />
+            <span>Retour a l'accueil</span>
+          </Link>
           <div className="login-brand-row">
             <img src="/pharmigo-logo.png" alt="PharmiGo" className="login-brand-logo" />
             <div className="login-brand-copy">

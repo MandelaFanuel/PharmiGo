@@ -731,6 +731,22 @@ function ShareIcon() {
   );
 }
 
+function DownloadIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="landing-svg-icon">
+      <path d="M12 4v10m0 0 4-4m-4 4-4-4M5 18h14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="landing-svg-icon">
+      <path d="m6 6 12 12M18 6 6 18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function WhatsAppIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" className="landing-svg-icon">
@@ -743,7 +759,25 @@ function WhatsAppIcon() {
 function FacebookIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" className="landing-svg-icon">
-      <path d="M14 8h2.5V4.8c-.4-.1-1.3-.3-2.5-.3-2.5 0-4.2 1.5-4.2 4.4V11H7v3.6h2.8V20h3.4v-5.4h2.8l.4-3.6h-3.2V9.3c0-.8.2-1.3.8-1.3Z" fill="currentColor" />
+      <path d="M13.5 20v-6h2.4l.4-3h-2.8V9.1c0-.9.3-1.6 1.6-1.6h1.3V4.9c-.2 0-1-.1-2-.1-2.4 0-3.9 1.4-3.9 4v2.2H8.2v3h2.3v6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function LinkedInIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="landing-svg-icon">
+      <rect x="4" y="4" width="16" height="16" rx="3.2" fill="none" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M8 10v6M8 7.5v.01M12 16v-6m0 0h2.4A2.6 2.6 0 0 1 17 12.6V16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function MailIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="landing-svg-icon">
+      <rect x="3" y="5.5" width="18" height="13" rx="2.2" fill="none" stroke="currentColor" strokeWidth="1.8" />
+      <path d="m5.5 8 6.5 5 6.5-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -1422,6 +1456,16 @@ export default function Home() {
           ],
         },
         {
+          title: "Comment bien demarrer ?",
+          intro:
+            "Le meilleur demarrage dans PharmiGo repose sur trois gestes simples : utiliser un email verifie, choisir le bon role et garder ses donnees a jour.",
+          items: [
+            { title: "Compte patient", body: "Le patient cree son compte, verifie son email, partage sa position si possible puis televerse ses ordonnances depuis un espace personnel securise." },
+            { title: "Compte pharmacie", body: "La pharmacie renseigne son profil, choisit clairement son mode de vente, ajoute son stock et active ensuite son essai ou son abonnement." },
+            { title: "Compte administrateur", body: "L'administrateur pilote les inscriptions, abonnements, notifications globales, verifications OCR, evenements ambassadeur et parametres sensibles." },
+          ],
+        },
+        {
           title: "Comment fonctionne le parcours patient ?",
           items: [
             { title: "1. Publier une ordonnance ou un besoin", body: "Le patient peut televerser une image ou un PDF, puis suivre sa demande depuis la page d'accueil ou son dashboard." },
@@ -1434,7 +1478,7 @@ export default function Home() {
           title: "Comment fonctionne le parcours pharmacie ?",
           items: [
             { title: "1. Creer et activer son espace", body: "La pharmacie s'inscrit, complete son profil, renseigne ses horaires, sa livraison, sa photo et beneficie d'un essai ou d'un abonnement gere par la plateforme." },
-            { title: "2. Gerer un stock exploitable", body: "Chaque medicament peut etre ajoute, modifie, supprime ou ajuste en quantite. Ce stock alimente ensuite les suggestions et le chatbot." },
+            { title: "2. Gerer un stock exploitable", body: "Chaque medicament peut etre ajoute, modifie, supprime ou ajuste en quantite. Ce stock alimente ensuite les suggestions, la recherche locale et le chatbot." },
             { title: "3. Repondre aux demandes", body: "Le dashboard pharmacie affiche les ordonnances disponibles, les medicaments confirmes par OCR et permet de repondre avec prix, delai et disponibilite." },
             { title: "4. Servir et tracer", body: "La pharmacie suit ensuite les etats de preparation, disponibilite et service, avec historique et notifications associes." },
           ],
@@ -1453,6 +1497,7 @@ export default function Home() {
             { title: "Stock reel au coeur de la decision", body: "Les pharmacies ne sont pas seulement listees : elles sont rapprochees d'une demande selon leur stock declare, leur activite et leur capacite de reponse." },
             { title: "OCR + IA + confirmation humaine", body: "La plateforme ne s'arrete pas a une lecture brute : elle aide a corriger et valider les medicaments avant de declencher la recherche." },
             { title: "Distance et contexte local", body: "La geolocalisation, les villes, les horaires d'ouverture, la livraison et les moyens de paiement locaux rendent la suggestion plus pertinente." },
+            { title: "Vente en gros sur demande explicite", body: "Le chatbot ne met en avant les pharmacies de gros que lorsque l'utilisateur demande explicitement des pharmacies vendant en gros." },
             { title: "Experience vivante", body: "Pharmacies publiques, ordonnances confirmees, commentaires, likes, partages, messagerie et notifications donnent a la plateforme une vraie dimension communautaire." },
           ],
         },
@@ -2885,7 +2930,7 @@ export default function Home() {
     setIsNotificationMenuOpen(false);
     setIsProfileMenuOpen(false);
     setActiveModal(null);
-    navigate("/", { replace: true });
+    navigate("/login", { replace: true });
   }
 
   function closeModal() {
@@ -4492,10 +4537,28 @@ export default function Home() {
           <section>
             <h3>{copy.footerContact}</h3>
             <div className="landing-inline-footer-office">
-              <span>+257 69 906 758</span>
-              <span>contact@pharmigo.app</span>
-              <span>Bujumbura, Burundi</span>
-              <span>Rwanda, RDCongo, Burundi</span>
+              <span>+25769096758</span>
+              <span>contact@pharmigo.com</span>
+              <span>Burundi, Tanzanie, RDCongo</span>
+              <span>www.pharmigo.com</span>
+            </div>
+            <div className="landing-inline-footer-socials" aria-label="Reseaux PharmiGo">
+              <a href="https://wa.me/25769096758" target="_blank" rel="noreferrer" aria-label="WhatsApp PharmiGo">
+                <WhatsAppIcon />
+                <span>WhatsApp</span>
+              </a>
+              <a href="https://www.linkedin.com/company/pharmigo" target="_blank" rel="noreferrer" aria-label="LinkedIn PharmiGo">
+                <LinkedInIcon />
+                <span>LinkedIn</span>
+              </a>
+              <a href="mailto:pharmigo@gmail.com" aria-label="Gmail PharmiGo">
+                <MailIcon />
+                <span>Gmail</span>
+              </a>
+              <a href="https://www.pharmigo.com" target="_blank" rel="noreferrer" aria-label="Site officiel PharmiGo">
+                <GlobeIcon />
+                <span>Site web</span>
+              </a>
             </div>
           </section>
 
@@ -4518,7 +4581,7 @@ export default function Home() {
         </div>
 
         <div className="landing-inline-footer-bottom">
-          <span>{copy.footerBottom}</span>
+          <span>{copy.footerBottom} · © PharmiGo, tous droits reserves.</span>
         </div>
       </footer>
 
@@ -5639,14 +5702,14 @@ export default function Home() {
                   className="pharmigo-pdf-download-btn"
                   onClick={() => downloadPharmiGoPDF(pharmigoModalContent)}
                 >
-                  📄 {pharmigoModalContent.downloadPdf}
+                  <DownloadIcon /> {pharmigoModalContent.downloadPdf}
                 </button>
                 <button
                   type="button"
                   className="pharmigo-modal-close"
                   onClick={() => setShowPharmiGoModal(false)}
                 >
-                  ✕
+                  <CloseIcon />
                 </button>
               </div>
             </div>

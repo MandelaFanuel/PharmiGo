@@ -38,11 +38,10 @@ def sync_pharmacy_access_flags(pharmacy: Pharmacy | None, subscription: Pharmacy
     if pharmacy is None or subscription is None:
         return
 
-    status = (subscription.subscription_status or "").strip().lower()
-    should_be_verified = bool(getattr(pharmacy, "is_active", True)) and status == "active" and is_subscription_eligible(subscription)
-    if getattr(pharmacy, "is_verified", False) != should_be_verified:
-        pharmacy.is_verified = should_be_verified
-        pharmacy.save(update_fields=["is_verified"])
+    # `is_verified` is a business badge managed explicitly by the platform.
+    # Subscription eligibility controls private access, but should not silently
+    # rewrite the public verification badge.
+    return
 
 
 def refresh_subscription_state(subscription: PharmacySubscription | None) -> PharmacySubscription | None:
@@ -92,7 +91,11 @@ def is_pharmacy_partner_eligible(pharmacy: Pharmacy | None) -> bool:
         return False
 
     status = (subscription.subscription_status or "").strip().lower()
-    return status in {"active", "trial"}
+    if status == "trial":
+        return True
+    if status == "active":
+        return bool(getattr(pharmacy, "is_verified", False))
+    return False
 
 
 def pharmacy_has_platform_access(pharmacy: Pharmacy | None) -> bool:

@@ -71,6 +71,14 @@ function EyeIcon({ open }: { open: boolean }) {
   );
 }
 
+function BackHomeIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="auth-back-icon">
+      <path d="M15 18l-6-6 6-6M9 12h10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function validateEmailValue(email: string) {
   const trimmed = email.trim().toLowerCase();
   if (!trimmed) {
@@ -270,6 +278,10 @@ export default function Register() {
   return (
     <section className="auth-shell">
       <div className="auth-panel auth-copy">
+        <Link to="/" className="auth-back-link" aria-label="Retour a l'accueil">
+          <BackHomeIcon />
+          <span>Retour a l'accueil</span>
+        </Link>
         <span className="landing-section-kicker">Inscription</span>
         <h1>Creer votre compte PharmiGo.</h1>
         <p>Les pharmacies deviennent visibles sur la page d'accueil apres inscription, et les patients peuvent ensuite publier leurs ordonnances.</p>

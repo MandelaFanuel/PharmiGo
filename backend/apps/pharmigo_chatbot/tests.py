@@ -365,6 +365,74 @@ class ChatbotResponseServiceTests(TestCase):
         self.assertIn("Pharmacie Trial", answer)
         self.assertIn("Partenaire Certifie PharmiGo", answer)
 
+    def test_standard_patient_lookup_excludes_wholesale_only_partner(self):
+        wholesale_partner = RealPharmacy.objects.create(
+            name="Pharmacie Gros Only",
+            city="Bujumbura",
+            address="Ngagara",
+            phone_number="+25761000008",
+            is_verified=True,
+            wholesale_supported=True,
+            retail_supported=False,
+        )
+        PharmacySubscription.objects.create(
+            pharmacy=wholesale_partner,
+            subscription_status="active",
+            is_trial_active=False,
+            trial_end_date=timezone.now() + timedelta(days=10),
+            next_payment_due_date=timezone.now() + timedelta(days=20),
+        )
+        RealPharmacyStock.objects.create(
+            pharmacy=wholesale_partner,
+            medication_name="Amoxicilline",
+            dosage="500mg",
+            quantity=50,
+            unit="cartons",
+            is_available=True,
+        )
+
+        service = ChatbotResponseService()
+        answer, _confidence = service._answer_medicine_lookup(["amoxicilline"], "patient", self.user)
+
+        self.assertNotIn("Pharmacie Gros Only", answer)
+
+    def test_explicit_wholesale_lookup_returns_wholesale_only_partner(self):
+        wholesale_partner = RealPharmacy.objects.create(
+            name="Pharmacie Gros Visible",
+            city="Bujumbura",
+            address="Kinanira",
+            phone_number="+25761000009",
+            is_verified=True,
+            wholesale_supported=True,
+            retail_supported=False,
+        )
+        PharmacySubscription.objects.create(
+            pharmacy=wholesale_partner,
+            subscription_status="active",
+            is_trial_active=False,
+            trial_end_date=timezone.now() + timedelta(days=10),
+            next_payment_due_date=timezone.now() + timedelta(days=20),
+        )
+        RealPharmacyStock.objects.create(
+            pharmacy=wholesale_partner,
+            medication_name="Amoxicilline",
+            dosage="500mg",
+            quantity=50,
+            unit="cartons",
+            is_available=True,
+        )
+
+        service = ChatbotResponseService()
+        answer, _confidence = service._answer_medicine_lookup(
+            ["amoxicilline"],
+            "patient",
+            self.user,
+            include_wholesale_only=True,
+        )
+
+        self.assertIn("Pharmacie Gros Visible", answer)
+        self.assertIn("Partenaire Certifie PharmiGo", answer)
+
     def test_when_no_eligible_partner_exists_response_mentions_certified_partner_unavailable(self):
         expired_partner = RealPharmacy.objects.create(
             name="Pharmacie Expiree",

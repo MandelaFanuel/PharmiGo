@@ -77,6 +77,14 @@ function EyeIcon({ open }: { open: boolean }) {
   );
 }
 
+function BackHomeIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="auth-back-icon">
+      <path d="M15 18l-6-6 6-6M9 12h10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function validateEmailIdentifier(identifier: string) {
   const trimmed = identifier.trim();
   if (!trimmed) {
@@ -409,6 +417,10 @@ export default function AuthPage() {
         <div className={mode === "register" ? `auth-book is-register ${accountType === "pharmacy" ? "is-pharmacy" : "is-patient"}` : "auth-book"}>
           <div className="auth-book-pages">
             <form className="auth-form login-form auth-page-face auth-page-face-login" onSubmit={handleLoginSubmit} autoComplete="off">
+              <Link to="/" className="auth-back-link" aria-label="Retour a l'accueil">
+                <BackHomeIcon />
+                <span>Retour a l'accueil</span>
+              </Link>
               <Link to="/" className="login-brand-row login-brand-link">
                 <img src="/pharmigo-logo.png" alt="PharmiGo" className="login-brand-logo" />
                 <div className="login-brand-copy">
@@ -489,6 +501,10 @@ export default function AuthPage() {
             </form>
 
             <form className="auth-form login-form auth-page-face auth-page-face-register" onSubmit={handleRegisterSubmit}>
+              <Link to="/" className="auth-back-link" aria-label="Retour a l'accueil">
+                <BackHomeIcon />
+                <span>Retour a l'accueil</span>
+              </Link>
               <Link to="/" className="login-brand-row login-brand-link">
                 <img src="/pharmigo-logo.png" alt="PharmiGo" className="login-brand-logo" />
                 <div className="login-brand-copy">
