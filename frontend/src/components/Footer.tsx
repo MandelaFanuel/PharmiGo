@@ -95,7 +95,7 @@ export default function Footer() {
       </div>
 
       <div className="pharmigo-footer-bottom">
-        <span>{t("footer.bottom")} · © PharmiGo, tous droits réservés.</span>
+        <span>{t("footer.bottom")} · © 2026 - PharmiGo, tous droits réservés.</span>
       </div>
     </footer>
   );
