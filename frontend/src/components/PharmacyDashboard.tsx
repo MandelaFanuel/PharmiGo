@@ -52,12 +52,20 @@ interface SubscriptionData {
   monthly_price_usd: number;
   monthly_price_bif: number;
   current_exchange_rate_bif: number;
+  exchange_rate_source?: string;
+  exchange_rate_source_url?: string;
+  exchange_rate_updated_at?: string | null;
+  exchange_rate_next_update_at?: string | null;
   next_payment_due_date: string | null;
   days_remaining: number;
   payment_details?: {
     monthly_price_usd: number;
     monthly_price_bif: number;
     exchange_rate: number;
+    exchange_rate_source?: string;
+    exchange_rate_source_url?: string;
+    exchange_rate_updated_at?: string | null;
+    exchange_rate_next_update_at?: string | null;
     payment_methods: Array<{
       code: string;
       label: string;
@@ -1806,6 +1814,26 @@ export default function PharmacyDashboard({
                   <span>Taux utilise</span>
                   <span>1 USD = {Number(subscription.current_exchange_rate_bif).toFixed(0)} BIF</span>
                 </div>
+                {subscription.exchange_rate_source ? (
+                  <div className="price-row">
+                    <span>Source du taux</span>
+                    <span>
+                      {subscription.exchange_rate_source_url ? (
+                        <a href={subscription.exchange_rate_source_url} target="_blank" rel="noreferrer" className="inline-link">
+                          {subscription.exchange_rate_source}
+                        </a>
+                      ) : (
+                        subscription.exchange_rate_source
+                      )}
+                    </span>
+                  </div>
+                ) : null}
+                {subscription.exchange_rate_updated_at ? (
+                  <div className="price-row">
+                    <span>Derniere mise a jour</span>
+                    <span>{formatExactDateTime(subscription.exchange_rate_updated_at, language)}</span>
+                  </div>
+                ) : null}
                 {subscription.subscription_status === "active" ? (
                   <>
                     <div className="price-row">
@@ -1831,6 +1859,20 @@ export default function PharmacyDashboard({
                 </div>
               ) : null}
               <div className="subscription-payment-box">
+                {subscription.exchange_rate_source ? (
+                  <p>
+                    <strong>Taux de reference</strong>: 1 USD = {Number(subscription.current_exchange_rate_bif).toFixed(0)} BIF
+                    {" • "}
+                    {subscription.exchange_rate_source_url ? (
+                      <a href={subscription.exchange_rate_source_url} target="_blank" rel="noreferrer" className="inline-link">
+                        Source: {subscription.exchange_rate_source}
+                      </a>
+                    ) : (
+                      <>Source: {subscription.exchange_rate_source}</>
+                    )}
+                    {subscription.exchange_rate_updated_at ? ` • Maj: ${formatExactDateTime(subscription.exchange_rate_updated_at, language)}` : ""}
+                  </p>
+                ) : null}
                 {(subscription.payment_details?.payment_methods ?? []).filter((item) => item.enabled).map((method) => (
                   <p key={method.code}>
                     <strong>{method.label}</strong>: {method.account_number || "N/A"} {method.account_name ? `• ${method.account_name}` : ""}

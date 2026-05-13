@@ -1246,6 +1246,16 @@
   color: var(--muted);
 }
 
+.inline-link {
+  color: #1c4f7d;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.inline-link:hover {
+  color: #103758;
+}
+
 .subscription-activation-panel,
 .subscription-activation-form,
 .subscription-activation-summary,

@@ -8,6 +8,7 @@ from django.core.management import call_command
 from django.test import SimpleTestCase
 from django.utils import timezone
 from rest_framework.test import APITestCase
+from unittest.mock import patch
 
 from apps.common.public_storage import PharmigoPublicMediaStorage
 from apps.notifications.models import Notification
@@ -75,6 +76,51 @@ class PharmacySubscriptionApiTests(APITestCase):
         self.assertEqual(response.data["subscription_status"], "trial")
         self.assertIn("payment_details_burundi", response.data)
         self.assertTrue(PharmacySubscription.objects.filter(pharmacy=self.pharmacy).exists())
+
+    @patch(
+        "apps.pharmacies.views.ExchangeRateService.get_exchange_snapshot",
+        return_value={
+            "rate": 2977.93,
+            "source_label": "ExchangeRate-API",
+            "source_url": "https://www.exchangerate-api.com",
+            "updated_at": "Wed, 13 May 2026 00:02:31 +0000",
+            "next_update_at": "Thu, 14 May 2026 00:09:01 +0000",
+        },
+    )
+    def test_subscription_endpoint_exposes_live_exchange_source_metadata(self, mocked_snapshot):
+        response = self.client.get("/api/pharmacies/subscription/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["exchange_rate_source"], "ExchangeRate-API")
+        self.assertEqual(response.data["exchange_rate_source_url"], "https://www.exchangerate-api.com")
+        self.assertEqual(response.data["payment_details"]["exchange_rate"], 2977.93)
+        self.assertEqual(response.data["payment_details"]["exchange_rate_source"], "ExchangeRate-API")
+
+    @patch(
+        "apps.pharmacies.views.ExchangeRateService.get_exchange_snapshot",
+        return_value={
+            "rate": 2999.5,
+            "source_label": "ExchangeRate-API",
+            "source_url": "https://www.exchangerate-api.com",
+            "updated_at": "Wed, 13 May 2026 00:02:31 +0000",
+            "next_update_at": "Thu, 14 May 2026 00:09:01 +0000",
+        },
+    )
+    def test_subscription_endpoint_refreshes_stored_bif_amount_when_live_rate_changes(self, mocked_snapshot):
+        subscription = PharmacySubscription.objects.create(
+            pharmacy=self.pharmacy,
+            trial_end_date=timezone.now() + timedelta(days=180),
+            monthly_price_usd=5,
+            current_exchange_rate_bif=2850,
+            monthly_price_bif=14250,
+        )
+
+        response = self.client.get("/api/pharmacies/subscription/")
+
+        self.assertEqual(response.status_code, 200)
+        subscription.refresh_from_db()
+        self.assertEqual(float(subscription.current_exchange_rate_bif), 2999.5)
+        self.assertEqual(float(subscription.monthly_price_bif), 14997.5)
 
     def test_subscription_settings_default_trial_period_is_six_months(self):
         settings_obj = SubscriptionSystemSettings.get_solo()

@@ -202,8 +202,9 @@ def sync_pharmacy_verification_with_subscription(pharmacy, subscription):
 
 def sync_subscription_prices(settings_obj):
     exchange_service = ExchangeRateService()
-    exchange_rate = exchange_service.get_exchange_rate()
-    monthly_price_bif = exchange_service.convert_usd_to_bif(float(settings_obj.monthly_price_usd))
+    exchange_snapshot = exchange_service.get_exchange_snapshot()
+    exchange_rate = exchange_snapshot["rate"]
+    monthly_price_bif = round(float(settings_obj.monthly_price_usd) * float(exchange_rate), 2)
 
     for subscription in PharmacySubscription.objects.all():
         updated_fields = []

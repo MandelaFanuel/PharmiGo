@@ -118,6 +118,8 @@ class PharmacySubscriptionView(APIView):
         try:
             pharmacy = request.user.profile.pharmacy
             exchange_service = ExchangeRateService()
+            exchange_snapshot = exchange_service.get_exchange_snapshot()
+            exchange_rate = exchange_snapshot["rate"]
             subscription_settings = SubscriptionSystemSettings.get_solo()
             subscription, created = PharmacySubscription.objects.get_or_create(
                 pharmacy=pharmacy,
@@ -125,22 +127,35 @@ class PharmacySubscriptionView(APIView):
                     'trial_start_date': timezone.now(),
                     'trial_end_date': timezone.now() + timedelta(days=subscription_settings.trial_period_days),
                     'monthly_price_usd': subscription_settings.monthly_price_usd,
-                    'current_exchange_rate_bif': exchange_service.get_exchange_rate(),
-                    'monthly_price_bif': exchange_service.convert_usd_to_bif(float(subscription_settings.monthly_price_usd)),
+                    'current_exchange_rate_bif': exchange_rate,
+                    'monthly_price_bif': round(float(subscription_settings.monthly_price_usd) * float(exchange_rate), 2),
                 }
             )
-            if subscription.monthly_price_usd != subscription_settings.monthly_price_usd:
+            latest_monthly_price_bif = round(float(subscription_settings.monthly_price_usd) * float(exchange_rate), 2)
+            if (
+                subscription.monthly_price_usd != subscription_settings.monthly_price_usd
+                or float(subscription.current_exchange_rate_bif) != float(exchange_rate)
+                or float(subscription.monthly_price_bif or 0) != float(latest_monthly_price_bif)
+            ):
                 subscription.monthly_price_usd = subscription_settings.monthly_price_usd
-                subscription.current_exchange_rate_bif = exchange_service.get_exchange_rate()
-                subscription.monthly_price_bif = exchange_service.convert_usd_to_bif(float(subscription_settings.monthly_price_usd))
+                subscription.current_exchange_rate_bif = exchange_rate
+                subscription.monthly_price_bif = latest_monthly_price_bif
                 subscription.save(update_fields=["monthly_price_usd", "current_exchange_rate_bif", "monthly_price_bif", "updated_at"])
             serializer = PharmacySubscriptionSerializer(subscription)
             payload = serializer.data
-            payment_details = build_payment_details(subscription_settings, exchange_service.get_exchange_rate())
+            payload["exchange_rate_source"] = exchange_snapshot["source_label"]
+            payload["exchange_rate_source_url"] = exchange_snapshot["source_url"]
+            payload["exchange_rate_updated_at"] = exchange_snapshot["updated_at"]
+            payload["exchange_rate_next_update_at"] = exchange_snapshot["next_update_at"]
+            payment_details = build_payment_details(subscription_settings, exchange_snapshot)
             payload["payment_details"] = payment_details
             payload["payment_details_burundi"] = payment_details
             payload["payment_details_usd"] = {
                 "monthly_price_usd": payment_details["monthly_price_usd"],
+                "exchange_rate": payment_details["exchange_rate"],
+                "exchange_rate_source": payment_details["exchange_rate_source"],
+                "exchange_rate_source_url": payment_details["exchange_rate_source_url"],
+                "exchange_rate_updated_at": payment_details["exchange_rate_updated_at"],
                 "payment_methods": [item for item in payment_details["payment_methods"] if item["currency"] == "USD"],
             }
             payload["upgrade_message"] = (

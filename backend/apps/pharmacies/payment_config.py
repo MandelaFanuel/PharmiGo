@@ -75,7 +75,20 @@ def sanitize_payment_methods(raw_methods: Any) -> list[dict[str, Any]]:
     return normalized or get_default_payment_methods()
 
 
-def build_payment_details(settings_obj, exchange_rate: float) -> dict[str, Any]:
+def build_payment_details(settings_obj, exchange_snapshot: dict[str, Any] | float) -> dict[str, Any]:
+    if isinstance(exchange_snapshot, dict):
+        exchange_rate = float(exchange_snapshot.get("rate") or 0)
+        exchange_rate_source = str(exchange_snapshot.get("source_label") or "").strip()
+        exchange_rate_source_url = str(exchange_snapshot.get("source_url") or "").strip()
+        exchange_rate_updated_at = exchange_snapshot.get("updated_at")
+        exchange_rate_next_update_at = exchange_snapshot.get("next_update_at")
+    else:
+        exchange_rate = float(exchange_snapshot)
+        exchange_rate_source = ""
+        exchange_rate_source_url = ""
+        exchange_rate_updated_at = None
+        exchange_rate_next_update_at = None
+
     monthly_price_usd = Decimal(str(settings_obj.monthly_price_usd))
     monthly_price_bif = round(float(monthly_price_usd) * float(exchange_rate), 2)
     payment_methods = sanitize_payment_methods(getattr(settings_obj, "payment_methods", None))
@@ -84,5 +97,9 @@ def build_payment_details(settings_obj, exchange_rate: float) -> dict[str, Any]:
         "monthly_price_usd": float(monthly_price_usd),
         "monthly_price_bif": monthly_price_bif,
         "exchange_rate": float(exchange_rate),
+        "exchange_rate_source": exchange_rate_source,
+        "exchange_rate_source_url": exchange_rate_source_url,
+        "exchange_rate_updated_at": exchange_rate_updated_at,
+        "exchange_rate_next_update_at": exchange_rate_next_update_at,
         "payment_methods": payment_methods,
     }
