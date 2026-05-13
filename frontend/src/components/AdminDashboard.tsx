@@ -26,6 +26,7 @@ import {
 import type {
   AdminDashboardAISettings,
   AdminDashboardData,
+  AdminDashboardPayment,
   AuthUser,
   PaymentMethodConfig,
   Pharmacy,
@@ -256,12 +257,6 @@ type AdminProfileFormState = {
   profile_image: File | null;
 };
 
-type PaymentProofPreview = {
-  url: string;
-  pharmacyName: string;
-  transactionReference?: string;
-};
-
 type DocumentViewerState = {
   src: string;
   title: string;
@@ -319,7 +314,6 @@ export default function AdminDashboard({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [proofPreview, setProofPreview] = useState<PaymentProofPreview | null>(null);
   const [documentViewer, setDocumentViewer] = useState<DocumentViewerState | null>(null);
   const [adminProfileImageVersion, setAdminProfileImageVersion] = useState(() => Date.now());
   const refreshInFlightRef = useRef(false);
@@ -755,6 +749,29 @@ export default function AdminDashboard({
       void documentError;
       logClientError("L'ouverture du document ordonnance admin a echoue.");
       setError("Impossible d'ouvrir l'ordonnance originale pour le moment.");
+    }
+  }
+
+  async function handleOpenPaymentProof(payment: AdminDashboardPayment) {
+    if (!payment.proof_image) {
+      setError("La preuve de paiement n'est pas encore disponible.");
+      return;
+    }
+
+    try {
+      setError(null);
+      setFeedback(null);
+      const protectedDocument = await fetchProtectedDocument(payment.proof_image);
+      setDocumentViewer({
+        src: protectedDocument.src,
+        title: `Preuve de paiement • ${payment.pharmacy_name}`,
+        contentType: protectedDocument.contentType,
+        fileName: protectedDocument.fileName ?? `preuve-${payment.transaction_reference || payment.id}`,
+      });
+    } catch (proofError) {
+      void proofError;
+      logClientError("L'ouverture de la preuve de paiement a echoue.");
+      setError("Impossible d'ouvrir la preuve de paiement pour le moment.");
     }
   }
 
@@ -1885,13 +1902,7 @@ export default function AdminDashboard({
                       <button
                         type="button"
                         className="secondary-button inline-button"
-                        onClick={() =>
-                          setProofPreview({
-                            url: resolveMediaUrl(payment.proof_image) ?? payment.proof_image ?? "",
-                            pharmacyName: payment.pharmacy_name,
-                            transactionReference: payment.transaction_reference,
-                          })
-                        }
+                        onClick={() => void handleOpenPaymentProof(payment)}
                       >
                         Voir la preuve
                       </button>
@@ -2071,28 +2082,9 @@ export default function AdminDashboard({
         </DashboardPanel>
       ) : null}
 
-      {proofPreview ? (
-        <div className="guardian-popup-overlay" role="dialog" aria-modal="true" aria-label="Preuve de paiement" onClick={() => setProofPreview(null)}>
-          <div className="guardian-popup-card guardian-popup-loader-card admin-proof-modal" onClick={(event) => event.stopPropagation()}>
-            <div className="guardian-popup-head">
-              <div>
-                <p className="guardian-popup-kicker">Preuve de paiement</p>
-                <h3>{proofPreview.pharmacyName}</h3>
-                {proofPreview.transactionReference ? <p className="guardian-popup-subtle">Reference: {proofPreview.transactionReference}</p> : null}
-              </div>
-              <button type="button" className="guardian-popup-close" onClick={() => setProofPreview(null)}>
-                Fermer
-              </button>
-            </div>
-            <div className="admin-proof-modal-frame">
-              <img src={proofPreview.url} alt={`Preuve de paiement ${proofPreview.pharmacyName}`} className="admin-proof-modal-image" />
-            </div>
-          </div>
-        </div>
-      ) : null}
-
       {documentViewer ? (
         <InAppDocumentViewer
+          kicker={documentViewer.title.startsWith("Preuve de paiement") ? "Preuve de paiement" : "Ordonnance originale"}
           title={documentViewer.title}
           src={documentViewer.src}
           contentType={documentViewer.contentType}

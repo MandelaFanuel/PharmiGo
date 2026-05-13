@@ -26,6 +26,7 @@ from apps.users.phone_numbers import normalize_phone_number
 from apps.users.location import refresh_profile_location_from_request, sync_profile_coordinates
 from apps.users.serializers import UserSerializer, email_already_used, phone_number_already_used
 from django.contrib.auth import get_user_model
+from django.urls import reverse
 from apps.users.models import UserProfile
 from apps.pharmacies.models import PharmacySubscription, SubscriptionPayment, SubscriptionSystemSettings
 from apps.pharmacies.services.exchange_rate_service import ExchangeRateService
@@ -1319,7 +1320,7 @@ def admin_dashboard(request):
             "receiver_phone": payment.receiver_phone,
             "payment_status": payment.payment_status,
             "transaction_reference": payment.transaction_reference,
-            "proof_image": payment.proof_image.url if payment.proof_image else None,
+            "proof_image": reverse("subscription-payment-proof", kwargs={"pk": payment.pk}) if payment.proof_image else None,
             "payment_month": payment.payment_month,
             "verified_at": payment.verified_at,
             "verified_by_name": payment.verified_by.username if payment.verified_by else None,

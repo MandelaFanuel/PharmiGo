@@ -7,6 +7,7 @@ type InAppDocumentViewerProps = {
   src: string | null;
   contentType?: string | null;
   fileName?: string | null;
+  kicker?: string;
   onClose: () => void;
 };
 
@@ -24,7 +25,7 @@ function isPdfDocument(url: string, contentType?: string | null, fileName?: stri
   return /\.pdf(\?.*)?$/i.test(fileName || url);
 }
 
-export default function InAppDocumentViewer({ title, src, contentType, fileName, onClose }: InAppDocumentViewerProps) {
+export default function InAppDocumentViewer({ title, src, contentType, fileName, kicker = "Ordonnance originale", onClose }: InAppDocumentViewerProps) {
   useEffect(() => {
     return () => {
       if (src?.startsWith("blob:")) {
@@ -45,7 +46,7 @@ export default function InAppDocumentViewer({ title, src, contentType, fileName,
     <ModalTransition overlayClassName="document-viewer-overlay" panelClassName="document-viewer-dialog" ariaLabel={title}>
         <div className="document-viewer-head">
           <div>
-            <span className="document-viewer-kicker">Ordonnance originale</span>
+            <span className="document-viewer-kicker">{kicker}</span>
             <strong>{viewerTitle}</strong>
           </div>
           <button type="button" className="secondary-button" onClick={onClose}>

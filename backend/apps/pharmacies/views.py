@@ -1,4 +1,5 @@
 import mimetypes
+from pathlib import Path
 
 from django.contrib.auth import get_user_model
 from django.http import FileResponse, Http404, HttpResponse
@@ -230,21 +231,25 @@ class SubscriptionPaymentDetailView(generics.RetrieveUpdateAPIView):
             payment.save(update_fields=["verified_at", "verified_by"])
 
             pharmacy = payment.pharmacy
+            settings_obj = SubscriptionSystemSettings.get_solo()
+            now = timezone.now()
             subscription, _ = PharmacySubscription.objects.get_or_create(
                 pharmacy=pharmacy,
                 defaults={
-                    "trial_start_date": timezone.now(),
-                    "trial_end_date": timezone.now() + timedelta(days=30),
+                    "trial_start_date": now,
+                    "trial_end_date": now + timedelta(days=settings_obj.trial_period_days),
                 },
             )
             subscription.subscription_status = "active"
             subscription.is_trial_active = False
-            subscription.last_payment_date = timezone.now()
-            subscription.next_payment_due_date = timezone.now() + timedelta(days=30)
+            subscription.trial_end_date = now
+            subscription.last_payment_date = now
+            subscription.next_payment_due_date = now + timedelta(days=30)
             subscription.save(
                 update_fields=[
                     "subscription_status",
                     "is_trial_active",
+                    "trial_end_date",
                     "last_payment_date",
                     "next_payment_due_date",
                     "updated_at",
@@ -287,3 +292,34 @@ class SubscriptionPaymentDetailView(generics.RetrieveUpdateAPIView):
                 sync_pharmacy_verification_with_subscription(pharmacy, subscription)
 
         return Response(self.get_serializer(payment).data, status=status.HTTP_200_OK)
+
+
+class SubscriptionPaymentProofView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pk: int):
+        payment = SubscriptionPayment.objects.select_related("pharmacy").filter(pk=pk).first()
+        if payment is None or not payment.proof_image:
+            raise Http404("Preuve de paiement introuvable.")
+
+        actor_profile = getattr(request.user, "profile", None)
+        actor_pharmacy_id = getattr(actor_profile, "pharmacy_id", None)
+        can_access = bool(
+            getattr(request.user, "is_staff", False)
+            or (actor_profile is not None and actor_pharmacy_id == payment.pharmacy_id)
+        )
+        if not can_access:
+            raise Http404("Preuve de paiement introuvable.")
+
+        proof_field = payment.proof_image
+        storage = proof_field.storage
+        if not proof_field.name or not storage.exists(proof_field.name):
+            raise Http404("Preuve de paiement introuvable.")
+
+        content_type, _ = mimetypes.guess_type(proof_field.name)
+        proof_file = storage.open(proof_field.name, "rb")
+        response = FileResponse(proof_file, content_type=content_type or "application/octet-stream")
+        response["Cache-Control"] = "private, no-store, max-age=0, must-revalidate"
+        response["Pragma"] = "no-cache"
+        response["Content-Disposition"] = f'inline; filename="{Path(proof_field.name).name}"'
+        return response

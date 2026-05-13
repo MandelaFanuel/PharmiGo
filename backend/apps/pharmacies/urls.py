@@ -12,6 +12,7 @@ from .views import (
     PharmacySubscriptionView,
     SubscriptionPaymentListView,
     SubscriptionPaymentDetailView,
+    SubscriptionPaymentProofView,
 )
 
 urlpatterns = [
@@ -26,4 +27,5 @@ urlpatterns = [
     path("subscription/", PharmacySubscriptionView.as_view(), name="pharmacy-subscription"),
     path("payments/", SubscriptionPaymentListView.as_view(), name="subscription-payment-list"),
     path("payments/<int:pk>/", SubscriptionPaymentDetailView.as_view(), name="subscription-payment-detail"),
+    path("payments/<int:pk>/proof/", SubscriptionPaymentProofView.as_view(), name="subscription-payment-proof"),
 ]

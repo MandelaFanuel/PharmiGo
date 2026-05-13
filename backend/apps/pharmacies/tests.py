@@ -11,7 +11,7 @@ from rest_framework.test import APITestCase
 
 from apps.common.public_storage import PharmigoPublicMediaStorage
 from apps.notifications.models import Notification
-from apps.pharmacies.models import Pharmacy, PharmacySubscription, SubscriptionSystemSettings
+from apps.pharmacies.models import Pharmacy, PharmacySubscription, SubscriptionPayment, SubscriptionSystemSettings
 from apps.pharmacies.models import PharmacyReferral, PharmacyReferralDeviceLog, PharmacyReferralFraudAlert
 from apps.pharmacies.services.rewards import (
     _evaluate_fraud,
@@ -75,6 +75,11 @@ class PharmacySubscriptionApiTests(APITestCase):
         self.assertEqual(response.data["subscription_status"], "trial")
         self.assertIn("payment_details_burundi", response.data)
         self.assertTrue(PharmacySubscription.objects.filter(pharmacy=self.pharmacy).exists())
+
+    def test_subscription_settings_default_trial_period_is_six_months(self):
+        settings_obj = SubscriptionSystemSettings.get_solo()
+
+        self.assertEqual(settings_obj.trial_period_days, 180)
 
     def test_subscription_activity_check_respects_trial_end(self):
         subscription = PharmacySubscription.objects.create(
@@ -475,6 +480,87 @@ class PharmacySubscriptionApiTests(APITestCase):
             ).exists()
         )
 
+    def test_admin_payment_verification_disables_trial_and_activates_monthly_subscription(self):
+        admin_user = User.objects.create_user(
+            username="admin-verify-payment",
+            email="admin-verify-payment@pharmigo.com",
+            password="secret123",
+            is_staff=True,
+            is_superuser=True,
+        )
+        subscription = PharmacySubscription.objects.create(
+            pharmacy=self.pharmacy,
+            trial_start_date=timezone.now(),
+            trial_end_date=timezone.now() + timedelta(days=180),
+            subscription_status="trial",
+            is_trial_active=True,
+        )
+        payment = SubscriptionPayment.objects.create(
+            pharmacy=self.pharmacy,
+            amount_usd="5.00",
+            amount_bif="14905.40",
+            currency="BIF",
+            payment_method="lumicash",
+            payer_name="Karibu",
+            payer_address="Gitega",
+            sender_phone="+25761666666",
+            receiver_phone="+25769096758",
+            transaction_reference="TX-VERIFY-001",
+            payment_status="pending",
+            payment_month=timezone.localdate().replace(day=1),
+        )
+
+        self.client.force_authenticate(user=admin_user)
+        response = self.client.patch(
+            f"/api/pharmacies/payments/{payment.id}/",
+            {"payment_status": "verified"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payment.refresh_from_db()
+        subscription.refresh_from_db()
+        self.assertEqual(payment.payment_status, "verified")
+        self.assertEqual(payment.verified_by_id, admin_user.id)
+        self.assertEqual(subscription.subscription_status, "active")
+        self.assertFalse(subscription.is_trial_active)
+        self.assertIsNotNone(subscription.last_payment_date)
+        self.assertIsNotNone(subscription.next_payment_due_date)
+        self.assertLessEqual(subscription.trial_end_date, timezone.now())
+        self.assertTrue(pharmacy_has_platform_access(self.pharmacy))
+
+    def test_admin_can_open_payment_proof_inside_protected_endpoint(self):
+        admin_user = User.objects.create_user(
+            username="admin-proof",
+            email="admin-proof@pharmigo.com",
+            password="secret123",
+            is_staff=True,
+            is_superuser=True,
+        )
+        proof_image = SimpleUploadedFile("proof.png", b"fake-proof-image", content_type="image/png")
+        payment = SubscriptionPayment.objects.create(
+            pharmacy=self.pharmacy,
+            amount_usd="5.00",
+            amount_bif="14905.40",
+            currency="BIF",
+            payment_method="lumicash",
+            payer_name="Karibu",
+            payer_address="Gitega",
+            sender_phone="+25761666666",
+            receiver_phone="+25769096758",
+            transaction_reference="TX-PROOF-001",
+            payment_status="pending",
+            payment_month=timezone.localdate().replace(day=1),
+            proof_image=proof_image,
+        )
+
+        self.client.force_authenticate(user=admin_user)
+        response = self.client.get(f"/api/pharmacies/payments/{payment.id}/proof/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "image/png")
+        self.assertIn("inline;", response["Content-Disposition"])
+
     def test_expired_pharmacy_response_submission_is_blocked_with_payment_wall_message(self):
         PharmacySubscription.objects.update_or_create(
             pharmacy=self.pharmacy,
@@ -614,6 +700,7 @@ class PharmacySubscriptionApiTests(APITestCase):
         self.assertTrue(referrer.is_verified)
         self.assertEqual(referrer_subscription.subscription_status, "active")
         self.assertIsNotNone(referrer_subscription.next_payment_due_date)
+        self.assertGreaterEqual((referrer_subscription.next_payment_due_date - timezone.now()).days, 89)
 
     def test_repeated_device_activity_creates_fraud_alert_and_blocks_referral(self):
         settings_obj = SubscriptionSystemSettings.get_solo()

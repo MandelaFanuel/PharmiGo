@@ -159,7 +159,12 @@ class PharmacySubscription(models.Model):
         # Set trial end date to 6 months from start if not set
         if self.trial_end_date is None and self.trial_start_date:
             from datetime import timedelta
-            self.trial_end_date = self.trial_start_date + timedelta(days=30)
+            trial_period_days = 180
+            try:
+                trial_period_days = SubscriptionSystemSettings.get_solo().trial_period_days or 180
+            except Exception:
+                trial_period_days = 180
+            self.trial_end_date = self.trial_start_date + timedelta(days=trial_period_days)
         
         super().save(*args, **kwargs)
     
@@ -173,7 +178,7 @@ class PharmacySubscription(models.Model):
 class SubscriptionSystemSettings(models.Model):
     """Global settings for pharmacy subscriptions."""
 
-    trial_period_days = models.PositiveIntegerField(default=30)
+    trial_period_days = models.PositiveIntegerField(default=180)
     monthly_price_usd = models.DecimalField(max_digits=10, decimal_places=2, default=5.00)
     payment_methods = models.JSONField(default=get_default_payment_methods)
     reward_event_start_date = models.DateTimeField(blank=True, null=True)
@@ -212,8 +217,8 @@ class SubscriptionSystemSettings(models.Model):
     @classmethod
     def get_solo(cls):
         settings_obj, _ = cls.objects.get_or_create(pk=1)
-        if settings_obj.trial_period_days == 180 and settings_obj.updated_by_id is None:
-            settings_obj.trial_period_days = 30
+        if settings_obj.trial_period_days == 30 and settings_obj.updated_by_id is None:
+            settings_obj.trial_period_days = 180
             settings_obj.save(update_fields=["trial_period_days", "updated_at"])
         return settings_obj
 
