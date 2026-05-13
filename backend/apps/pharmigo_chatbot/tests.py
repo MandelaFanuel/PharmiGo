@@ -433,6 +433,41 @@ class ChatbotResponseServiceTests(TestCase):
         self.assertIn("Pharmacie Gros Visible", answer)
         self.assertIn("Partenaire Certifie PharmiGo", answer)
 
+    def test_generic_wholesale_directory_request_lists_eligible_grossists(self):
+        wholesale_partner = RealPharmacy.objects.create(
+            name="Pharmacie Gitega Gros",
+            city="Gitega",
+            address="Magarama",
+            phone_number="+25761000010",
+            is_verified=True,
+            wholesale_supported=True,
+            retail_supported=False,
+        )
+        PharmacySubscription.objects.create(
+            pharmacy=wholesale_partner,
+            subscription_status="active",
+            is_trial_active=False,
+            trial_end_date=timezone.now() + timedelta(days=10),
+            next_payment_due_date=timezone.now() + timedelta(days=20),
+        )
+
+        service = ChatbotResponseService()
+        service.gemini_chat.available = False
+        answer = service.answer("Je veux savoir les pharmacies vendant en gros", self.user)
+
+        self.assertIn("Pharmacie Gitega Gros", answer)
+        self.assertIn("+25761000010", answer)
+        self.assertIn("informations professionnelles publiques", answer.lower())
+
+    def test_authenticated_account_information_request_requires_precision(self):
+        service = ChatbotResponseService()
+        service.gemini_chat.available = False
+
+        answer = service.answer("Quelles sont mes informations ?", self.user)
+
+        self.assertIn("donnees personnelles", answer.lower())
+        self.assertIn("Que souhaitez-vous consulter precisement", answer)
+
     def test_when_no_eligible_partner_exists_response_mentions_certified_partner_unavailable(self):
         expired_partner = RealPharmacy.objects.create(
             name="Pharmacie Expiree",
@@ -465,6 +500,8 @@ class ChatbotResponseServiceTests(TestCase):
 
     def test_pharmacy_weekly_report_uses_real_system_metrics(self):
         now = timezone.now()
+        RealPharmacy.objects.filter(id=self.pharmacy.id).update(created_at=timezone.now() - timedelta(days=45))
+        self.pharmacy.refresh_from_db()
         RealPharmacyStock.objects.create(
             pharmacy=self.pharmacy,
             medication_name="Paracetamol",
@@ -523,6 +560,18 @@ class ChatbotResponseServiceTests(TestCase):
         self.assertIn("prêt", response.lower())
         self.assertNotIn("copier les totaux", response.lower())
         self.assertNotIn("transmettez ici", response.lower())
+
+    def test_pharmacy_report_before_join_date_invites_report_from_first_day(self):
+        RealPharmacy.objects.filter(id=self.pharmacy.id).update(created_at=timezone.now() - timedelta(days=2))
+        self.pharmacy.refresh_from_db()
+
+        service = ChatbotResponseService()
+        service.gemini_chat.available = False
+
+        response = service.answer("fais moi mon rapport annuel", self.pharmacy_user)
+
+        self.assertIn("n'avait pas encore commence", response.lower())
+        self.assertIn("souhaitez-vous un rapport depuis votre premier jour d'activite", response.lower())
 
     def test_admin_report_uses_aggregated_metrics_without_message_content(self):
         service = ChatbotResponseService()

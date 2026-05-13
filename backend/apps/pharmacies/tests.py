@@ -14,6 +14,7 @@ from apps.common.public_storage import PharmigoPublicMediaStorage
 from apps.notifications.models import Notification
 from apps.pharmacies.models import Pharmacy, PharmacySubscription, SubscriptionPayment, SubscriptionSystemSettings
 from apps.pharmacies.models import PharmacyReferral, PharmacyReferralDeviceLog, PharmacyReferralFraudAlert
+from apps.pharmacies.services.exchange_rate_service import ExchangeRateService
 from apps.pharmacies.services.rewards import (
     _evaluate_fraud,
     build_pharmacy_reward_payload,
@@ -48,6 +49,28 @@ class PublicMediaStorageTests(SimpleTestCase):
             self.assertEqual(storage.path(requested_name), str(existing_file))
             with storage.open(requested_name, "rb") as handle:
                 self.assertEqual(handle.read(), b"pharmacy-image")
+
+
+class ExchangeRateServiceTests(SimpleTestCase):
+    def test_normalize_timestamp_supports_unix_seconds(self):
+        normalized = ExchangeRateService._normalize_timestamp(1778630401)
+
+        self.assertTrue(normalized.startswith("2026-05-13T00:00:01"))
+
+    def test_fetch_snapshot_normalizes_legacy_unix_update_fields(self):
+        service = ExchangeRateService()
+        payload = {
+            "rates": {"BIF": 2977.93},
+            "provider": "https://www.exchangerate-api.com",
+            "time_last_updated": 1778630401,
+        }
+
+        with patch.object(service, "_load_api_payload", return_value=payload):
+            snapshot = service._fetch_from_api()
+
+        self.assertIsNotNone(snapshot)
+        self.assertEqual(snapshot["source_label"], "ExchangeRate-API")
+        self.assertTrue(snapshot["updated_at"].startswith("2026-05-13T00:00:01"))
 
 
 class PharmacySubscriptionApiTests(APITestCase):

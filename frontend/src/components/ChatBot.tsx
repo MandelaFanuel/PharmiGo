@@ -144,6 +144,8 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
       uploadFailed: "Je n'ai pas pu analyser cette ordonnance. Verifiez le fichier et reessayez.",
       requestFailed:
         "Je n'ai pas pu traiter cette demande pour le moment. Essayez avec le nom du medicament ou chargez une ordonnance.",
+      thinking: "Reflexion en cours...",
+      analyzing: "Analyse du systeme...",
       selectionSending: "Transmission...",
       selectionCta: "Choisir cette pharmacie",
       selectionFailed: "Je n'ai pas pu transmettre votre choix a la pharmacie. Reessayez dans quelques secondes.",
@@ -179,6 +181,8 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
       foundPharmaciesPrefix: "The pharmacies found are:",
       uploadFailed: "I could not analyze this prescription. Check the file and try again.",
       requestFailed: "I could not process this request right now. Try the medicine name or upload a prescription.",
+      thinking: "Thinking in progress...",
+      analyzing: "System analysis in progress...",
       selectionSending: "Sending...",
       selectionCta: "Choose this pharmacy",
       selectionFailed: "I could not send your choice to the pharmacy. Please try again in a few seconds.",
@@ -215,6 +219,8 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
       uploadFailed: "Sinashoboye gusesangura iyi ordonnance. Suzuma fichier wongere ugerageze.",
       requestFailed:
         "Sinashoboye gutunganya ubu busabe. Gerageza izina ry'umuti canke ushiremwo ordonnance.",
+      thinking: "Ndiko ndiyumvira...",
+      analyzing: "Ndiko ndasesangura sisiteme...",
       selectionSending: "Biriko biratangwa...",
       selectionCta: "Hitamwo iyi farumasi",
       selectionFailed: "Sinashoboye kurungikira farumasi amahitamwo yawe. Ongera ugerageze mu kanya.",
@@ -251,6 +257,8 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
       uploadFailed: "Sikuweza kuchambua preskripsheni hii. Kagua faili na ujaribu tena.",
       requestFailed:
         "Sikuweza kushughulikia ombi hili kwa sasa. Jaribu jina la dawa au pakia preskripsheni.",
+      thinking: "Ninafikiria...",
+      analyzing: "Mfumo unachambua...",
       selectionSending: "Inatumwa...",
       selectionCta: "Chagua duka hili",
       selectionFailed: "Sikuweza kutuma chaguo lako kwa duka la dawa. Jaribu tena baada ya muda mfupi.",
@@ -287,6 +295,8 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
       uploadFailed: "Nakokaki te ko analyser ordonnance oyo. Tala fichier mpe meka lisusu.",
       requestFailed:
         "Nakokaki te kosala likambo oyo mpo na sikoyo. Meka na kombo ya kisi to tinda ordonnance.",
+      thinking: "Nazali kokanisa...",
+      analyzing: "Systeme ezali ko analyser...",
       selectionSending: "Ezali kotindama...",
       selectionCta: "Pona pharmacie oyo",
       selectionFailed: "Nakokaki te kotindela pharmacie maponi na yo. Meka lisusu mwa moke.",
@@ -319,6 +329,7 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
   const [selectionBusyId, setSelectionBusyId] = useState<number | null>(null);
   const [ocrModal, setOcrModal] = useState<{ ocrText: string; confidence: number; botResult: PrescriptionBotResult } | null>(null);
   const [showArchived, setShowArchived] = useState(false);
+  const [streamingMessageIds, setStreamingMessageIds] = useState<number[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const historyIdentity = useMemo(() => getChatIdentity(), [isOpen]);
@@ -361,11 +372,13 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
         }
 
         const mergedHistory = mergeChatHistories(localHistory, history);
-        setMessages(mergedHistory);
+      setMessages(mergedHistory);
+      setStreamingMessageIds([]);
       })
       .catch(() => {
         if (!cancelled) {
           setMessages(localHistory);
+          setStreamingMessageIds([]);
         }
       });
 
@@ -394,15 +407,17 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
   }, [showArchived]);
 
   function addBotMessage(message: string) {
+    const nextId = Date.now() + Math.floor(Math.random() * 1000);
     setMessages((current) => [
       ...current,
       {
-        id: Date.now() + Math.floor(Math.random() * 1000),
+        id: nextId,
         sender: "bot",
         message,
         created_at: new Date().toISOString(),
       },
     ]);
+    setStreamingMessageIds((current) => [...current, nextId]);
   }
 
   function addUserMessage(message: string) {
@@ -419,6 +434,7 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
 
   function renderMessage(message: ChatBotMessage, archived = false) {
     const isBot = message.sender === "bot";
+    const shouldAnimate = isBot && !archived && streamingMessageIds.includes(message.id);
     return (
       <div key={message.id} className={`message ${isBot ? "message-bot" : "message-user"}${archived ? " message-archived" : ""}`}>
         <div className="message-row">
@@ -428,7 +444,18 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
             </div>
           ) : null}
           <div className="message-body">
-            <div className="message-text">{formatMessage(message.message)}</div>
+            <div className="message-text">
+              {shouldAnimate ? (
+                <TypewriterText
+                  text={message.message}
+                  onComplete={() =>
+                    setStreamingMessageIds((current) => current.filter((item) => item !== message.id))
+                  }
+                />
+              ) : (
+                formatMessage(message.message)
+              )}
+            </div>
             <span className="message-time">{formatExactDateTime(message.created_at, language)}</span>
           </div>
         </div>
@@ -709,6 +736,7 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
                     </div>
                     <div className="message-body">
                       <div className="typing-indicator">
+                        <strong>{workflowState === "uploading" ? labels.analyzing : labels.thinking}</strong>
                         <span></span>
                         <span></span>
                         <span></span>
@@ -737,6 +765,41 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
         </div>
       </div>
     </div>
+  );
+}
+
+function TypewriterText({ text, onComplete }: { text: string; onComplete: () => void }) {
+  const [visibleCount, setVisibleCount] = useState(0);
+
+  useEffect(() => {
+    setVisibleCount(0);
+    let cancelled = false;
+    const timer = window.setInterval(() => {
+      setVisibleCount((current) => {
+        const next = Math.min(current + 2, text.length);
+        if (next >= text.length && !cancelled) {
+          window.clearInterval(timer);
+          window.setTimeout(() => {
+            if (!cancelled) {
+              onComplete();
+            }
+          }, 120);
+        }
+        return next;
+      });
+    }, 16);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [text, onComplete]);
+
+  return (
+    <span className="typewriter-text">
+      {formatMessage(text.slice(0, visibleCount))}
+      <span className="typewriter-caret" aria-hidden="true" />
+    </span>
   );
 }
 

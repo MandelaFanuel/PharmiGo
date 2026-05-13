@@ -786,6 +786,14 @@ export default function PharmacyDashboard({
     }
   }, [activeSection]);
 
+  useEffect(() => {
+    const exchangeRefreshTimer = window.setInterval(() => {
+      void loadDashboardData(false, true);
+    }, 15 * 60 * 1000);
+
+    return () => window.clearInterval(exchangeRefreshTimer);
+  }, []);
+
   async function loadDashboardData(withLoader = true, silent = false) {
     if (refreshInFlightRef.current) {
       return;
@@ -1810,14 +1818,14 @@ export default function PharmacyDashboard({
                   <span>Prix mensuel</span>
                   <span>${Number(subscription.monthly_price_usd).toFixed(2)} USD / {Number(subscription.monthly_price_bif ?? 0).toFixed(0)} BIF</span>
                 </div>
-                <div className="price-row">
+                <div className="price-row exchange-rate-row">
                   <span>Taux utilise</span>
-                  <span>1 USD = {Number(subscription.current_exchange_rate_bif).toFixed(0)} BIF</span>
+                  <span className="exchange-rate-value">1 USD = {Number(subscription.current_exchange_rate_bif).toFixed(0)} BIF</span>
                 </div>
                 {subscription.exchange_rate_source ? (
-                  <div className="price-row">
+                  <div className="price-row exchange-rate-row">
                     <span>Source du taux</span>
-                    <span>
+                    <span className="exchange-rate-value">
                       {subscription.exchange_rate_source_url ? (
                         <a href={subscription.exchange_rate_source_url} target="_blank" rel="noreferrer" className="inline-link">
                           {subscription.exchange_rate_source}
@@ -1829,11 +1837,12 @@ export default function PharmacyDashboard({
                   </div>
                 ) : null}
                 {subscription.exchange_rate_updated_at ? (
-                  <div className="price-row">
+                  <div className="price-row exchange-rate-row">
                     <span>Derniere mise a jour</span>
-                    <span>{formatExactDateTime(subscription.exchange_rate_updated_at, language)}</span>
+                    <span className="exchange-rate-value">{formatExactDateTime(subscription.exchange_rate_updated_at, language)}</span>
                   </div>
                 ) : null}
+                <div className="exchange-rate-meta">Actualisation automatique du taux toutes les 15 minutes.</div>
                 {subscription.subscription_status === "active" ? (
                   <>
                     <div className="price-row">
@@ -1860,7 +1869,7 @@ export default function PharmacyDashboard({
               ) : null}
               <div className="subscription-payment-box">
                 {subscription.exchange_rate_source ? (
-                  <p>
+                  <p className="exchange-rate-live-note">
                     <strong>Taux de reference</strong>: 1 USD = {Number(subscription.current_exchange_rate_bif).toFixed(0)} BIF
                     {" • "}
                     {subscription.exchange_rate_source_url ? (

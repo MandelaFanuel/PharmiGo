@@ -1256,6 +1256,32 @@
   color: #103758;
 }
 
+.exchange-rate-row {
+  align-items: center;
+}
+
+.exchange-rate-value {
+  color: color-mix(in srgb, var(--accent) 74%, #0f766e 26%) !important;
+  font-weight: 700;
+}
+
+.exchange-rate-meta {
+  margin-top: -0.15rem;
+  padding: 0.78rem 0.9rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent 82%);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface) 92%);
+  color: color-mix(in srgb, var(--accent) 72%, var(--text) 28%);
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.exchange-rate-live-note {
+  padding: 0.9rem 1rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent 80%);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 10%, var(--surface) 90%), color-mix(in srgb, #f59e0b 8%, var(--surface) 92%));
+  color: color-mix(in srgb, var(--accent) 78%, var(--text) 22%) !important;
+}
+
 .subscription-activation-panel,
 .subscription-activation-form,
 .subscription-activation-summary,

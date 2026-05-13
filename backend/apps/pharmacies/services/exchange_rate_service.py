@@ -1,6 +1,6 @@
 """Exchange Rate Service for USD/BIF conversion"""
 
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 from urllib.request import urlopen
 from urllib.parse import urlparse
@@ -26,8 +26,10 @@ class ExchangeRateService:
     
     # API endpoints for exchange rates
     EXCHANGE_RATE_APIS = [
-        "https://api.exchangerate-api.com/v4/latest/USD",
+        "https://fxapi.app/api/USD.json",
+        "https://cdn.moneyconvert.net/api/latest.json",
         "https://open.er-api.com/v6/latest/USD",
+        "https://api.exchangerate-api.com/v4/latest/USD",
     ]
     
     def __init__(self):
@@ -37,6 +39,8 @@ class ExchangeRateService:
         """Return the live USD/BIF exchange snapshot with source metadata."""
         cached_snapshot = cache.get(self.CACHE_KEY)
         if isinstance(cached_snapshot, dict) and cached_snapshot.get("rate"):
+            cached_snapshot["updated_at"] = self._normalize_timestamp(cached_snapshot.get("updated_at"))
+            cached_snapshot["next_update_at"] = self._normalize_timestamp(cached_snapshot.get("next_update_at"))
             return cached_snapshot
 
         snapshot = self._fetch_from_api()
@@ -72,8 +76,17 @@ class ExchangeRateService:
                     "rate": rate,
                     "source_label": self._resolve_source_label(source_url),
                     "source_url": source_url,
-                    "updated_at": data.get("time_last_update_utc") or data.get("time_last_updated") or data.get("date"),
-                    "next_update_at": data.get("time_next_update_utc"),
+                    "updated_at": self._normalize_timestamp(
+                        data.get("timestamp")
+                        or data.get("time_last_update_utc")
+                        or data.get("time_last_updated")
+                        or data.get("time_last_update_unix")
+                        or data.get("ts")
+                        or data.get("date")
+                    ),
+                    "next_update_at": self._normalize_timestamp(
+                        data.get("time_next_update_utc") or data.get("time_next_update_unix")
+                    ),
                 }
             except (ValueError, KeyError, OSError) as e:
                 print(f"Failed to fetch from {api_url}: {str(e)}")
@@ -82,6 +95,9 @@ class ExchangeRateService:
         return None
 
     def _resolve_source_url(self, api_url: str, data: dict) -> str:
+        source = data.get("source")
+        if isinstance(source, str) and source.startswith("http"):
+            return source
         provider = data.get("provider")
         if isinstance(provider, str) and provider.startswith("http"):
             return provider
@@ -93,6 +109,10 @@ class ExchangeRateService:
     def _resolve_source_label(self, source_url: str) -> str:
         parsed = urlparse(source_url)
         host = parsed.netloc.lower()
+        if "fxapi.app" in host:
+            return "FXAPI"
+        if "moneyconvert.net" in host:
+            return "MoneyConvert"
         if "exchangerate-api.com" in host:
             return "ExchangeRate-API"
         if host:
@@ -108,6 +128,51 @@ class ExchangeRateService:
         with urlopen(api_url, timeout=10) as response:
             payload = response.read().decode("utf-8")
         return json.loads(payload)
+
+    @staticmethod
+    def _normalize_timestamp(raw_value):
+        if raw_value in (None, ""):
+            return None
+
+        if isinstance(raw_value, datetime):
+            normalized = raw_value if raw_value.tzinfo else raw_value.replace(tzinfo=timezone.utc)
+            return normalized.isoformat()
+
+        if isinstance(raw_value, (int, float)):
+            try:
+                return datetime.fromtimestamp(float(raw_value), tz=timezone.utc).isoformat()
+            except (OverflowError, OSError, ValueError):
+                return str(raw_value)
+
+        text_value = str(raw_value).strip()
+        if not text_value:
+            return None
+
+        if text_value.isdigit():
+            try:
+                return datetime.fromtimestamp(int(text_value), tz=timezone.utc).isoformat()
+            except (OverflowError, OSError, ValueError):
+                return text_value
+
+        try:
+            normalized_text = text_value.replace("Z", "+00:00")
+            parsed = datetime.fromisoformat(normalized_text)
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return parsed.isoformat()
+        except ValueError:
+            pass
+
+        for fmt in ("%a, %d %b %Y %H:%M:%S %z", "%Y-%m-%d"):
+            try:
+                parsed = datetime.strptime(text_value, fmt)
+                if parsed.tzinfo is None:
+                    parsed = parsed.replace(tzinfo=timezone.utc)
+                return parsed.isoformat()
+            except ValueError:
+                continue
+
+        return text_value
     
     def update_exchange_rate(self, new_rate: float) -> bool:
         """

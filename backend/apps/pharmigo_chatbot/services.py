@@ -28,6 +28,12 @@ from django.db import connection
 from django.db.models import Avg, Count, Q, Sum
 from django.utils import timezone
 from apps.pharmacies.services.access import PAYMENT_WALL_MESSAGE, is_pharmacy_partner_eligible, pharmacy_has_platform_access
+from .identity_services import (
+    IdentityService,
+    PrivacyGuard,
+    WholesaleService,
+    build_report_pre_start_answer,
+)
 
 try:
     from fuzzywuzzy import fuzz
@@ -119,6 +125,7 @@ class HumanLayerService:
         support = dict(context.get("patient_support_profile") or {})
         response_style = dict(context.get("response_style") or {})
         detected_language = (context.get("preferred_language") or "fr").strip().lower() or "fr"
+        identity_context = IdentityService.build_identity_context(context)
 
         emotional_markers = []
         normalized_message = normalize_text(message or "")
@@ -147,8 +154,14 @@ class HumanLayerService:
             )
         if emotional_markers:
             summary_parts.append(f"Marqueurs emotionnels: {', '.join(emotional_markers)}")
+        if identity_context.get("special_user_kind"):
+            summary_parts.append(f"Affinite speciale: {identity_context['special_user_kind']}")
+        summary_parts.append(
+            f"Memoire fondatrice: cree par {identity_context['creator_name']} a partir du {identity_context['conception_date']}"
+        )
 
         enriched_context["human_context_summary"] = " ; ".join(part for part in summary_parts if part)
+        enriched_context["identity_context"] = identity_context
         return enriched_context
 
 
@@ -624,6 +637,7 @@ class ChatbotContextService:
             "is_authenticated": bool(getattr(user, "is_authenticated", False)),
             "user_id": getattr(user, "id", None),
             "username": getattr(user, "username", "") if getattr(user, "is_authenticated", False) else "",
+            "email": getattr(user, "email", "") if getattr(user, "is_authenticated", False) else "",
             "display_name": display_name,
             "address": getattr(profile, "address", "") if profile else "",
             "pending_confirmations": [],
@@ -927,15 +941,24 @@ class ChatbotContextService:
     def _build_response_style(role: str, context: Dict[str, Any]) -> Dict[str, str]:
         memory = context.get("conversation_memory") or {}
         preferred_tone = memory.get("preferred_tone") or "standard"
+        special_user_kind = ((context.get("identity_context") or {}).get("special_user_kind") or "").strip()
         if role == "patient":
             return {
-                "tone": preferred_tone if preferred_tone in {"reassuring", "guided", "direct"} else "reassuring",
+                "tone": (
+                    "respectful_affectionate"
+                    if special_user_kind
+                    else preferred_tone if preferred_tone in {"reassuring", "guided", "direct"} else "reassuring"
+                ),
                 "format": "supportive_steps",
                 "follow_up_bias": "safety_first",
             }
         if role == "pharmacy":
             return {
-                "tone": preferred_tone if preferred_tone in {"operational", "direct", "standard"} else "operational",
+                "tone": (
+                    "respectful_affectionate"
+                    if special_user_kind
+                    else preferred_tone if preferred_tone in {"operational", "direct", "standard"} else "operational"
+                ),
                 "format": "concise_action",
                 "follow_up_bias": "workflow_next_step",
             }
@@ -1472,12 +1495,24 @@ class ChatbotResponseService:
         if self._looks_like_farewell(cleaned_question):
             response_kind = "farewell"
             detected_intent = "farewell"
+        elif IdentityService.looks_like_origin_question(cleaned_question):
+            response_kind = "identity_story"
+            detected_intent = "identity_story"
+            internal_answer = IdentityService.build_origin_answer(context)
         elif self._looks_like_connection_intent(cleaned_question):
             response_kind = "connection_intent"
             detected_intent = "connection_intent"
+        elif PrivacyGuard.looks_like_account_information_request(cleaned_question):
+            response_kind = "account_information"
+            detected_intent = "account_information"
+            internal_answer = PrivacyGuard.build_account_information_answer(context)
         elif self._looks_like_privacy_request(cleaned_question):
             response_kind = "privacy_guidance"
             detected_intent = "privacy_guidance"
+        elif WholesaleService.looks_like_wholesale_directory_request(cleaned_question):
+            response_kind = "wholesale_directory"
+            detected_intent = "wholesale_directory"
+            internal_answer = WholesaleService.build_wholesale_directory_answer(context)
         elif self._looks_like_platform_usage_question(cleaned_question):
             response_kind = "platform_usage"
             detected_intent = "platform_usage"
@@ -1779,6 +1814,9 @@ class ChatbotResponseService:
             )
 
         start, end, period_label = self._resolve_report_period(question)
+        pharmacy_joined_at = getattr(pharmacy, "created_at", None)
+        if pharmacy_joined_at and start < pharmacy_joined_at:
+            return build_report_pre_start_answer(joined_at=pharmacy_joined_at, display_name=display_name)
 
         active_statuses = ["pharmacy_selected", "preparing", "ready", "served", "patient_confirmed", "completed"]
         pharmacy_prescriptions = Prescription.objects.filter(pharmacy=pharmacy, created_at__gte=start, created_at__lte=end)
@@ -3123,6 +3161,7 @@ class ChatbotResponseService:
         display_name = (context.get("display_name") or "").strip()
         response_style = context.get("response_style") or {}
         preferred_tone = (response_style.get("tone") or "").strip()
+        special_user_kind = ((context.get("identity_context") or {}).get("special_user_kind") or "").strip()
         if role == "patient":
             answer = answer.replace("Le patient", "Je").replace("le patient", "je")
             answer = answer.replace("L'utilisateur", "Je").replace("l'utilisateur", "je")
@@ -3137,7 +3176,9 @@ class ChatbotResponseService:
             if context.get("conversation_memory", {}).get("visit_count", 0) > 1 and "continuity_note" in context.get("conversation_memory", {}):
                 answer += f" {context['conversation_memory']['continuity_note']}"
             if preferred_tone == "reassuring" and "diagnostic" not in normalize_text(answer):
-                answer += " Si quelque chose vous inquiete ou s'aggrave, il vaut mieux demander un avis medical rapidement."
+                answer += " Si quelque chose vous inquiete ou s'aggrave, il vaut mieux demander un avis medical rapidement. ❤️"
+            if preferred_tone == "respectful_affectionate":
+                answer += " Je reste a vos cotes avec beaucoup de respect et de coeur. 💊❤️"
             if display_name and not answer.lower().startswith(("bonjour", "salut", "bonsoir")):
                 answer = f"{display_name}, {answer[0].lower() + answer[1:]}" if len(answer) > 1 else f"{display_name}, {answer}"
         elif role == "pharmacy":
@@ -3146,6 +3187,8 @@ class ChatbotResponseService:
                 answer += " Je tiens compte de votre stock, de vos ordonnances publiques et de vos notifications recentes."
             if preferred_tone in {"operational", "direct"}:
                 answer += " Je privilegie ici une reponse courte, exploitable et orientee action."
+            if preferred_tone == "respectful_affectionate":
+                answer += " Je vous reponds ici avec une attention toute particuliere et beaucoup de respect. 😊"
         elif role == "admin":
             answer = answer.replace("Vous pouvez", "Vous pouvez").strip()
             answer = f"{answer} Je garde une vue synthétique: risque, impact et prochaine action."
