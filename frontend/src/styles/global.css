@@ -953,7 +953,7 @@ label span {
   gap: 6px;
   align-content: start;
   width: 100%;
-  min-height: 108px;
+  min-height: 118px;
   padding: 14px 16px;
   border: 1px solid color-mix(in srgb, var(--accent) 14%, var(--line) 86%);
   background: color-mix(in srgb, var(--surface-strong) 96%, transparent 4%);
@@ -961,6 +961,31 @@ label span {
   text-align: left;
   cursor: pointer;
   transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease, background 140ms ease;
+}
+
+.sales-mode-option-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sales-mode-radio {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  border-radius: 999px;
+  border: 1.8px solid color-mix(in srgb, var(--accent) 30%, var(--line) 70%);
+  background: color-mix(in srgb, var(--surface) 96%, white 4%);
+  position: relative;
+}
+
+.sales-mode-radio::after {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border-radius: 999px;
+  background: transparent;
+  transition: background 140ms ease;
 }
 
 .sales-mode-option strong {
@@ -988,6 +1013,14 @@ label span {
 .sales-mode-option.is-active.retail {
   border-color: color-mix(in srgb, var(--primary) 38%, var(--line) 62%);
   background: color-mix(in srgb, var(--primary) 15%, var(--surface-strong) 85%);
+}
+
+.sales-mode-option.is-active .sales-mode-radio {
+  border-color: color-mix(in srgb, var(--primary) 55%, var(--line) 45%);
+}
+
+.sales-mode-option.is-active .sales-mode-radio::after {
+  background: color-mix(in srgb, var(--primary) 90%, white 10%);
 }
 
 .sales-mode-option.is-active.wholesale {
@@ -2724,7 +2757,7 @@ label span {
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding: 24px 22px 30px 16px;
+  padding: 24px 22px 42px 16px;
   min-width: 0;
   overflow-y: auto;
   background:
@@ -2827,7 +2860,7 @@ label span {
 }
 
 .auth-book.is-register .auth-book-pages {
-  min-height: 920px;
+  min-height: 1040px;
 }
 
 .auth-page-face {
@@ -3804,6 +3837,7 @@ label span {
 
 .auth-account-book.is-pharmacy .auth-account-pages {
   transform: rotateY(-180deg);
+  min-height: 474px;
 }
 
 .auth-account-face {
@@ -3857,7 +3891,7 @@ label span {
 }
 
 .auth-account-grid-pharmacy .sales-mode-option {
-  min-height: 126px;
+  min-height: 132px;
 }
 
 .auth-account-grid .phone-field {

@@ -414,6 +414,8 @@ export default function Register() {
               <div className="sales-mode-selector compact" role="radiogroup" aria-label="Mode de vente pharmacie">
                 <button
                   type="button"
+                  role="radio"
+                  aria-checked={getSalesModeChoiceFromFlags(pharmacyForm) === "retail"}
                   className={`sales-mode-option${getSalesModeChoiceFromFlags(pharmacyForm) === "retail" ? " is-active retail" : ""}`}
                   onClick={() => {
                     setError(null);
@@ -425,11 +427,16 @@ export default function Register() {
                     setPharmacyForm((current) => ({ ...current, ...applySalesModeChoice("retail") }));
                   }}
                 >
-                  <strong>Vente au detail</strong>
+                  <div className="sales-mode-option-head">
+                    <span className="sales-mode-radio" aria-hidden="true" />
+                    <strong>Vente au detail</strong>
+                  </div>
                   <span>Comprime, flacon, unite patient</span>
                 </button>
                 <button
                   type="button"
+                  role="radio"
+                  aria-checked={getSalesModeChoiceFromFlags(pharmacyForm) === "wholesale"}
                   className={`sales-mode-option${getSalesModeChoiceFromFlags(pharmacyForm) === "wholesale" ? " is-active wholesale" : ""}`}
                   onClick={() => {
                     setError(null);
@@ -441,11 +448,16 @@ export default function Register() {
                     setPharmacyForm((current) => ({ ...current, ...applySalesModeChoice("wholesale") }));
                   }}
                 >
-                  <strong>Vente en gros</strong>
+                  <div className="sales-mode-option-head">
+                    <span className="sales-mode-radio" aria-hidden="true" />
+                    <strong>Vente en gros</strong>
+                  </div>
                   <span>Carton, caisse, lot, palette</span>
                 </button>
                 <button
                   type="button"
+                  role="radio"
+                  aria-checked={getSalesModeChoiceFromFlags(pharmacyForm) === "both"}
                   className={`sales-mode-option${getSalesModeChoiceFromFlags(pharmacyForm) === "both" ? " is-active both" : ""}`}
                   onClick={() => {
                     setError(null);
@@ -457,7 +469,10 @@ export default function Register() {
                     setPharmacyForm((current) => ({ ...current, ...applySalesModeChoice("both") }));
                   }}
                 >
-                  <strong>Gros et detail</strong>
+                  <div className="sales-mode-option-head">
+                    <span className="sales-mode-radio" aria-hidden="true" />
+                    <strong>Gros et detail</strong>
+                  </div>
                   <span>La pharmacie sert les deux formats</span>
                 </button>
               </div>
