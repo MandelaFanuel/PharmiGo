@@ -48,6 +48,7 @@ interface SubscriptionData {
   is_trial_active: boolean;
   trial_start_date: string;
   trial_end_date: string;
+  last_payment_date?: string | null;
   monthly_price_usd: number;
   monthly_price_bif: number;
   current_exchange_rate_bif: number;
@@ -237,11 +238,36 @@ function buildRewardGuideCopyText(program?: RewardProgramPharmacyPayload | null,
 
 function formatRewardEventStatus(status: string) {
   const labels: Record<string, string> = {
-    active: "Actif",
+    active: "En cours",
     upcoming: "A venir",
-    closed: "Cloture",
+    closed: "Termine",
   };
   return labels[status] ?? status;
+}
+
+function getRewardEventDisplayStatus(start?: string | null, end?: string | null, fallbackStatus?: string) {
+  const now = Date.now();
+  const startTime = start ? new Date(start).getTime() : null;
+  const endTime = end ? new Date(end).getTime() : null;
+
+  if (typeof startTime === "number" && !Number.isNaN(startTime) && now < startTime) {
+    return "upcoming";
+  }
+  if (typeof endTime === "number" && !Number.isNaN(endTime) && now > endTime) {
+    return "closed";
+  }
+  if (
+    typeof startTime === "number" &&
+    !Number.isNaN(startTime) &&
+    typeof endTime === "number" &&
+    !Number.isNaN(endTime) &&
+    now >= startTime &&
+    now <= endTime
+  ) {
+    return "active";
+  }
+
+  return fallbackStatus ?? "upcoming";
 }
 
 function copyTextWithFallback(value: string) {
@@ -275,10 +301,10 @@ function copyTextWithFallback(value: string) {
 function ShareGlyph() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path
-        d="M16.5 7.5a2.5 2.5 0 1 0-2.39-3.25l-5.38 3.1a2.5 2.5 0 1 0 0 9.3l5.38 3.1a2.5 2.5 0 1 0 .74-1.3l-5.38-3.1a2.56 2.56 0 0 0 0-2.7l5.38-3.1A2.49 2.49 0 0 0 16.5 7.5Z"
-        fill="currentColor"
-      />
+      <circle cx="18" cy="5.5" r="2.25" fill="none" stroke="currentColor" strokeWidth="1.8" />
+      <circle cx="6" cy="12" r="2.25" fill="none" stroke="currentColor" strokeWidth="1.8" />
+      <circle cx="18" cy="18.5" r="2.25" fill="none" stroke="currentColor" strokeWidth="1.8" />
+      <path d="m8 11 7.45-4.07M8 13l7.45 4.07" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
     </svg>
   );
 }
@@ -286,11 +312,14 @@ function ShareGlyph() {
 function WhatsAppGlyph() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M12 2.2a9.8 9.8 0 0 0-8.48 14.71L2.2 21.8l5.03-1.28A9.8 9.8 0 1 0 12 2.2Z" fill="currentColor" opacity="0.14" />
-      <path d="M12.01 4.1a8.1 8.1 0 0 0-7.02 12.13l.28.47-.82 2.99 3.06-.8.46.27A8.12 8.12 0 1 0 12 4.1Z" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M12 3.5a8.5 8.5 0 0 0-7.37 12.73l.39.64-.92 3.38 3.46-.9.61.35A8.5 8.5 0 1 0 12 3.5Z" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
       <path
-        d="M9.4 8.2c.14-.31.28-.33.49-.34.13-.01.28-.01.43-.01.14 0 .38.05.58.26.2.22.78.77.78 1.88 0 1.11-.81 2.19-.92 2.34-.11.15-1.55 2.49-3.84 3.39-.78.31-1.39.5-1.87.63-.79.22-1.51.18-2.08.11-.63-.08-1.95-.8-2.23-1.57-.28-.77-.28-1.43-.2-1.57.08-.14.3-.22.63-.38.33-.16.69-.38.92-.56.23-.19.39-.21.66.11.27.31 1.12 1.39 1.36 1.66.23.27.47.3.79.11.33-.19 1.38-.5 2.05-1.6.54-.86.56-1.59.39-1.78-.16-.19-.36-.42-.56-.65-.2-.22-.42-.48-.59-.65-.18-.16-.36-.14-.53.23Z"
-        fill="currentColor"
+        d="M9.38 8.62c.18-.41.37-.42.6-.43.16-.01.34-.01.51-.01.18 0 .47.07.71.34.24.28.95 1.07.95 2.6 0 1.52-1.02 2.98-1.16 3.18-.14.2-1.96 3.15-4.82 4.29-.98.39-1.74.63-2.34.79-.93.25-1.78.2-2.45.12-.74-.1-2.27-.93-2.61-1.99-.18-.53-.18-1.06-.13-1.26.06-.21.33-.33.74-.54.41-.2.85-.48 1.14-.71.29-.23.49-.26.82.14.33.39 1.38 1.74 1.68 2.08.29.34.58.38.99.14.41-.24 1.72-.65 2.55-1.98.66-1.05.69-1.95.49-2.19-.2-.24-.45-.53-.7-.82-.25-.28-.52-.61-.74-.82-.22-.2-.45-.18-.67.29Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
     </svg>
   );
@@ -299,8 +328,8 @@ function WhatsAppGlyph() {
 function FacebookGlyph() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M12 2.2a9.8 9.8 0 1 0 0 19.6 9.8 9.8 0 0 0 0-19.6Z" fill="currentColor" opacity="0.14" />
-      <path d="M13.55 20.25v-6.46h2.17l.33-2.55h-2.5V9.62c0-.74.2-1.25 1.28-1.25h1.37V6.03c-.23-.04-1.04-.1-1.97-.1-1.94 0-3.27 1.19-3.27 3.38v1.93H8.8v2.55h2.16v6.46h2.59Z" fill="currentColor" />
+      <circle cx="12" cy="12" r="8.75" fill="none" stroke="currentColor" strokeWidth="1.7" />
+      <path d="M13.2 20v-5.8h2.04l.32-2.33H13.2v-1.6c0-.85.28-1.43 1.42-1.43h1.11V6.82c-.21-.03-.92-.08-1.73-.08-1.81 0-2.94 1.1-2.94 3.14v1.99H9.1v2.33h1.96V20" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -1639,8 +1668,8 @@ export default function PharmacyDashboard({
                     <article key={eventItem.id} className="dashboard-ambassador-event-card">
                       <div className="dashboard-record-head">
                         <strong>{eventItem.title}</strong>
-                        <span className={`badge ${eventItem.status === "active" ? "success" : eventItem.status === "upcoming" ? "info" : "warning"}`}>
-                          {formatRewardEventStatus(eventItem.status)}
+                        <span className={`badge ${getRewardEventDisplayStatus(eventItem.start, eventItem.end, eventItem.status) === "active" ? "success" : getRewardEventDisplayStatus(eventItem.start, eventItem.end, eventItem.status) === "upcoming" ? "info" : "warning"}`}>
+                          {formatRewardEventStatus(getRewardEventDisplayStatus(eventItem.start, eventItem.end, eventItem.status))}
                         </span>
                       </div>
                       <p>{eventItem.summary}</p>
@@ -1777,10 +1806,23 @@ export default function PharmacyDashboard({
                   <span>Taux utilise</span>
                   <span>1 USD = {Number(subscription.current_exchange_rate_bif).toFixed(0)} BIF</span>
                 </div>
-                <div className="price-row">
-                  <span>Essai</span>
-                  <span>{formatExactDateTime(subscription.trial_start_date, language)} → {formatExactDateTime(subscription.trial_end_date, language)}</span>
-                </div>
+                {subscription.subscription_status === "active" ? (
+                  <>
+                    <div className="price-row">
+                      <span>Activation abonnement</span>
+                      <span>{formatExactDateTime(subscription.last_payment_date ?? subscription.next_payment_due_date ?? subscription.trial_end_date, language)}</span>
+                    </div>
+                    <div className="price-row">
+                      <span>Essai</span>
+                      <span>Essai termine</span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="price-row">
+                    <span>Essai</span>
+                    <span>{formatExactDateTime(subscription.trial_start_date, language)} → {formatExactDateTime(subscription.trial_end_date, language)}</span>
+                  </div>
+                )}
               </div>
               {isTrialSubscription ? (
                 <div className="subscription-upgrade-banner">

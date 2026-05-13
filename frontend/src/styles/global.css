@@ -407,6 +407,12 @@ textarea:focus {
   box-shadow: 0 10px 20px color-mix(in srgb, var(--primary) 28%, transparent 72%);
 }
 
+.pharmigo-icon-button svg {
+  width: 1.2rem;
+  height: 1.2rem;
+  display: block;
+}
+
 .pharmigo-badge-dot {
   position: absolute;
   top: -4px;
@@ -2533,6 +2539,12 @@ label span {
   border-radius: 50%;
   background: color-mix(in srgb, var(--primary) 14%, transparent 86%);
   font-size: 1.1rem;
+}
+
+.hero-benefit-icon svg {
+  width: 20px;
+  height: 20px;
+  display: block;
 }
 
 .auth-shell {

@@ -1,5 +1,22 @@
 import { Children, useEffect, useState, type ReactNode } from "react";
 
+function CloseGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="m6 6 12 12M18 6 6 18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function SearchGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="11" cy="11" r="5.25" fill="none" stroke="currentColor" strokeWidth="1.8" />
+      <path d="m15 15 4 4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 type DashboardNavItem = {
   id: string;
   label: string;
@@ -162,7 +179,7 @@ export default function DashboardScaffold({
         <div className="dashboard-sidebar-head">
           <div className="dashboard-sidebar-brand">{brand}</div>
           <button type="button" className="dashboard-sidebar-close" onClick={() => setIsMobileNavOpen(false)} aria-label="Fermer le menu">
-            ×
+            <CloseGlyph />
           </button>
         </div>
         <div className="dashboard-sidebar-sections">
@@ -254,7 +271,7 @@ export default function DashboardScaffold({
             </div>
           </div>
           <label className="dashboard-topbar-search" aria-label={searchPlaceholder}>
-            <span className="dashboard-topbar-search-icon" aria-hidden="true">⌕</span>
+            <span className="dashboard-topbar-search-icon" aria-hidden="true"><SearchGlyph /></span>
             <input
               type="text"
               value={searchValue ?? ""}
@@ -273,7 +290,7 @@ export default function DashboardScaffold({
                 onClick={() => onSearchChange?.("")}
                 aria-label="Effacer la recherche"
               >
-                ×
+                <CloseGlyph />
               </button>
             ) : null}
           </label>

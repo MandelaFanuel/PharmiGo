@@ -244,11 +244,36 @@ function formatDateTimeLocalValue(value?: string | null) {
 
 function formatRewardEventStatus(status: string) {
   const labels: Record<string, string> = {
-    active: "Actif",
+    active: "En cours",
     upcoming: "A venir",
-    closed: "Cloture",
+    closed: "Termine",
   };
   return labels[status] ?? status;
+}
+
+function getRewardEventDisplayStatus(start?: string | null, end?: string | null, fallbackStatus?: string) {
+  const now = Date.now();
+  const startTime = start ? new Date(start).getTime() : null;
+  const endTime = end ? new Date(end).getTime() : null;
+
+  if (typeof startTime === "number" && !Number.isNaN(startTime) && now < startTime) {
+    return "upcoming";
+  }
+  if (typeof endTime === "number" && !Number.isNaN(endTime) && now > endTime) {
+    return "closed";
+  }
+  if (
+    typeof startTime === "number" &&
+    !Number.isNaN(startTime) &&
+    typeof endTime === "number" &&
+    !Number.isNaN(endTime) &&
+    now >= startTime &&
+    now <= endTime
+  ) {
+    return "active";
+  }
+
+  return fallbackStatus ?? "upcoming";
 }
 
 type AdminProfileFormState = {
@@ -1393,7 +1418,7 @@ export default function AdminDashboard({
 
       {activeSection === "pharmacies" ? (
         <DashboardPanel title={labels.pharmacies} description="Pagination de 4 pharmacies avec photo de profil, actions et statut synchronises." className="dashboard-panel-span-3">
-          <div className="admin-table-grid dashboard-mobile-single-stack">
+          <div className="admin-patient-list admin-pharmacy-list">
             {pagedPharmacies.map((pharmacy) => (
               <AdminPharmacyCard
                 key={pharmacy.id}
@@ -1748,8 +1773,8 @@ export default function AdminDashboard({
             {(data?.reward_program?.events ?? []).map((eventItem) => (
               <article key={`reward-event-${eventItem.id}`} className="admin-data-card">
                 <strong>{eventItem.title}</strong>
-                <span className={`badge ${eventItem.status === "active" ? "success" : eventItem.status === "upcoming" ? "info" : "warning"}`}>
-                  {formatRewardEventStatus(eventItem.status)}
+                <span className={`badge ${getRewardEventDisplayStatus(eventItem.start, eventItem.end, eventItem.status) === "active" ? "success" : getRewardEventDisplayStatus(eventItem.start, eventItem.end, eventItem.status) === "upcoming" ? "info" : "warning"}`}>
+                  {formatRewardEventStatus(getRewardEventDisplayStatus(eventItem.start, eventItem.end, eventItem.status))}
                 </span>
                 <p>{eventItem.summary}</p>
                 <small>
@@ -1925,10 +1950,10 @@ export default function AdminDashboard({
                 <h3>Abonnements actifs</h3>
                 <small>{activeSubscriptions.length} pharmacie(s) active(s)</small>
               </div>
-              <div className="admin-table-grid">
+              <div className="admin-patient-list admin-pharmacy-list">
                 {activeSubscriptions.length ? activeSubscriptions.map((subscription) => (
-                  <article key={`active-${subscription.id}`} className="admin-data-card admin-pharmacy-dashboard-card admin-subscription-pharmacy-card">
-                    <div className="admin-card-header">
+                  <article key={`active-${subscription.id}`} className="admin-data-card admin-pharmacy-row">
+                    <div className="admin-pharmacy-row-main">
                       <div className="admin-profile-chip">
                         {pharmacyLookup.get(subscription.pharmacy_id)?.profile_image ? (
                           <img
@@ -1944,13 +1969,11 @@ export default function AdminDashboard({
                           <small>{pharmacyLookup.get(subscription.pharmacy_id)?.phone_number || "Numero indisponible"}</small>
                         </div>
                       </div>
-                      <span className="badge success">{subscription.subscription_status}</span>
                     </div>
-                    <div className="admin-pharmacy-dashboard-details">
-                      <p>{formatExactDateTime(subscription.trial_start_date, language)} → {formatExactDateTime(subscription.trial_end_date, language)}</p>
-                      <small>{subscription.days_remaining} jours restants</small>
-                    </div>
-                    <div className="admin-card-actions">
+                    <span className="admin-patient-row-value">{formatExactDateTime(subscription.trial_start_date, language)} → {formatExactDateTime(subscription.trial_end_date, language)}</span>
+                    <span className="admin-patient-row-value">{subscription.days_remaining} jours restants</span>
+                    <span className="badge success">{subscription.subscription_status}</span>
+                    <div className="admin-card-actions admin-patient-row-actions">
                       <ActionIconButton label="Suspendre l'abonnement" title="Suspendre" tone="warning" onClick={() => void handleSubscriptionStatusChange(subscription.pharmacy_id, "suspended")}>
                         <SuspendIcon />
                       </ActionIconButton>
@@ -1965,10 +1988,10 @@ export default function AdminDashboard({
                 <h3>Historique des abonnements</h3>
                 <small>{archivedSubscriptions.length} entree(s) • {data?.summary.lost_prescriptions_total ?? 0} opportunite(s) perdue(s)</small>
               </div>
-              <div className="admin-table-grid">
+              <div className="admin-patient-list admin-pharmacy-list">
                 {pagedSubscriptions.map((subscription) => (
-                  <article key={subscription.id} className="admin-data-card admin-pharmacy-dashboard-card admin-subscription-pharmacy-card">
-                    <div className="admin-card-header">
+                  <article key={subscription.id} className="admin-data-card admin-pharmacy-row">
+                    <div className="admin-pharmacy-row-main">
                       <div className="admin-profile-chip">
                         {pharmacyLookup.get(subscription.pharmacy_id)?.profile_image ? (
                           <img
@@ -1984,18 +2007,16 @@ export default function AdminDashboard({
                           <small>{pharmacyLookup.get(subscription.pharmacy_id)?.phone_number || "Numero indisponible"}</small>
                         </div>
                       </div>
-                      <span className={`badge ${subscription.subscription_status === "active" ? "success" : subscription.subscription_status === "trial" ? "info" : "warning"}`}>
-                        {subscription.subscription_status}
-                      </span>
                     </div>
-                    <div className="admin-pharmacy-dashboard-details">
-                      <p>{formatExactDateTime(subscription.trial_start_date, language)} → {formatExactDateTime(subscription.trial_end_date, language)}</p>
-                      <small>{subscription.days_remaining} jours restants</small>
-                      {subscription.lost_prescriptions_count > 0 ? (
-                        <small>{subscription.lost_prescriptions_count} ordonnance(s) recente(s) compatible(s) perdues</small>
-                      ) : null}
-                    </div>
-                    <div className="admin-card-actions">
+                    <span className="admin-patient-row-value">
+                      {formatExactDateTime(subscription.trial_start_date, language)} → {formatExactDateTime(subscription.trial_end_date, language)}
+                      {subscription.lost_prescriptions_count > 0 ? ` • ${subscription.lost_prescriptions_count} ordonnance(s) perdue(s)` : ""}
+                    </span>
+                    <span className="admin-patient-row-value">{subscription.days_remaining} jours restants</span>
+                    <span className={`badge ${subscription.subscription_status === "active" ? "success" : subscription.subscription_status === "trial" ? "info" : "warning"}`}>
+                      {subscription.subscription_status}
+                    </span>
+                    <div className="admin-card-actions admin-patient-row-actions">
                       <ActionIconButton
                         label={subscription.subscription_status === "active" ? "Suspendre l'abonnement" : "Activer l'abonnement"}
                         title={subscription.subscription_status === "active" ? "Suspendre" : "Activer"}
@@ -2144,12 +2165,12 @@ function AdminPharmacyCard({
     subscriptionStatus === "active"
       ? "Verifiee"
       : subscriptionStatus === "trial"
-        ? `Trial period${typeof subscription?.days_remaining === "number" ? ` · ${subscription.days_remaining} j` : ""}`
+        ? `Essai${typeof subscription?.days_remaining === "number" ? ` · ${subscription.days_remaining} j` : ""}`
         : "Suspendue";
 
   return (
-    <article className="admin-data-card admin-pharmacy-dashboard-card">
-      <div className="admin-card-header">
+    <article className="admin-data-card admin-pharmacy-row">
+      <div className="admin-pharmacy-row-main">
         <div className="admin-profile-chip">
           {pharmacy.profile_image ? (
             <img src={resolveMediaUrl(pharmacy.profile_image) ?? ""} alt={pharmacy.name} className="admin-profile-chip-image" />
@@ -2164,18 +2185,14 @@ function AdminPharmacyCard({
             <small>{pharmacy.phone_number}</small>
           </div>
         </div>
-        <div className="admin-pharmacy-status-row">
-          <span className={`badge ${pharmacy.is_active === false ? "warning" : "success"}`}>{pharmacy.is_active === false ? "Bannie" : "Active"}</span>
-          <span className={`badge ${subscriptionBadgeClass}`}>{subscriptionLabel}</span>
-        </div>
       </div>
-      <div className="admin-pharmacy-dashboard-details">
-        <p>{pharmacy.city}</p>
-        <p>{pharmacy.address}</p>
-        <small>Inscription: {formatExactDateTime(pharmacy.created_at, language)}</small>
-        <small>Abonnement: {subscriptionStatus}</small>
+      <span className="admin-patient-row-value">{[pharmacy.city, pharmacy.address].filter(Boolean).join(" • ") || "Adresse indisponible"}</span>
+      <span className="admin-patient-row-value">Inscription: {formatExactDateTime(pharmacy.created_at, language)}</span>
+      <div className="admin-pharmacy-row-statuses">
+        <span className={`badge ${pharmacy.is_active === false ? "warning" : "success"}`}>{pharmacy.is_active === false ? "Non actif" : "Actif"}</span>
+        <span className={`badge ${subscriptionBadgeClass}`}>{subscriptionLabel}</span>
       </div>
-      <div className="admin-card-actions admin-card-actions-rail" role="toolbar" aria-label={`Actions pour ${pharmacy.name}`}>
+      <div className="admin-card-actions admin-patient-row-actions" role="toolbar" aria-label={`Actions pour ${pharmacy.name}`}>
         <ActionIconButton
           label={subscriptionStatus === "active" ? "Pharmacie deja active" : "Activer la pharmacie"}
           title={subscriptionStatus === "active" ? "Activee" : "Activer"}

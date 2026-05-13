@@ -65,6 +65,63 @@ import type {
   PrescriptionUploadReceipt,
 } from "../types";
 
+function DashboardGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4.75 5.5h5.5v5.5h-5.5Zm9 0h5.5v8h-5.5Zm-9 9h5.5v4h-5.5Zm9 2.5h5.5v1.5h-5.5Z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function MedicineGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M8 7.5a3.5 3.5 0 0 1 7 0c0 1.18-.58 2.23-1.47 2.87l-4.16 3.01a3.5 3.5 0 1 1-4.12-5.67l4.16-3.02A3.49 3.49 0 0 1 8 7.5Z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+      <path d="m9.2 9.2 5.6 5.6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function ChatGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M6 7.5h12a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H11l-4 3v-3H6a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2Z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+      <path d="M8.5 11h7M8.5 14h4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function LocationGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 20s6-5.18 6-10a6 6 0 1 0-12 0c0 4.82 6 10 6 10Z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+      <circle cx="12" cy="10" r="2.2" fill="none" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function ClockGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M12 8v4.5l3 1.75" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function renderBenefitGlyph(icon: string) {
+  switch (icon) {
+    case "💬":
+      return <ChatGlyph />;
+    case "📍":
+      return <LocationGlyph />;
+    case "⏱":
+      return <ClockGlyph />;
+    default:
+      return <ClockGlyph />;
+  }
+}
+
 type KPIShape = {
   response_time_minutes: number;
   resolution_rate: number;
@@ -3993,7 +4050,7 @@ export default function Home() {
           <div className="hero-benefits-stack">
             {copy.highlights.map((item) => (
               <article key={item.title} className="hero-benefit-card">
-                <div className="hero-benefit-icon">{item.icon}</div>
+                <div className="hero-benefit-icon">{renderBenefitGlyph(item.icon)}</div>
                 <div>
                   <h3>{item.title}</h3>
                   <p>{item.body}</p>
@@ -4881,7 +4938,7 @@ export default function Home() {
                 className="pharmigo-secondary-btn auth-submit"
                 onClick={() => setActiveModal("dashboard")}
               >
-                📊 Voir mon Dashboard
+                <DashboardGlyph /> Voir mon Dashboard
               </button>
               <button type="button" className="pharmigo-secondary-btn auth-submit" onClick={handleLogout}>
                 Deconnexion
@@ -4957,7 +5014,7 @@ export default function Home() {
                 className="pharmigo-secondary-btn auth-submit"
                 onClick={() => setActiveModal("dashboard")}
               >
-                📊 Voir mon Dashboard
+                <DashboardGlyph /> Voir mon Dashboard
               </button>
               <button type="button" className="pharmigo-secondary-btn auth-submit" onClick={handleLogout}>
                 Deconnexion
@@ -5118,14 +5175,14 @@ export default function Home() {
                 className="pharmigo-secondary-btn auth-submit"
                 onClick={() => setActiveModal("dashboard")}
               >
-                📊 Voir mon Dashboard
+                <DashboardGlyph /> Voir mon Dashboard
               </button>
               <button
                 type="button"
                 className="pharmigo-secondary-btn auth-submit"
                 onClick={() => setActiveModal("pharmacy-stock")}
               >
-                💊 Gérer le stock de médicaments
+                <MedicineGlyph /> Gérer le stock de médicaments
               </button>
               <button type="button" className="pharmigo-secondary-btn auth-submit" onClick={handleLogout}>
                 Deconnexion
