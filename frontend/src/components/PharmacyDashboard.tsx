@@ -1280,6 +1280,11 @@ export default function PharmacyDashboard({
       title: language === "en" ? "Profile" : "Profil",
       items: [
         {
+          id: "pharm-profile",
+          label: "Mon profil",
+          onClick: triggerProfileFlow,
+        },
+        {
           id: "pharm-configuration",
           label: labels.configuration,
           active: activeSection === "configuration",

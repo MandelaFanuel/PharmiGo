@@ -537,9 +537,17 @@ export default function PharmacyStockManager({
                   <div className="stock-row-main">
                     <div className="stock-row-title">
                       <strong>{item.medication_name}</strong>
-                      {item.generic_name ? <small>{item.generic_name}</small> : null}
+                      {item.generic_name ? <small>({item.generic_name})</small> : null}
                     </div>
                     <span className="stock-row-dosage">{item.dosage || "-"}</span>
+                    <div className="stock-row-actions">
+                      <button className="icon-button compact" onClick={() => handleEdit(item)} title="Modifier" aria-label={`Modifier ${item.medication_name}`} disabled={busyStockId === item.id}>
+                        <PencilGlyph />
+                      </button>
+                      <button className="icon-button compact delete" onClick={() => void handleDelete(item.id)} title="Supprimer" aria-label={`Supprimer ${item.medication_name}`} disabled={busyStockId === item.id}>
+                        <TrashGlyph />
+                      </button>
+                    </div>
                     <div className="stock-quantity-controls">
                       <button
                         type="button"
@@ -565,14 +573,6 @@ export default function PharmacyStockManager({
                     <span className="badge info">{getSaleScopeLabel(item.sale_scope)}</span>
                     <span className="stock-row-price">{item.price.toFixed(2)} {item.currency}</span>
                     <span className={`badge ${item.is_available ? "success" : "warning"}`}>{item.is_available ? "Disponible" : "Indisponible"}</span>
-                    <div className="stock-row-actions">
-                      <button className="icon-button compact" onClick={() => handleEdit(item)} title="Modifier" aria-label={`Modifier ${item.medication_name}`} disabled={busyStockId === item.id}>
-                        <PencilGlyph />
-                      </button>
-                      <button className="icon-button compact delete" onClick={() => void handleDelete(item.id)} title="Supprimer" aria-label={`Supprimer ${item.medication_name}`} disabled={busyStockId === item.id}>
-                        <TrashGlyph />
-                      </button>
-                    </div>
                   </div>
                 </article>
               ))}

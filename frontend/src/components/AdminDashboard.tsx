@@ -270,7 +270,7 @@ type DocumentViewerState = {
 };
 
 export default function AdminDashboard({
-  onRequestProfileOpen: _onRequestProfileOpen,
+  onRequestProfileOpen,
 }: {
   onRequestProfileOpen?: () => void;
 }) {
@@ -323,6 +323,14 @@ export default function AdminDashboard({
   const [documentViewer, setDocumentViewer] = useState<DocumentViewerState | null>(null);
   const [adminProfileImageVersion, setAdminProfileImageVersion] = useState(() => Date.now());
   const refreshInFlightRef = useRef(false);
+
+  function triggerProfileFlow() {
+    if (onRequestProfileOpen) {
+      onRequestProfileOpen();
+      return;
+    }
+    window.dispatchEvent(new CustomEvent("open-profile-modal"));
+  }
 
   function withProfileImageVersion(url?: string | null) {
     if (!url) {
@@ -1264,6 +1272,7 @@ export default function AdminDashboard({
     {
       title: language === "en" ? "Profile" : "Profil",
       items: [
+        { id: "admin-profile", label: "Mon profil", onClick: triggerProfileFlow },
         { id: "admin-config", label: labels.configurations, active: activeSection === "configurations", onClick: () => setActiveSection("configurations") },
       ],
     },

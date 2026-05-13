@@ -527,6 +527,7 @@ export default function PatientDashboard({
     {
       title: language === "en" ? "Profile" : "Profil",
       items: [
+        { id: "patient-profile", label: "Mon profil", onClick: triggerProfileFlow },
         { id: "patient-config", label: labels.configuration, active: activeSection === "configuration", onClick: () => setActiveSection("configuration") },
       ],
     },
