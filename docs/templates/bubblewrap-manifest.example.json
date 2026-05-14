@@ -1,0 +1,15 @@
+{
+  "packageId": "com.pharmigo.app",
+  "host": "www.pharmigo.com",
+  "name": "PharmiGo",
+  "launcherName": "PharmiGo",
+  "display": "standalone",
+  "themeColor": "#0f766e",
+  "backgroundColor": "#08121b",
+  "startUrl": "/",
+  "iconUrl": "https://www.pharmigo.com/icons/icon-512.png",
+  "maskableIconUrl": "https://www.pharmigo.com/icons/icon-maskable-512.png",
+  "navigationColor": "#08121b",
+  "navigationColorDark": "#08121b",
+  "orientation": "portrait"
+}

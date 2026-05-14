@@ -85,11 +85,18 @@ def email_already_used(email: str, *, exclude_user_id: int | None = None, exclud
         return False
 
     user_queryset = User.objects.exclude(pk=exclude_user_id) if exclude_user_id else User.objects.all()
-    if user_queryset.filter(email__iexact=normalized).exists():
-        return True
+    matching_users = user_queryset.select_related("profile", "profile__pharmacy").filter(email__iexact=normalized)
+    for existing_user in matching_users:
+        profile = getattr(existing_user, "profile", None)
+        if profile is None or profile.role != "pharmacy":
+            return True
+
+        pharmacy = getattr(profile, "pharmacy", None)
+        if existing_user.is_active and pharmacy is not None and pharmacy.is_active:
+            return True
 
     pharmacy_queryset = Pharmacy.objects.exclude(pk=exclude_pharmacy_id) if exclude_pharmacy_id else Pharmacy.objects.all()
-    return pharmacy_queryset.filter(email__iexact=normalized).exists()
+    return pharmacy_queryset.filter(email__iexact=normalized, is_active=True).exists()
 
 
 def phone_number_already_used(phone_number: str, *, exclude_profile_id: int | None = None, exclude_pharmacy_id: int | None = None) -> bool:
@@ -98,11 +105,23 @@ def phone_number_already_used(phone_number: str, *, exclude_profile_id: int | No
         return False
 
     profile_queryset = UserProfile.objects.exclude(pk=exclude_profile_id) if exclude_profile_id else UserProfile.objects.all()
-    if profile_queryset.filter(phone_number=normalized).exists():
-        return True
+    matching_profiles = profile_queryset.select_related("user", "pharmacy").filter(phone_number=normalized)
+    for existing_profile in matching_profiles:
+        if existing_profile.role != "pharmacy":
+            return True
+
+        linked_user = getattr(existing_profile, "user", None)
+        linked_pharmacy = getattr(existing_profile, "pharmacy", None)
+        if (
+            linked_user is not None
+            and linked_user.is_active
+            and linked_pharmacy is not None
+            and linked_pharmacy.is_active
+        ):
+            return True
 
     pharmacy_queryset = Pharmacy.objects.exclude(pk=exclude_pharmacy_id) if exclude_pharmacy_id else Pharmacy.objects.all()
-    return pharmacy_queryset.filter(phone_number=normalized).exists()
+    return pharmacy_queryset.filter(phone_number=normalized, is_active=True).exists()
 
 
 class UserProfileSerializer(serializers.ModelSerializer):

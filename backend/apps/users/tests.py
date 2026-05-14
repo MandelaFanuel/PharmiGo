@@ -509,6 +509,56 @@ class AuthenticationFlowTests(APITestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("phone_number", response.data)
 
+    def test_deleted_pharmacy_email_and_phone_can_be_reused_for_new_registration(self):
+        first_response = self.client.post(
+            "/api/auth/register/",
+            {
+                "account_type": "pharmacy",
+                "pharmacy_name": "Pharmacie Temporaire",
+                "phone_number": "+25761000777",
+                "email": "pharmacy-reuse@example.com",
+                "address": "Rohero, Bujumbura",
+                "password": "secret123",
+                "retail_supported": True,
+                "wholesale_supported": False,
+            },
+            format="json",
+        )
+
+        self.assertEqual(first_response.status_code, 201)
+        pharmacy_user = User.objects.get(email="pharmacy-reuse@example.com")
+        pharmacy_id = pharmacy_user.profile.pharmacy_id
+
+        admin = User.objects.create_user(
+            username="cleanup-admin",
+            email="cleanup-admin@example.com",
+            password="secret123",
+            is_staff=True,
+        )
+        UserProfile.objects.create(user=admin, role="admin", phone_number="+25761999999", email_verified=True)
+
+        self.client.force_authenticate(admin)
+        delete_response = self.client.delete(f"/api/pharmacies/{pharmacy_id}/delete-account/")
+        self.assertEqual(delete_response.status_code, 200)
+        self.client.force_authenticate(user=None)
+
+        second_response = self.client.post(
+            "/api/auth/register/",
+            {
+                "account_type": "pharmacy",
+                "pharmacy_name": "Pharmacie Recrée",
+                "phone_number": "+25761000777",
+                "email": "pharmacy-reuse@example.com",
+                "address": "Kinindo, Bujumbura",
+                "password": "secret123",
+                "retail_supported": True,
+                "wholesale_supported": False,
+            },
+            format="json",
+        )
+
+        self.assertEqual(second_response.status_code, 201)
+
     def test_password_reset_confirm_with_invalid_token_fails(self):
         user = User.objects.create_user(username="patient-reset-invalid", email="patient-reset-invalid@example.com", password="oldsecret123")
         UserProfile.objects.create(user=user, role="patient", phone_number="+25761000010", email_verified=True)

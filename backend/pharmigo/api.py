@@ -2,6 +2,7 @@ from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from datetime import datetime, timedelta
 from django.conf import settings
+from django.db import transaction
 from django.db.models import Avg, CharField, Count, DurationField, ExpressionWrapper, F, FloatField, Q, Value
 from django.utils import timezone
 from rest_framework import parsers, routers, status, viewsets
@@ -514,10 +515,12 @@ class PharmacyViewSet(viewsets.ModelViewSet):
 
         pharmacy = Pharmacy.objects.get(pk=pk)
         linked_profile = getattr(pharmacy, "user_profile", None)
-        linked_user_id = linked_profile.user_id if linked_profile is not None else None
-        pharmacy.delete()
-        if linked_profile is not None:
-            linked_profile.user.delete()
+        linked_user = linked_profile.user if linked_profile is not None else None
+        linked_user_id = linked_user.id if linked_user is not None else None
+        with transaction.atomic():
+            if linked_user is not None:
+                linked_user.delete()
+            Pharmacy.objects.filter(pk=pharmacy.pk).delete()
 
         broadcast_feed_event("pharmacy.deleted", {"pharmacy_id": int(pk), "user_id": linked_user_id})
         return Response({"deleted": True, "pharmacy_id": int(pk)}, status=status.HTTP_200_OK)
@@ -965,7 +968,10 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
         target_id = target.id
         profile = getattr(target, "profile", None)
         pharmacy_id = getattr(getattr(profile, "pharmacy", None), "id", None)
-        target.delete()
+        with transaction.atomic():
+            if profile is not None and profile.role == "pharmacy" and profile.pharmacy is not None:
+                Pharmacy.objects.filter(pk=profile.pharmacy_id).delete()
+            target.delete()
         broadcast_feed_event("user.deleted", {"user_id": target_id, "pharmacy_id": pharmacy_id})
         return Response({"deleted": True, "user_id": target_id}, status=status.HTTP_200_OK)
 
