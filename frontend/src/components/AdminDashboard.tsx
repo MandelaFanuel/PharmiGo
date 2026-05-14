@@ -11,11 +11,13 @@ import {
   banPharmacy,
   banUser,
   broadcastNotifications,
+  clearAdminBugReports,
   deletePharmacyAccount,
   deleteUserAccount,
   fetchAdminDashboard,
   fetchProtectedDocument,
   fetchProfile,
+  updateAdminBugStatus,
   updateAdminProfile,
   updatePharmacySubscriptionStatus,
   updateAdminSettings,
@@ -25,13 +27,16 @@ import {
 } from "../services/api";
 import type {
   AdminDashboardAISettings,
+  AdminDashboardBugReport,
   AdminDashboardData,
   AdminDashboardPayment,
+  AdminDashboardSystemActivityItem,
   AuthUser,
   PaymentMethodConfig,
   Pharmacy,
   PrescriptionRecord,
 } from "../types";
+import { resolvePharmacyProfileImageUrl } from "../lib/media";
 
 type AdminSection =
   | "dashboard"
@@ -42,6 +47,7 @@ type AdminSection =
   | "settings"
   | "status"
   | "active-system"
+  | "maintenance-bugs"
   | "payments"
   | "payment-modes"
   | "subscriptions"
@@ -62,6 +68,9 @@ const ADMIN_DASHBOARD_REFRESH_EVENTS = new Set([
   "payment.updated",
   "subscription.updated",
   "profile.updated",
+  "bug.reported",
+  "bug.updated",
+  "bug.cleared",
 ]);
 
 const SEARCH_LOCALES = ["fr-FR", "en-US", "sw-TZ"] as const;
@@ -337,10 +346,11 @@ export default function AdminDashboard({
   const [isProfileSaving, setIsProfileSaving] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [feedback, setFeedback] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [documentViewer, setDocumentViewer] = useState<DocumentViewerState | null>(null);
-  const [adminProfileImageVersion, setAdminProfileImageVersion] = useState(() => Date.now());
+const [feedback, setFeedback] = useState<string | null>(null);
+const [error, setError] = useState<string | null>(null);
+const [documentViewer, setDocumentViewer] = useState<DocumentViewerState | null>(null);
+const [selectedBugReport, setSelectedBugReport] = useState<AdminDashboardBugReport | null>(null);
+const [adminProfileImageVersion, setAdminProfileImageVersion] = useState(() => Date.now());
   const refreshInFlightRef = useRef(false);
 
   function triggerProfileFlow() {
@@ -1172,6 +1182,50 @@ export default function AdminDashboard({
     }
   }
 
+  async function handleBugStatusChange(bugId: number, nextStatus: "new" | "in_progress" | "resolved") {
+    try {
+      const updated = await updateAdminBugStatus({ id: bugId, status: nextStatus });
+      setData((current) =>
+        current
+          ? {
+            ...current,
+            bug_reports: current.bug_reports.map((item) => (item.id === bugId ? { ...item, ...updated } : item)),
+          }
+          : current
+      );
+      setSelectedBugReport((current) => (current?.id === bugId ? { ...current, ...updated } : current));
+      setFeedback("Le statut du bug a ete mis a jour.");
+    } catch (bugError) {
+      void bugError;
+      logClientError("La mise a jour du statut bug a echoue.");
+      setError("Impossible de mettre a jour le statut du bug.");
+    }
+  }
+
+  async function handleClearBugReports() {
+    if (!window.confirm("Vider tous les logs Sentinelle ?")) {
+      return;
+    }
+
+    try {
+      const result = await clearAdminBugReports();
+      setData((current) =>
+        current
+          ? {
+            ...current,
+            bug_reports: [],
+          }
+          : current
+      );
+      setSelectedBugReport(null);
+      setFeedback(`${result.deleted_count} log(s) supprime(s).`);
+    } catch (clearError) {
+      void clearError;
+      logClientError("Le nettoyage des logs Sentinelle a echoue.");
+      setError("Impossible de vider les logs pour le moment.");
+    }
+  }
+
   const normalizedSearchTerm = deferredSearchTerm.trim().toLowerCase();
   const pharmacyLookup = new Map((data?.pharmacies ?? []).map((item) => [item.id, item] as const));
   const userRows = useMemo(
@@ -1245,6 +1299,16 @@ export default function AdminDashboard({
       ),
     [data?.subscriptions, normalizedSearchTerm]
   );
+  const filteredBugReports = useMemo(
+    () =>
+      (data?.bug_reports ?? []).filter((item) =>
+        buildSearchIndex(
+          [item.error_type, item.message, item.module, item.actor_label, item.path, item.method, item.status, item.severity],
+          [item.created_at, item.updated_at]
+        ).includes(normalizedSearchTerm)
+      ),
+    [data?.bug_reports, normalizedSearchTerm]
+  );
   const pendingPayments = filteredPayments.filter((item) => item.payment_status === "pending");
   const activeSubscriptions = filteredSubscriptions.filter((item) => item.subscription_status === "active");
   const archivedSubscriptions = filteredSubscriptions.filter((item) => item.subscription_status !== "active");
@@ -1298,6 +1362,7 @@ export default function AdminDashboard({
         { id: "admin-ambassador", label: "Ambassadeur", active: activeSection === "ambassador", onClick: () => setActiveSection("ambassador") },
         { id: "admin-status", label: labels.status, active: activeSection === "status", onClick: () => setActiveSection("status") },
         { id: "admin-active", label: labels.activity, active: activeSection === "active-system", onClick: () => setActiveSection("active-system") },
+        { id: "admin-maintenance", label: "Maintenance & Bugs", active: activeSection === "maintenance-bugs", onClick: () => setActiveSection("maintenance-bugs") },
       ],
     },
     {
@@ -1957,7 +2022,7 @@ export default function AdminDashboard({
                       <div className="admin-profile-chip">
                         {pharmacyLookup.get(subscription.pharmacy_id)?.profile_image ? (
                           <img
-                            src={resolveMediaUrl(pharmacyLookup.get(subscription.pharmacy_id)?.profile_image) ?? ""}
+                            src={resolvePharmacyProfileImageUrl(pharmacyLookup.get(subscription.pharmacy_id) ?? null) ?? ""}
                             alt={subscription.pharmacy_name}
                             className="admin-profile-chip-image"
                           />
@@ -1995,7 +2060,7 @@ export default function AdminDashboard({
                       <div className="admin-profile-chip">
                         {pharmacyLookup.get(subscription.pharmacy_id)?.profile_image ? (
                           <img
-                            src={resolveMediaUrl(pharmacyLookup.get(subscription.pharmacy_id)?.profile_image) ?? ""}
+                            src={resolvePharmacyProfileImageUrl(pharmacyLookup.get(subscription.pharmacy_id) ?? null) ?? ""}
                             alt={subscription.pharmacy_name}
                             className="admin-profile-chip-image"
                           />
@@ -2081,6 +2146,77 @@ export default function AdminDashboard({
         </DashboardPanel>
       ) : null}
 
+      {activeSection === "maintenance-bugs" ? (
+        <DashboardPanel title="Maintenance & Bugs" description="Sentinelle capture les incidents critiques, les erreurs d'API et l'activite vivante du systeme." className="dashboard-panel-span-3 dashboard-keep-visible">
+          <div className="admin-table-grid dashboard-mobile-single-stack">
+            <article className="admin-data-card">
+              <strong>Incidents enregistres</strong>
+              <p>{data?.bug_reports?.length ?? 0}</p>
+              <small>500, 404 critiques et echecs IA capturés en base.</small>
+            </article>
+            <article className="admin-data-card">
+              <strong>Temps moyen IA</strong>
+              <p>{Math.max(0, Math.round((data?.ai_health?.average_response_time_ms ?? 0) / 1000 * 10) / 10)} s</p>
+              <small>Gemini mesure depuis les reponses les plus recentes.</small>
+            </article>
+          </div>
+
+          <div className="dashboard-panel-head">
+            <h3>Flux d'activite recente</h3>
+            <button type="button" className="secondary-button inline-button" onClick={() => void handleRefresh()}>
+              Actualiser
+            </button>
+          </div>
+          <div className="pharmacy-message-feed">
+            {(data?.system_activity ?? []).map((item: AdminDashboardSystemActivityItem, index: number) => (
+              <article key={`activity-${index}-${item.created_at}`} className="landing-notification-item">
+                <strong>{item.title}</strong>
+                <p>{item.description}</p>
+                <small>{item.module} • {formatExactDateTime(item.created_at, language)}</small>
+              </article>
+            ))}
+            {!data?.system_activity?.length ? <div className="empty-state">Aucune interaction recente visible pour le moment.</div> : null}
+          </div>
+
+          <div className="dashboard-panel-head">
+            <h3>Tableau des incidents</h3>
+            <button type="button" className="secondary-button inline-button" onClick={() => void handleClearBugReports()}>
+              Vider les logs
+            </button>
+          </div>
+          <div className="admin-patient-list">
+            {filteredBugReports.map((bug) => (
+              <article key={`bug-${bug.id}`} className="admin-data-card admin-patient-row">
+                <div className="admin-patient-row-main">
+                  <strong>{bug.error_type}</strong>
+                  <span className={`badge ${bug.severity === "critical" ? "warning" : bug.severity === "warning" ? "info" : "neutral"}`}>
+                    {bug.severity === "critical" ? "Critique" : bug.severity === "warning" ? "Avertissement" : "Info"}
+                  </span>
+                </div>
+                <span className="admin-patient-row-value">{bug.module} • {bug.actor_label || "Utilisateur non identifie"}</span>
+                <span className="admin-patient-row-value">{bug.method} {bug.path}</span>
+                <span className="admin-patient-row-value">{formatExactDateTime(bug.created_at, language)}</span>
+                <div className="admin-card-actions admin-patient-row-actions">
+                  <select
+                    className="dashboard-inline-select"
+                    value={bug.status}
+                    onChange={(event) => void handleBugStatusChange(bug.id, event.target.value as "new" | "in_progress" | "resolved")}
+                  >
+                    <option value="new">Nouveau</option>
+                    <option value="in_progress">En cours</option>
+                    <option value="resolved">Resolu</option>
+                  </select>
+                  <button type="button" className="secondary-button inline-button" onClick={() => setSelectedBugReport(bug)}>
+                    Voir details
+                  </button>
+                </div>
+              </article>
+            ))}
+            {!filteredBugReports.length ? <div className="empty-state">Aucun bug enregistre pour les filtres actuels.</div> : null}
+          </div>
+        </DashboardPanel>
+      ) : null}
+
       {activeSection === "configurations" ? (
         <DashboardPanel title="Profil admin" description="Modifiez directement les informations et la photo de profil de l'administrateur." className="dashboard-panel-span-3 dashboard-keep-visible">
           <form className="admin-settings-form" onSubmit={handleAdminProfileSubmit}>
@@ -2112,6 +2248,43 @@ export default function AdminDashboard({
           fileName={documentViewer.fileName}
           onClose={() => setDocumentViewer(null)}
         />
+      ) : null}
+
+      {selectedBugReport ? (
+        <div className="dashboard-overlay">
+          <div className="dashboard-overlay-card admin-bug-details-card">
+            <div className="dashboard-panel-head">
+              <h3>{selectedBugReport.error_type}</h3>
+              <button type="button" className="secondary-button inline-button" onClick={() => setSelectedBugReport(null)}>
+                Fermer
+              </button>
+            </div>
+            <div className="admin-table-grid dashboard-mobile-single-stack">
+              <article className="admin-data-card">
+                <strong>Module</strong>
+                <p>{selectedBugReport.module}</p>
+                <small>{selectedBugReport.method} {selectedBugReport.path}</small>
+              </article>
+              <article className="admin-data-card">
+                <strong>Utilisateur</strong>
+                <p>{selectedBugReport.actor_label || "Visiteur"}</p>
+                <small>{formatExactDateTime(selectedBugReport.created_at, language)}</small>
+              </article>
+            </div>
+            <div className="admin-data-card">
+              <strong>Message</strong>
+              <p>{selectedBugReport.message || "Sans message technique."}</p>
+            </div>
+            <div className="admin-data-card">
+              <strong>Donnees de la requete</strong>
+              <pre className="dashboard-code-block">{JSON.stringify(selectedBugReport.request_data ?? {}, null, 2)}</pre>
+            </div>
+            <div className="admin-data-card">
+              <strong>Traceback complet</strong>
+              <pre className="dashboard-code-block">{selectedBugReport.traceback || "Aucun traceback disponible."}</pre>
+            </div>
+          </div>
+        </div>
       ) : null}
     </DashboardScaffold>
   );
@@ -2173,7 +2346,7 @@ function AdminPharmacyCard({
       <div className="admin-pharmacy-row-main">
         <div className="admin-profile-chip">
           {pharmacy.profile_image ? (
-            <img src={resolveMediaUrl(pharmacy.profile_image) ?? ""} alt={pharmacy.name} className="admin-profile-chip-image" />
+            <img src={resolvePharmacyProfileImageUrl(pharmacy) ?? ""} alt={pharmacy.name} className="admin-profile-chip-image" />
           ) : (
             <div className="admin-profile-chip-fallback">{pharmacy.name.slice(0, 1).toUpperCase()}</div>
           )}

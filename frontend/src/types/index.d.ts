@@ -441,6 +441,33 @@ export interface AdminDashboardAIHealth {
   gemini_configured: boolean;
   gemini_available: boolean;
   gemini_model: string;
+  average_response_time_ms?: number;
+}
+
+export interface AdminDashboardBugReport {
+  id: number;
+  error_type: string;
+  message: string;
+  severity: "critical" | "warning" | "info";
+  status: "new" | "in_progress" | "resolved";
+  module: string;
+  actor_label: string;
+  user_id?: number | null;
+  path: string;
+  method: string;
+  request_data: Record<string, unknown>;
+  traceback: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AdminDashboardSystemActivityItem {
+  type: string;
+  title: string;
+  description: string;
+  created_at: string;
+  module: string;
+  severity: "critical" | "warning" | "info";
 }
 
 export interface AdminDashboardAILearningAuditItem {
@@ -575,6 +602,8 @@ export interface AdminDashboardData {
   ai_learning_audit: AdminDashboardAILearningAuditItem[];
   ai_recent_logs: AdminDashboardAILogItem[];
   reward_program: RewardProgramAdminPayload;
+  bug_reports: AdminDashboardBugReport[];
+  system_activity: AdminDashboardSystemActivityItem[];
 }
 
 export interface AppProductConfig {

@@ -22,6 +22,7 @@ from apps.pharmigo_chatbot.services import AIConfigService, AIEventLogger, Gemin
 from apps.pharmigo_chatbot.extensions import build_gemini_chat_service
 from apps.prescriptions.models import Prescription, PrescriptionComment, PrescriptionEngagement, PrescriptionResponse
 from apps.prescriptions.serializers import PrescriptionCommentSerializer, PrescriptionResponseSerializer, PrescriptionSerializer
+from apps.sentinel.models import PharmiGoBugReport
 from apps.users.phone_numbers import normalize_phone_number
 from apps.users.location import refresh_profile_location_from_request, sync_profile_coordinates
 from apps.users.serializers import UserSerializer, email_already_used, phone_number_already_used
@@ -94,6 +95,84 @@ def calculate_average_response_minutes(response_queryset):
         .get("value")
     )
     return round(average.total_seconds() / 60, 1) if average is not None else 0
+
+
+def _serialize_bug_report(bug: PharmiGoBugReport) -> dict:
+    return {
+        "id": bug.id,
+        "error_type": bug.error_type,
+        "message": bug.message,
+        "severity": bug.severity,
+        "status": bug.status,
+        "module": bug.module,
+        "actor_label": bug.actor_label,
+        "user_id": bug.user_id,
+        "path": bug.path,
+        "method": bug.method,
+        "request_data": bug.request_data,
+        "traceback": bug.traceback,
+        "created_at": timezone.localtime(bug.created_at).isoformat(),
+        "updated_at": timezone.localtime(bug.updated_at).isoformat(),
+    }
+
+
+def _build_system_activity_feed(limit: int = 20) -> list[dict]:
+    activity: list[dict] = []
+
+    for prescription in Prescription.objects.filter(status__in=["served", "completed", "pharmacy_selected"]).select_related("pharmacy").order_by("-updated_at")[:8]:
+        label = prescription.pharmacy.name if prescription.pharmacy_id else "Pharmacie non selectionnee"
+        activity.append(
+            {
+                "type": "prescription",
+                "title": f"{label} a traite une ordonnance",
+                "description": f"Reference {prescription.public_reference or prescription.id} · statut {prescription.status}",
+                "created_at": timezone.localtime(prescription.updated_at).isoformat(),
+                "module": "Ordonnances",
+                "severity": "info",
+            }
+        )
+
+    for payment in SubscriptionPayment.objects.filter(payment_status="verified").select_related("pharmacy").order_by("-verified_at", "-created_at")[:6]:
+        activity.append(
+            {
+                "type": "payment",
+                "title": f"{payment.pharmacy.name} a active son abonnement",
+                "description": f"{payment.amount_bif} {payment.currency} · {payment.payment_method}",
+                "created_at": timezone.localtime(payment.verified_at or payment.created_at).isoformat(),
+                "module": "Paiement",
+                "severity": "info",
+            }
+        )
+
+    for message in ChatMessage.objects.select_related("pharmacy", "sender_pharmacy").order_by("-created_at")[:6]:
+        label = message.sender_pharmacy.name if getattr(message, "sender_pharmacy", None) else message.sender_name
+        activity.append(
+            {
+                "type": "message",
+                "title": f"Message envoye par {label}",
+                "description": (message.message or "").strip()[:140],
+                "created_at": timezone.localtime(message.created_at).isoformat(),
+                "module": "Messagerie",
+                "severity": "info",
+            }
+        )
+
+    activity.sort(key=lambda item: item["created_at"], reverse=True)
+    return activity[:limit]
+
+
+def _calculate_average_ai_response_time_ms() -> int:
+    logs = PharmiGoAIEventLog.objects.filter(payload__response_time_ms__isnull=False).order_by("-created_at")[:100]
+    values: list[int] = []
+    for item in logs:
+        raw = (item.payload or {}).get("response_time_ms")
+        try:
+            parsed = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if parsed >= 0:
+            values.append(parsed)
+    return round(sum(values) / len(values)) if values else 0
 
 
 def pharmacy_subscription_is_active(pharmacy):
@@ -903,10 +982,12 @@ ENDPOINT_CATALOG = [
     {"name": "auth_register", "method": "POST", "path": "/api/auth/register/"},
     {"name": "auth_login", "method": "POST", "path": "/api/auth/login/"},
     {"name": "auth_logout", "method": "POST", "path": "/api/auth/logout/"},
+    {"name": "health_root", "method": "GET", "path": "/"},
     {"name": "health", "method": "GET", "path": "/api/health/"},
     {"name": "app_config", "method": "GET", "path": "/api/app-config/"},
     {"name": "dashboard", "method": "GET", "path": "/api/dashboard/"},
     {"name": "admin_dashboard", "method": "GET,PATCH", "path": "/api/admin/dashboard/"},
+    {"name": "admin_bug_reports", "method": "GET,PATCH,DELETE", "path": "/api/admin/bugs/"},
     {"name": "profile", "method": "GET,PATCH", "path": "/api/profile/"},
     {"name": "endpoints", "method": "GET", "path": "/api/endpoints/"},
     {"name": "users", "method": "GET", "path": "/api/users/"},
@@ -923,7 +1004,7 @@ ENDPOINT_CATALOG = [
 ]
 
 
-@api_view(["GET"])
+@api_view(["GET", "HEAD"])
 def health_check(request):
     return Response(
         {
@@ -1376,6 +1457,9 @@ def admin_dashboard(request):
     )
 
     reward_payload = build_admin_reward_payload()
+    bug_reports = [_serialize_bug_report(item) for item in PharmiGoBugReport.objects.select_related("user").order_by("-created_at")[:100]]
+    system_activity = _build_system_activity_feed()
+    average_ai_response_time_ms = _calculate_average_ai_response_time_ms()
 
     return Response(
         {
@@ -1417,10 +1501,51 @@ def admin_dashboard(request):
                 "gemini_configured": bool(getattr(settings, "GEMINI_API_KEY", "").strip()),
                 "gemini_available": bool(gemini_service.available),
                 "gemini_model": gemini_service.model,
+                "average_response_time_ms": average_ai_response_time_ms,
             },
             "ai_learning_audit": ai_learning_audit,
             "ai_recent_logs": ai_recent_logs,
             "reward_program": reward_payload,
+            "bug_reports": bug_reports,
+            "system_activity": system_activity,
+        }
+    )
+
+
+@api_view(["GET", "PATCH", "DELETE"])
+def admin_bug_reports(request):
+    user = get_request_user(request)
+    if not is_admin_user(user):
+        return Response({"detail": "Acces administrateur requis."}, status=status.HTTP_403_FORBIDDEN)
+
+    if request.method == "DELETE":
+        deleted_count, _ = PharmiGoBugReport.objects.all().delete()
+        broadcast_feed_event("bug.cleared", {"deleted_count": deleted_count})
+        return Response({"deleted_count": deleted_count}, status=status.HTTP_200_OK)
+
+    if request.method == "PATCH":
+        bug_id = request.data.get("id")
+        next_status = str(request.data.get("status", "")).strip()
+        if not bug_id:
+            return Response({"id": "Identifiant requis."}, status=status.HTTP_400_BAD_REQUEST)
+        if next_status not in {"new", "in_progress", "resolved"}:
+            return Response({"status": "Statut invalide."}, status=status.HTTP_400_BAD_REQUEST)
+        bug = PharmiGoBugReport.objects.filter(pk=bug_id).first()
+        if bug is None:
+            return Response({"detail": "Incident introuvable."}, status=status.HTTP_404_NOT_FOUND)
+        bug.status = next_status
+        bug.save(update_fields=["status", "updated_at"])
+        serialized = _serialize_bug_report(bug)
+        broadcast_feed_event("bug.updated", serialized)
+        return Response(serialized, status=status.HTTP_200_OK)
+
+    return Response(
+        {
+            "bug_reports": [_serialize_bug_report(item) for item in PharmiGoBugReport.objects.select_related("user").order_by("-created_at")[:200]],
+            "system_activity": _build_system_activity_feed(),
+            "ai_runtime": {
+                "average_response_time_ms": _calculate_average_ai_response_time_ms(),
+            },
         }
     )
 

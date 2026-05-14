@@ -16,6 +16,7 @@ from apps.users.views import (
     VerifyEmailView,
 )
 from pharmigo.api import (
+    admin_bug_reports,
     admin_dashboard,
     app_config,
     dashboard,
@@ -29,6 +30,7 @@ from pharmigo.api import (
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("", health_check, name="health-root"),
     path("api/auth/register/", RegisterView.as_view(), name="auth-register"),
     path("api/auth/login/", LoginView.as_view(), name="auth-login"),
     path("api/auth/google/", GoogleLoginView.as_view(), name="auth-google-login"),
@@ -52,6 +54,7 @@ urlpatterns = [
     path("api/app-config/", app_config, name="app-config"),
     path("api/dashboard/", dashboard, name="dashboard"),
     path("api/admin/dashboard/", admin_dashboard, name="admin-dashboard"),
+    path("api/admin/bugs/", admin_bug_reports, name="admin-bug-reports"),
     path("api/profile/", profile, name="profile"),
     path("api/users/<int:pk>/profile-image/", UserProfileImageView.as_view(), name="user-profile-image"),
     path("api/endpoints/", endpoints, name="endpoints"),

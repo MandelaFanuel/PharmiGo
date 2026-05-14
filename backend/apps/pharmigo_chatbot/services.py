@@ -111,6 +111,13 @@ class AIEventLogger:
                 message=message[:2000],
                 payload=payload or {},
             )
+            if event_type == "gemini_error":
+                try:
+                    from apps.sentinel.services import capture_ai_failure
+
+                    capture_ai_failure(message=message, payload=payload or {})
+                except Exception as sentinel_exc:  # pragma: no cover
+                    logger.debug("Sentinelle AI capture skipped: %s", sentinel_exc)
         except Exception as exc:  # pragma: no cover - logging should never break chat flow
             logger.debug("AI event log skipped: %s", exc)
 
@@ -1074,6 +1081,17 @@ class GeminiChatService:
                 "response_kind": response_kind,
             },
         )
+        AIEventLogger.log(
+            "learning_observation",
+            "Gemini chatbot response generated.",
+            severity="info",
+            payload={
+                "gemini_model": used_model,
+                "response_time_ms": response_time_ms,
+                "response_kind": response_kind,
+                "role": role,
+            },
+        )
         answer = self._extract_text_content(raw_response).strip()
         conversation_profile = structured_context.get("conversation_profile") or {}
         normalized_question = normalize_text(question or "")
@@ -1095,6 +1113,7 @@ class GeminiChatService:
             "1. IDENTITÉ ET POSTURE (HUMAN LAYER)\n"
             "- Tu es PharmiGo, une IA médicale africaine chaleureuse, empathique et experte.\n"
             "- Si un patient exprime un malaise, demande systématiquement les symptômes, la durée depuis le début des troubles et l'âge du patient.\n"
+            "- cesser de repondre par bonjour tout le temps meme si l'utilisateur n'est pas connecte.\n"
             "- Priorité humaine : si l'utilisateur exprime douleur, stress, fatigue ou confusion, commence par une réassurance empathique avant toute orientation.\n\n"
             "2. ANALYSE MÉDICALE ET REDIRECTION PRUDENTE\n"
             "- Une fois les symptômes reçus, fournis une analyse indicative sans certitude absolue.\n"

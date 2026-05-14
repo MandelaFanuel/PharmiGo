@@ -390,6 +390,19 @@ export async function updateAdminSettings(payload: {
   return data;
 }
 
+export async function updateAdminBugStatus(payload: {
+  id: number;
+  status: "new" | "in_progress" | "resolved";
+}) {
+  const { data } = await api.patch("/admin/bugs/", payload);
+  return data;
+}
+
+export async function clearAdminBugReports(): Promise<{ deleted_count: number }> {
+  const { data } = await api.delete<{ deleted_count: number }>("/admin/bugs/");
+  return data;
+}
+
 export async function fetchEndpointCatalog(): Promise<EndpointItem[]> {
   try {
     const { data } = await api.get<EndpointItem[]>(API_ENDPOINTS.endpoints);

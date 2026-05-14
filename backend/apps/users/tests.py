@@ -26,6 +26,7 @@ def extract_token_from_email(body: str) -> str:
     EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
     FRONTEND_URL="http://localhost:5173",
     FRONTEND_APP_URL="http://localhost:5173",
+    DEBUG=True,
 )
 class AuthenticationFlowTests(APITestCase):
     def test_patient_register_creates_unverified_user_and_hashed_token(self):
@@ -142,6 +143,19 @@ class AuthenticationFlowTests(APITestCase):
         )
         self.assertEqual(login_response.status_code, 200)
         self.assertTrue(login_response.data["token"])
+
+    def test_verification_email_contains_html_confirmation_button(self):
+        user = User.objects.create_user(username="html-mail", email="html-mail@example.com", password="secret123")
+        UserProfile.objects.create(user=user, role="patient", phone_number="+25761000091")
+
+        with patch("apps.users.services.send_transactional_email") as mocked_send:
+            mocked_send.return_value = {"delivery_mode": "smtp"}
+            send_email_verification_for_user(user)
+
+        self.assertTrue(mocked_send.called)
+        html_body = mocked_send.call_args.kwargs["html_message"]
+        self.assertIn("Confirm your email", html_body)
+        self.assertIn("background:#3f83f8", html_body)
 
     def test_login_is_blocked_until_email_is_verified(self):
         self.client.post(

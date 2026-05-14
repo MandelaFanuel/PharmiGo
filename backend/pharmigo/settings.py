@@ -70,6 +70,7 @@ INSTALLED_APPS = [
     "apps.chat",
     "apps.notifications",
     "apps.pharmigo_chatbot",
+    "apps.sentinel",
 ]
 
 MIDDLEWARE = [
@@ -79,6 +80,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "apps.sentinel.middleware.BugTrackerMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]

@@ -9,7 +9,7 @@ from urllib.request import Request, urlopen
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.core.mail import EmailMessage, get_connection
+from django.core.mail import EmailMessage, EmailMultiAlternatives, get_connection
 from django.db import transaction
 from django.utils import timezone
 from google.auth.transport import requests as google_requests
@@ -52,7 +52,7 @@ def resend_api_configured() -> bool:
     return bool(getattr(settings, "RESEND_API_KEY", "").strip())
 
 
-def send_smtp_transactional_email(subject: str, message: str, recipient_email: str) -> dict:
+def send_smtp_transactional_email(subject: str, message: str, recipient_email: str, html_message: str | None = None) -> dict:
     if not smtp_email_configured():
         raise EmailDeliveryError("La configuration SMTP est absente.")
 
@@ -66,13 +66,15 @@ def send_smtp_transactional_email(subject: str, message: str, recipient_email: s
         use_ssl=settings.EMAIL_USE_SSL,
         timeout=getattr(settings, "EMAIL_TIMEOUT", 20),
     )
-    email = EmailMessage(
+    email = EmailMultiAlternatives(
         subject=subject,
         body=message,
         from_email=settings.EMAIL_FROM,
         to=[recipient_email],
         connection=connection,
     )
+    if html_message:
+        email.attach_alternative(html_message, "text/html")
     try:
         email.send(fail_silently=False)
         return {
@@ -84,9 +86,14 @@ def send_smtp_transactional_email(subject: str, message: str, recipient_email: s
         raise EmailDeliveryError("Impossible d'envoyer l'email pour le moment via SMTP.") from exc
 
 
-def send_transactional_email(subject: str, message: str, recipient_email: str) -> dict:
+def send_transactional_email(subject: str, message: str, recipient_email: str, html_message: str | None = None) -> dict:
     if smtp_email_configured():
-        return send_smtp_transactional_email(subject=subject, message=message, recipient_email=recipient_email)
+        return send_smtp_transactional_email(
+            subject=subject,
+            message=message,
+            recipient_email=recipient_email,
+            html_message=html_message,
+        )
     if not resend_api_configured():
         raise EmailDeliveryError("Aucun service d'email n'est configure.")
 
@@ -96,6 +103,7 @@ def send_transactional_email(subject: str, message: str, recipient_email: str) -
             "to": [recipient_email],
             "subject": subject,
             "text": message,
+            "html": html_message or message.replace("\n", "<br>"),
         }
     ).encode("utf-8")
     request = Request(
@@ -159,8 +167,52 @@ def send_verification_email(user, raw_token: str) -> dict:
         f"Ce lien expire dans {EMAIL_VERIFICATION_TTL_HOURS} heure(s).\n"
         "Si vous n'etes pas a l'origine de cette inscription, ignorez simplement ce message."
     )
+    first_name = (getattr(user, "first_name", "") or getattr(user, "username", "") or "cher utilisateur").strip()
+    html_message = f"""
+<!DOCTYPE html>
+<html lang="fr">
+  <body style="margin:0;padding:0;background:#0f172a;font-family:Arial,sans-serif;">
+    <div style="padding:32px 16px;background:linear-gradient(135deg,#f8fbff 0%,#e8f6ff 52%,#d8f3f0 100%);">
+      <div style="max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #dbe7f5;border-radius:24px;overflow:hidden;box-shadow:0 24px 60px rgba(15,23,42,0.14);">
+        <div style="padding:20px 24px;background:linear-gradient(135deg,#1f8a96 0%,#3f83f8 100%);color:#ffffff;">
+          <div style="font-size:12px;letter-spacing:0.18em;font-weight:700;text-transform:uppercase;opacity:0.92;">PharmiGo</div>
+          <h1 style="margin:12px 0 0;font-size:30px;line-height:1.15;font-weight:800;">Confirmez votre adresse email</h1>
+        </div>
+        <div style="padding:28px 24px 32px;color:#16324f;">
+          <p style="margin:0 0 14px;font-size:16px;line-height:1.7;">Bonjour {first_name},</p>
+          <p style="margin:0 0 18px;font-size:16px;line-height:1.7;">
+            Merci d'avoir rejoint PharmiGo. Pour activer votre compte en toute securite, confirmez votre email en cliquant sur le bouton ci-dessous.
+          </p>
+          <div style="margin:28px 0;text-align:center;">
+            <a href="{verification_url}" style="display:inline-block;padding:18px 34px;background:#3f83f8;color:#ffffff;text-decoration:none;font-size:18px;font-weight:700;border-radius:999px;box-shadow:0 16px 32px rgba(63,131,248,0.28);">
+              Confirm your email
+            </a>
+          </div>
+          <p style="margin:0 0 10px;font-size:15px;line-height:1.7;">
+            Ce lien expire dans <strong>{EMAIL_VERIFICATION_TTL_HOURS} heure(s)</strong>.
+          </p>
+          <p style="margin:0 0 14px;font-size:15px;line-height:1.7;">
+            Si le bouton ne fonctionne pas, copiez ce lien dans votre navigateur :
+          </p>
+          <p style="margin:0 0 18px;padding:14px 16px;background:#f6fbff;border:1px solid #dbe7f5;border-radius:16px;font-size:14px;line-height:1.7;word-break:break-all;">
+            {verification_url}
+          </p>
+          <p style="margin:0;font-size:14px;line-height:1.7;color:#5b7492;">
+            Si vous n'etes pas a l'origine de cette inscription, ignorez simplement cet email.
+          </p>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
+""".strip()
     try:
-        delivery = send_transactional_email(subject=subject, message=message, recipient_email=user.email)
+        delivery = send_transactional_email(
+            subject=subject,
+            message=message,
+            recipient_email=user.email,
+            html_message=html_message,
+        )
         delivery.update(
             {
                 "verification_url": verification_url,
@@ -171,7 +223,8 @@ def send_verification_email(user, raw_token: str) -> dict:
     except Exception as exc:
         logger.warning("Verification email delivery failed for %s: %s", user.email, exc)
         if settings.DEBUG:
-            console_connection = get_connection("django.core.mail.backends.console.EmailBackend")
+            fallback_backend = getattr(settings, "EMAIL_BACKEND", "") or "django.core.mail.backends.console.EmailBackend"
+            console_connection = get_connection(fallback_backend)
             console_message = EmailMessage(
                 subject=subject,
                 body=message,

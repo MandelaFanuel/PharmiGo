@@ -4856,3 +4856,51 @@ canvas {
     justify-content: flex-start;
   }
 }
+
+.dashboard-inline-select {
+  min-height: 42px;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: color-mix(in srgb, var(--surface) 92%, transparent 8%);
+  color: var(--text);
+  font: inherit;
+}
+
+.dashboard-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: 1.2rem;
+  background: rgba(5, 18, 34, 0.56);
+  backdrop-filter: blur(8px);
+}
+
+.dashboard-overlay-card {
+  width: min(980px, 100%);
+  max-height: min(86vh, 920px);
+  overflow: auto;
+  padding: 1rem;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  background: color-mix(in srgb, var(--surface-strong) 98%, transparent 2%);
+  box-shadow: 0 28px 72px rgba(5, 18, 34, 0.22);
+}
+
+.admin-bug-details-card {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.dashboard-code-block {
+  margin: 0;
+  padding: 0.95rem 1rem;
+  overflow: auto;
+  background: color-mix(in srgb, var(--surface) 94%, #0f172a 6%);
+  color: var(--text);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.82rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
